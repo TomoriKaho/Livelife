@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { drawerHeights, draggedHeight, nextDrawerState, snapDrawerState } from './drawer-gesture.mjs';
+import { drawerStates, drawerHeights, draggedHeight, nextDrawerState, snapDrawerState } from './drawer-gesture.mjs';
 
 const emit = defineEmits(['measure']);
 const state = ref('middle'), dragging = ref(false), dragHeight = ref(0);
@@ -10,11 +10,13 @@ let gesture, observer, lastDragEnd = -Infinity;
 const height = computed(() => dragging.value ? dragHeight.value : heights.value[state.value]);
 const handleLabel = computed(() => state.value === 'hidden' ? '显示活动信息' : state.value === 'expanded' ? '收起活动信息' : '展开活动信息');
 
-function collapse() {
-  gesture = null; dragging.value = false; state.value = 'middle';
+function setState(value) {
+  if (!drawerStates.includes(value)) return;
+  gesture = null; dragging.value = false; state.value = value;
   if (content.value) content.value.scrollTop = 0;
 }
-defineExpose({ collapse });
+function collapse() { setState('middle'); }
+defineExpose({ collapse, setState, getState: () => state.value });
 
 function start(x, y, fromHandle) {
   gesture = { x, y, deltaX: 0, deltaY: 0, height: height.value, fromState: state.value,

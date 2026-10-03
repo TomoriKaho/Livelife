@@ -13,6 +13,7 @@ import { profileFor } from './map/model-profiles.mjs';
 const CampusScene = defineAsyncComponent(() => import('./map/CampusScene.vue'));
 const mode = ref('3d'), filter = ref('all'), search = ref(''), selected = ref(null), floor = ref(2), scene = ref(null), located = ref(false), detail = ref(null), dialog = ref(null);
 const drawer = ref(null), drawerPeek = ref(180);
+let drawerBeforeSelection = null;
 const visibleActivities = computed(() => activities.filter(a => filter.value === 'all' || a.type === filter.value));
 const currentBuilding = computed(() => {
   if (!selected.value) return null;
@@ -27,10 +28,25 @@ const results = computed(() => {
   return campus.buildings.filter(b => b.name.toLowerCase().includes(value) || activities.some(a => a.building === b.id && `${a.title}${a.room}`.toLowerCase().includes(value))).slice(0, 6);
 });
 const today = computed(() => visibleActivities.value.slice(0, 3));
-function select(id) { drawer.value?.collapse(); selected.value = id; search.value = ''; mode.value = '3d'; floor.value = visibleActivities.value.find(a => a.building === id)?.floor || 1; }
+function select(id) {
+  if (id) {
+    // 只记录进入建筑探索前的档位，切换建筑或查看详情不覆盖这份状态。
+    if (!selected.value) drawerBeforeSelection = drawer.value?.getState() ?? 'middle';
+    drawer.value?.collapse();
+  } else {
+    if (drawerBeforeSelection !== null) drawer.value?.setState(drawerBeforeSelection);
+    drawerBeforeSelection = null;
+  }
+  selected.value = id; search.value = ''; mode.value = '3d';
+  floor.value = visibleActivities.value.find(a => a.building === id)?.floor || 1;
+}
 async function openActivity(activity) { detail.value = activity; await nextTick(); dialog.value.showModal(); }
-async function locate() { drawer.value?.collapse(); located.value = true; selected.value = null; await nextTick(); scene.value?.locate(); }
-function setMode(value) { mode.value = value; selected.value = null; search.value = ''; }
+async function locate() {
+  // 复位只调整地图，保留操作当下的抽屉档位；结束本次建筑探索记录。
+  drawerBeforeSelection = null; located.value = true; selected.value = null;
+  await nextTick(); scene.value?.locate();
+}
+function setMode(value) { drawerBeforeSelection = null; mode.value = value; selected.value = null; search.value = ''; }
 </script>
 
 <template>
