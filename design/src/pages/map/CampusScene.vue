@@ -155,9 +155,8 @@ function tick(now) {
   });
 }
 function zoom(scale) { if (!camera) return; tween = null; camera.position.sub(controls.target).multiplyScalar(scale).add(controls.target); }
-function reset() { if (!scene) return; if (props.selected) emit('select', null); else fly(initialCamera.clone(), initialTarget.clone()); }
 function locate() { if (!scene) return; fly(initialCamera.clone(), initialTarget.clone()); }
-defineExpose({ zoom, reset, locate });
+defineExpose({ zoom, locate });
 watch(() => props.selected, expand);
 watch(() => props.floor, highlight);
 watch(() => props.activities, updateActivities);
