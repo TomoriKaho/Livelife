@@ -43,7 +43,7 @@ uni-app 可以生成 APP 并接入系统能力，普通 Vue 页面主要使用 W
 
 ## commit 规范
 
-格式为 `type(scope): 描述`，scope 可省略，描述统一中文。一次提交表达一个明确目的，不使用“update”“修改一下”“最终版”等模糊信息。本项目不设置提交模板，不要求成员配置 commit.template。
+commit 和 PR 标题统一使用 `(类型) 描述`，括号后留一个空格，描述使用中文。例如 `(feat) 新增兴趣订阅接口`。模块信息通过 Issue、标签和改动描述说明。一次提交表达一个明确目的。
 
 | type     | 用途                                       |
 | -------- | ------------------------------------------ |
@@ -59,22 +59,22 @@ uni-app 可以生成 APP 并接入系统能力，普通 Vue 页面主要使用 W
 | chore    | 其他维护                                   |
 | revert   | 撤销改动                                   |
 
-scope 建议使用 subscription、map、auth、frontend、backend、infra、workflow 等稳定名称。
+分支名称继续使用 `feat/12-subscription-api`、`fix/28-map-marker` 等格式。
 
 ```text
-feat(subscription): 新增兴趣订阅接口
-fix(map): 修复活动标记点击异常
-docs(workflow): 补充 PR 评审教程
+(feat) 新增兴趣订阅接口
+(fix) 修复活动标记点击异常
+(docs) 补充 PR 评审教程
 ```
 
-不兼容变更用 `!` 并说明影响：
+不兼容变更在提交正文和 PR 的兼容性说明中写清影响与迁移方法：
 
 ```text
-feat(api)!: 调整订阅响应结构
+(feat) 调整订阅响应结构
 
-BREAKING CHANGE: interests 改为 subscriptions，客户端需要同步修改。
+兼容性说明：interests 改为 subscriptions，客户端需要同步修改。
 ```
 
 建议 Squash merge；合并时检查最终提交信息。普通开发提交不强制逐条写 Issue 编号，PR 中统一关联。格式检查自动化待后续配置，当前为团队约定。
 
-参考：[Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)。
+这是团队自定义格式；后续标题校验和发布说明工具按这一格式配置。
