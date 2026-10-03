@@ -19,7 +19,7 @@
 - [测试说明](docs/testing.md)（待完善）
 - [部署说明](docs/deployment.md)（待完善）
 
-使用 AI 编程工具时，请让它先阅读仓库根目录的 [AGENTS.md](AGENTS.md)。
+使用 AI 编程工具时，请阅读 [AI 辅助开发指南](docs/ai-development.md)，并让工具先阅读仓库根目录的 [AGENTS.md](AGENTS.md)。指南包含任务提示示例、人机分工和交付方法。
 
 ## 2. Issue 使用
 
