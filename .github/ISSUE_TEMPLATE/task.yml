@@ -1,6 +1,5 @@
 name: 子任务
 description: 开发、文档、调研或基础设施工作
-title: ""
 body:
   - type: textarea
     id: goal
