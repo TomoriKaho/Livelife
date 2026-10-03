@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { contains } from './geometry.mjs';
 import { insideFootprint } from './rings.mjs';
 import { footprintShape } from './architecture.mjs';
+import { pencilMaterial, pencilEdge } from './pencil-material.mjs';
+import { mapPalette } from './map-palette.mjs';
 
 function randomGenerator(seed) {
   return () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
@@ -56,10 +58,10 @@ export function treeLayout(campus) {
 }
 export function createVegetation(campus) {
   const trees = treeLayout(campus), group = new THREE.Group(), matrix = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), scale = new THREE.Vector3();
-  const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(.25, .4, 1, 5), new THREE.MeshStandardMaterial({ color: '#827154', roughness: 1 }), trees.length);
-  const crowns = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1 }), trees.length);
-  const upper = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1 }), trees.length);
-  const palette = ['#648b45', '#7f9b4f', '#4e814b', '#8ba755', '#547e3e'];
+  const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(.25, .4, 1, 5), pencilMaterial({ color: '#9e8966', scale: 3 }), trees.length);
+  const crowns = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 2), pencilMaterial({ color: '#ffffff', scale: 6 }), trees.length);
+  const upper = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), pencilMaterial({ color: '#ffffff', scale: 6 }), trees.length);
+  const palette = mapPalette.trees;
   trees.forEach((t, i) => {
     const [x, z] = t.point;
     matrix.compose(v.set(x, t.height * .33, z), q, scale.set(1, t.height * .66, 1)); trunk.setMatrixAt(i, matrix);
@@ -70,11 +72,17 @@ export function createVegetation(campus) {
     q.identity();
   });
   for (const item of [trunk, crowns, upper]) { item.castShadow = true; item.receiveShadow = true; item.computeBoundingSphere(); group.add(item); }
+  // 实例化背面外壳仅描树冠外缘，避免把每个三角面都画成网格。
+  for (const item of [crowns, upper]) {
+    const outline = new THREE.InstancedMesh(item.geometry.clone().scale(1.022, 1.022, 1.022),
+      new THREE.MeshBasicMaterial({ color: '#535e45', side: THREE.BackSide, transparent: true, opacity: .45, depthWrite: false }), trees.length);
+    outline.instanceMatrix.copy(item.instanceMatrix); outline.computeBoundingSphere(); group.add(outline);
+  }
   group.userData.treeCount = trees.length; return group;
 }
 export function createWater(w) {
   const group = new THREE.Group(), geometry = new THREE.ShapeGeometry(footprintShape(w.points)); geometry.rotateX(-Math.PI / 2);
-  const water = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: '#4d9790', roughness: .38, metalness: .18, side: THREE.DoubleSide })); water.position.y = .18; group.add(water);
+  const water = new THREE.Mesh(geometry, pencilMaterial({ color: mapPalette.water, side: THREE.DoubleSide, scale: .6 })); water.position.y = .18; pencilEdge(water, { opacity: .28 }); group.add(water);
   // 岸边窄石带与水面细波纹，均裁到真实湖形，不依赖在线贴图。
   const bank = [], ripples = [], random = randomGenerator(811), xs = w.points.map(p => p[0]), zs = w.points.map(p => p[1]);
   for (let i = 1; i < w.points.length; i++) {
@@ -88,7 +96,7 @@ export function createWater(w) {
     if (contains([x, zz], w.points) && contains([x + length, zz + .6], w.points)) ripples.push(x, .205, zz, x + length, .205, zz + .6);
   }
   const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(bank, 3)); bg.computeVertexNormals();
-  const shore = new THREE.Mesh(bg, new THREE.MeshStandardMaterial({ color: '#a5b39a', roughness: 1, side: THREE.DoubleSide })); shore.receiveShadow = true; group.add(shore);
+  const shore = new THREE.Mesh(bg, pencilMaterial({ color: '#c9c6a6', side: THREE.DoubleSide })); shore.receiveShadow = true; group.add(shore);
   const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(ripples, 3));
   group.add(new THREE.LineSegments(rg, new THREE.LineBasicMaterial({ color: '#a8c6b4', transparent: true, opacity: .2 })));
   return group;

@@ -112,7 +112,6 @@ function setMode(value) { mode.value = value; selected.value = null; search.valu
 .filter-row { display: flex; align-items: center; gap: 6px; padding: 8px 17px 10px; }
 .filter-chip { padding: 7px 13px; min-height: 36px; font-size: 12px; background: transparent; }.demo-stamp { margin-left: auto; font-size: 10px; color: #899287; white-space: nowrap; }
 .map-stage { position: relative; min-height: 290px; height: clamp(290px, 35dvh, 330px); flex-shrink: 0; overflow: hidden; border-top: 1px solid #20304b12; border-bottom: 1px solid #20304b16; }
-.map-stage.building-focus { min-height: 240px; height: clamp(240px, 30dvh, 280px); }
 .map-stage.empty-2d { flex: 1; background: transparent; }.blank-map { position: absolute; inset: 0; }
 .mode-switch { position: absolute; right: 13px; top: 12px; display: flex; gap: 3px; padding: 3px; background: #faf9f2e6; border-radius: 12px; z-index: 4; }
 .mode-switch button { min-width: 39px; min-height: 36px; padding: 6px 9px; font-size: 12px; background: transparent; }

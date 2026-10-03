@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { center } from './geometry.mjs';
 import { insideFootprint } from './rings.mjs';
+import { pencilMaterial, pencilEdge } from './pencil-material.mjs';
 
 import { profileFor } from './model-profiles.mjs';
 export { profileFor } from './model-profiles.mjs';
@@ -18,22 +19,9 @@ function buffer(vertices) {
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3)); g.computeVertexNormals(); return g;
 }
 function mesh(group, geometry, color, y = 0, options = {}) {
-  const m = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color, roughness: .88, ...options }));
+  const { roughness, metalness, ...matteOptions } = options;
+  const m = new THREE.Mesh(geometry, pencilMaterial({ color, ...matteOptions }));
   m.position.y = y; m.castShadow = true; m.receiveShadow = true; group.add(m); return m;
-}
-function masonry(material, brick) {
-  material.onBeforeCompile = shader => {
-    shader.vertexShader = `varying vec3 modelSurface;\n${shader.vertexShader}`.replace('#include <begin_vertex>', '#include <begin_vertex>\nmodelSurface = position;');
-    shader.fragmentShader = `varying vec3 modelSurface;\n${shader.fragmentShader}`.replace('#include <color_fragment>', `#include <color_fragment>
-      float grain = fract(sin(dot(floor(modelSurface * 18.0), vec3(12.9898, 78.233, 31.17))) * 43758.5453);
-      diffuseColor.rgb *= 0.975 + grain * 0.05;
-      ${brick ? `float row = floor(modelSurface.y / 0.16);
-      vec2 joints = fract(vec2((modelSurface.x + modelSurface.z + mod(row, 2.0) * 0.19) / 0.38, modelSurface.y / 0.16));
-      float mortar = max(step(0.945, joints.x), step(0.9, joints.y));
-      diffuseColor.rgb *= 1.0 - mortar * 0.13;` : ''}
-    `);
-  };
-  material.customProgramCacheKey = () => brick ? 'yanyuan-brick-v1' : 'yanyuan-stone-v1';
 }
 function bounds(points) {
   return { minX: Math.min(...points.map(p => p[0])), maxX: Math.max(...points.map(p => p[0])), minZ: Math.min(...points.map(p => p[1])), maxZ: Math.max(...points.map(p => p[1])) };
@@ -119,6 +107,7 @@ function facade(b, p) {
 }
 export function createRoof(b, p = profileFor(b)) {
   const group = new THREE.Group();
+  group.userData.role = 'roof';
   const pitched = ['traditional', 'gate', 'hall', 'library'].includes(p.style);
   if (pitched) {
     mesh(group, extrudeFootprint(b, .55), p.roof, 0);
@@ -159,7 +148,7 @@ export function createRoof(b, p = profileFor(b)) {
       for (const side of [-1, 1]) {
         // 左右平屋檐稍抬高，中部低屋顶，表达理教玻璃入口两翼的体量。
         const width = (maxX - minX) * .38, x = middle + side * (maxX - minX) * .31;
-        const canopy = mesh(group, new THREE.BoxGeometry(width, .32, maxZ - minZ), '#b7b9a7'); canopy.position.set(x, 1.4, (minZ + maxZ) / 2);
+        const canopy = mesh(group, new THREE.BoxGeometry(width, .32, maxZ - minZ), p.roof); canopy.position.set(x, 1.4, (minZ + maxZ) / 2);
       }
     }
   }
@@ -197,7 +186,7 @@ function gate(b, p) {
   const span = maxZ - minZ, depth = Math.min(5, maxX - minX);
   for (let i = 0; i < 4; i++) {
     const post = mesh(group, new THREE.BoxGeometry(depth, p.height, 1.8), p.wall);
-    post.position.set(cx, p.height / 2, minZ + .9 + (span - 1.8) * i / 3); masonry(post.material, true);
+    post.position.set(cx, p.height / 2, minZ + .9 + (span - 1.8) * i / 3);
   }
   const lintel = mesh(group, new THREE.BoxGeometry(depth, .85, span), p.wall); lintel.position.set(cx, p.height - .4, cz);
   const roof = createRoof(b, p); roof.position.y = p.height; group.add(roof);
@@ -214,7 +203,7 @@ function gate(b, p) {
 export function createBuilding(b) {
   const p = profileFor(b), group = p.style === 'pagoda' ? pagoda(b, p) : p.style === 'gate' ? gate(b, p) : new THREE.Group();
   if (!['pagoda', 'gate'].includes(p.style)) {
-    const body = mesh(group, extrudeFootprint(b, p.height), p.wall); masonry(body.material, p.brick);
+    mesh(group, extrudeFootprint(b, p.height), p.wall);
     const parts = facade(b, p);
     if (parts.frames.length) {
       const g = buffer([...parts.frames, ...parts.trim]), colors = [];
@@ -236,6 +225,9 @@ export function createBuilding(b) {
       group.add(porch);
     }
   }
-  group.traverse(o => { if (o.isMesh) o.userData.building = b.id; });
+  // 主要实体的轻勾线；楼体外壳在按层裁切后统一勾线，避免两重轮廓。
+  const outlined = [];
+  group.traverse(o => { if (o.isMesh) { o.userData.building = b.id; if (o.parent !== group || p.scenic) outlined.push(o); } });
+  outlined.forEach(o => pencilEdge(o, { opacity: .5, threshold: 42 }));
   group.userData.profile = p; return group;
 }

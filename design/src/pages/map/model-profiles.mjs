@@ -1,5 +1,6 @@
 // 实景特征的人工配置；轮廓来自 OSM，未标注高度、窗格及屋顶结构为设计近似。
 // 参考与精度说明见 MODELING.md；不把程序化细节写回真实地图数据。
+import { mapPalette } from './map-palette.mjs';
 export const landmarkProfiles = {
   '444991872': { wall: '#a2a6a2', roof: '#727e79', glass: '#478bb0', height: 17, floors: 4, style: 'science', brick: true },
   '188711087': { wall: '#c3b096', roof: '#566a66', glass: '#436f79', height: 17, floors: 3, style: 'hall', roofRise: 17.8 },
@@ -24,5 +25,8 @@ export function profileFor(b) {
     ...landmarkProfiles[b.id] };
   if (/^#[0-9a-f]{6}$/i.test(b.wallColor)) value.wall = b.wallColor;
   if (/^#[0-9a-f]{6}$/i.test(b.roofColor)) value.roof = b.roofColor;
-  return value;
+  // 轮廓、屋顶形态和高度沿用原配置；展示用亮色优先于实景灰色。
+  return { ...value, wall: mapPalette.walls[hash(b.id) % mapPalette.walls.length],
+    roof: ['traditional', 'gate', 'pagoda', 'hall', 'library'].includes(value.style) ? mapPalette.heritageRoof : mapPalette.roof,
+    glass: mapPalette.glass };
 }
