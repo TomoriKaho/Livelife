@@ -6,28 +6,28 @@ body:
     attributes:
       label: 用户场景与整体目标
     validations:
-      required: true
+      required: false
   - type: textarea
     id: scope
     attributes:
       label: 范围与边界
       description: 本阶段包含什么，哪些内容留待以后。
     validations:
-      required: true
+      required: false
   - type: textarea
     id: breakdown
     attributes:
       label: 拆分计划
       description: 列出接口契约、前端、后端、联调等任务，提交后创建或关联真正的子 Issue。
     validations:
-      required: true
+      required: false
   - type: textarea
     id: acceptance
     attributes:
       label: 整体验收条件
       description: 写完整用户流程的验证标准，不仅是各项代码合并。
     validations:
-      required: true
+      required: false
   - type: textarea
     id: references
     attributes:

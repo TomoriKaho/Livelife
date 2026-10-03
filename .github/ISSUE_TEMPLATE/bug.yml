@@ -7,26 +7,26 @@ body:
       label: 复现步骤
       placeholder: "1. 登录测试账号\n2. 打开兴趣设置\n3. 保存订阅"
     validations:
-      required: true
+      required: false
   - type: textarea
     id: expected
     attributes:
       label: 预期行为
     validations:
-      required: true
+      required: false
   - type: textarea
     id: actual
     attributes:
       label: 实际行为
     validations:
-      required: true
+      required: false
   - type: textarea
     id: environment
     attributes:
       label: 环境与版本
       description: 设备、系统、浏览器或 APP 版本、测试地址、提交 SHA。
     validations:
-      required: true
+      required: false
   - type: textarea
     id: evidence
     attributes:
