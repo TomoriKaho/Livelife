@@ -4,7 +4,48 @@ import { readFile } from 'node:fs/promises';
 import { contains, clipRoad, project, origin, constrainToBoundary } from '../src/pages/map/geometry.mjs';
 import { activities, venues, demoLocation } from '../src/pages/map/demo.js';
 import { initialView } from '../src/pages/map/view.mjs';
+import { joinRings, insideFootprint } from '../src/pages/map/rings.mjs';
+import { createBuilding, extrudeFootprint } from '../src/pages/map/architecture.mjs';
+import { treeLayout } from '../src/pages/map/landscape.mjs';
 const campus = JSON.parse(await readFile(new URL('../assets/maps/campus.json', import.meta.url), 'utf8'));
+test('多面建筑拼接反向成员并保留开放折线失败状态', () => {
+  const segments = [[[0, 0], [10, 0]], [[0, 10], [10, 10]], [[10, 0], [10, 10]], [[0, 10], [0, 0]]];
+  const rings = joinRings(segments);
+  assert.equal(rings.length, 1); assert.deepEqual(rings[0][0], rings[0].at(-1));
+  assert.equal(joinRings([[[0, 0], [10, 0], [10, 10]]]).length, 0);
+});
+test('图书馆补充数据保留庭院，挤出顶面不覆盖内部空洞', () => {
+  const b = campus.buildings.find(b => b.id === 'r3249649');
+  assert.equal(b.name, '北京大学图书馆'); assert.equal(b.holes.length, 3);
+  const g = extrudeFootprint(b, 23), p = g.attributes.position;
+  for (let i = 0; i < p.count; i += 3) {
+    if ([0, 1, 2].every(k => Math.abs(p.getY(i + k) - 23) < .001)) {
+      const c = [0, 1, 2].reduce((sum, k) => [sum[0] + p.getX(i + k) / 3, sum[1] + p.getZ(i + k) / 3], [0, 0]);
+      assert.ok(!b.holes.some(h => contains(c, h)), '顶面不能填满庭院');
+    }
+  }
+  g.dispose();
+});
+test('所有精细建筑几何有效且模型部件保留可点击的 OSM 标识', () => {
+  for (const b of campus.buildings) {
+    const model = createBuilding(b);
+    model.traverse(o => {
+      if (!o.isMesh) return;
+      assert.equal(o.userData.building, b.id);
+      assert.ok(o.geometry.attributes.position.array.every(Number.isFinite), `建筑 ${b.id} 几何出现非有限坐标`);
+      o.geometry.dispose(); o.material.dispose();
+    });
+  }
+});
+test('固定树木布局可复现，树干不生在建筑或水面上', () => {
+  const trees = treeLayout(campus);
+  assert.ok(trees.length > 500);
+  assert.deepEqual(trees, treeLayout(campus));
+  for (const tree of trees) {
+    assert.ok(![...campus.buildings, ...campus.context.buildings].some(b => insideFootprint(tree.point, b)));
+    assert.ok(![...campus.water, ...campus.context.water].some(w => contains(tree.point, w.points)));
+  }
+});
 test('拖动中心按凹形校界约束，边界及校内位置保持稳定', () => {
   const u = [[0, 0], [10, 0], [10, 10], [7, 10], [7, 3], [3, 3], [3, 10], [0, 10]];
   assert.deepEqual(constrainToBoundary([2, 5], u), [2, 5]);

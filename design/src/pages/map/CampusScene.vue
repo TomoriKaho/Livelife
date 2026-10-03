@@ -7,26 +7,24 @@ import campus from '../../../assets/maps/campus.json';
 import { center, contains, constrainToBoundary } from './geometry.mjs';
 import { venues, demoLocation } from './demo.js';
 import { initialView } from './view.mjs';
+import { createBuilding, createRoof, profileFor, footprintShape, extrudeFootprint } from './architecture.mjs';
+import { createVegetation, createWater } from './landscape.mjs';
+import { insideFootprint } from './rings.mjs';
 
 const props = defineProps({ selected: String, floor: Number, activities: Array });
 const emit = defineEmits(['select', 'floor', 'ready']);
 const host = ref(null), failed = ref(false), loading = ref(true), labels = ref([]);
 const panTarget = ref(initialView.target.filter((_, i) => i !== 1).join(','));
 const activeVenue = computed(() => venues.find(v => v.id === props.selected));
-let renderer, scene, camera, controls, observer, frame, buildings = [], exploded, floorMeshes = [], tween, pointerStart, disposed = false, explosionStart = 0, locationMarker, locationRing, contextBuildings;
+let renderer, scene, camera, controls, observer, frame, buildings = [], exploded, floorMeshes = [], tween, pointerStart, disposed = false, explosionStart = 0, locationMarker, locationRing, contextBuildings, vegetation;
 const meshes = new Map(), selectable = [], raycaster = new THREE.Raycaster();
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const initialTarget = new THREE.Vector3(...initialView.target);
 const initialCamera = initialTarget.clone().add(new THREE.Vector3(...initialView.offset));
-function shape(points) { return new THREE.Shape(points.map(p => new THREE.Vector2(p[0], -p[1]))); }
-function extrusion(points, depth) {
-  const g = new THREE.ExtrudeGeometry(shape(points), { depth, bevelEnabled: false, steps: 1, curveSegments: 1 });
-  g.rotateX(-Math.PI / 2);
-  return g;
-}
+function shape(points) { return footprintShape(points); }
 function surface(points, color, y) {
   const g = new THREE.ShapeGeometry(shape(points)); g.rotateX(-Math.PI / 2);
-  const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide })); m.position.y = y; scene.add(m);
+  const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color, roughness: 1, side: THREE.DoubleSide })); m.position.y = y; m.receiveShadow = true; scene.add(m);
 }
 function edge(mesh, color = 0x939ba1) {
   const line = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, 28), new THREE.LineBasicMaterial({ color, transparent: true, opacity: .48 }));
@@ -36,7 +34,7 @@ function fly(position, target) {
   tween = { start: performance.now(), from: camera.position.clone(), to: position, targetFrom: controls.target.clone(), targetTo: target, duration: reducedMotion ? 0 : 1050 };
 }
 function disposeGroup(group) {
-  group.traverse(o => { o.geometry?.dispose(); if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.dispose()); });
+  group.traverse(o => { o.geometry?.dispose(); if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { m.map?.dispose(); m.dispose(); }); });
   group.removeFromParent();
 }
 function expand() {
@@ -46,12 +44,22 @@ function expand() {
   // 聚焦时隔离主建筑，保留校区地形和道路作空间参照。
   for (const mesh of meshes.values()) mesh.visible = !props.selected;
   if (contextBuildings) contextBuildings.visible = !props.selected;
+  if (vegetation) vegetation.visible = !props.selected;
   if (locationMarker) locationMarker.visible = locationRing.visible = !props.selected;
   const building = buildings.find(b => b.id === props.selected);
+  renderer.shadowMap.needsUpdate = true;
   if (!building) { fly(initialCamera.clone(), initialTarget.clone()); return; }
+  // 博雅塔作为风景地标保留密檐结构，不虚构教室或把十三重檐拆成六个房间层。
+  const profile = profileFor(building);
+  if (profile.scenic) {
+    meshes.get(building.id).visible = true; contextBuildings.visible = true; vegetation.visible = true;
+    for (const mesh of meshes.values()) mesh.visible = true;
+    const [cx, cz] = center(building.points), target = new THREE.Vector3(cx, 16, cz);
+    fly(target.clone().add(new THREE.Vector3(68, 58, 100)), target); return;
+  }
   meshes.get(building.id).visible = false;
   exploded = new THREE.Group(); scene.add(exploded);
-  const venue = activeVenue.value, count = venue?.floors || Math.min(6, building.levels || 3);
+  const venue = activeVenue.value, count = venue?.floors || Math.min(6, profile.floors);
   const [cx, cz] = center(building.points), xs = building.points.map(p => p[0]), zs = building.points.map(p => p[1]);
   const minX = Math.min(...xs), maxX = Math.max(...xs), minZ = Math.min(...zs), maxZ = Math.max(...zs);
   const width = maxX - minX, length = maxZ - minZ, extent = Math.max(width, length, 45);
@@ -61,13 +69,13 @@ function expand() {
   const cell = Math.max(9, Math.min(width, length) / 4);
   for (let x = minX + cell * .7; x < maxX - cell * .4; x += cell * 1.15) {
     for (let z = minZ + cell * .7; z < maxZ - cell * .4; z += cell * 1.15) {
-      if ([[-.42, -.42], [.42, -.42], [.42, .42], [-.42, .42]].every(([dx, dz]) => contains([x + cell * dx, z + cell * dz], building.points))) cells.push([x, z]);
+      if ([[-.42, -.42], [.42, -.42], [.42, .42], [-.42, .42]].every(([dx, dz]) => insideFootprint([x + cell * dx, z + cell * dz], building))) cells.push([x, z]);
     }
   }
   if (!cells.length) cells.push([cx, cz]);
   for (let f = 1; f <= count; f++) {
     const level = new THREE.Group(); level.position.y = (f - 1) * gap; level.userData.finalY = level.position.y;
-    const slab = new THREE.Mesh(extrusion(building.points, 1.1), new THREE.MeshLambertMaterial({ color: 0xfafaf7 }));
+    const slab = new THREE.Mesh(extrudeFootprint(building, 1.1), new THREE.MeshLambertMaterial({ color: 0xfafaf7 }));
     slab.userData = { building: building.id, floor: f }; edge(slab); level.add(slab);
     const floorEvents = props.activities.filter(a => a.building === building.id && a.floor === f);
     cells.forEach(([x, z], i) => {
@@ -81,9 +89,10 @@ function expand() {
     exploded.add(level);
     floorMeshes.push({ level, slab, floor: f, point: new THREE.Vector3(maxX + 8, (f - 1) * gap + 2, cz), events: floorEvents });
   }
-  const roof = new THREE.Mesh(extrusion(building.points, 1.3), new THREE.MeshLambertMaterial({ color: 0xd7dad8 }));
-  roof.position.y = count * gap; roof.userData = { building: building.id, finalY: roof.position.y }; edge(roof); exploded.add(roof);
-  const height = count * gap, target = new THREE.Vector3(cx, height * .48, cz);
+  const roof = createRoof(building);
+  roof.position.y = count * gap; roof.userData.finalY = roof.position.y;
+  roof.traverse(o => { if (o.isMesh) o.userData.building = building.id; }); exploded.add(roof);
+  const height = count * gap + (profile.roofRise || 6), target = new THREE.Vector3(cx, height * .48, cz);
   const radius = Math.hypot(width, height, length) / 2;
   const fitAngle = Math.min(camera.fov * Math.PI / 360, Math.atan(Math.tan(camera.fov * Math.PI / 360) * camera.aspect));
   const distance = radius / Math.sin(fitAngle);
@@ -127,15 +136,16 @@ function tick(now) {
   camera.position.x += x - controls.target.x; camera.position.z += z - controls.target.z;
   controls.target.x = x; controls.target.z = z;
   panTarget.value = `${x.toFixed(2)},${z.toFixed(2)}`;
-  renderer.render(scene, camera);
   if (exploded) {
     const t = reducedMotion ? 1 : Math.min(1, (now - explosionStart) / 1000), ease = 1 - (1 - t) ** 3;
     exploded.children.forEach(o => { if (o.userData.finalY !== undefined) o.position.y = o.userData.finalY * (.12 + .88 * ease); });
+    if (now - explosionStart < 1100) renderer.shadowMap.needsUpdate = true;
   }
+  renderer.render(scene, camera);
   // DOM 标签跟随 3D 相机投影，键盘也能点击；不依赖纹理字体或外网资源。
   labels.value = props.selected ? floorMeshes.map(f => ({ id: String(f.floor), floor: f.floor, title: `${f.floor}F${f.events.length ? ` · ${f.events[0].room}` : ''}`, count: f.events.length, ...coordinate(f.point) })) : venues.map(v => {
     const b = buildings.find(b => b.id === v.id), c = center(b.points);
-    return { id: v.id, title: v.label, count: props.activities.filter(a => a.building === v.id).length, ...coordinate(new THREE.Vector3(c[0], b.height + 5, c[1])) };
+    return { id: v.id, title: v.label, count: props.activities.filter(a => a.building === v.id).length, ...coordinate(new THREE.Vector3(c[0], profileFor(b).height + 7, c[1])) };
   });
 }
 function zoom(scale) { if (!camera) return; tween = null; camera.position.sub(controls.target).multiplyScalar(scale).add(controls.target); }
@@ -152,22 +162,24 @@ watch(() => props.activities, () => {
 });
 onMounted(() => {
   try {
-    scene = new THREE.Scene(); scene.background = new THREE.Color(0xf5f4ed); scene.fog = new THREE.Fog(0xf5f4ed, 1600, 3600);
+    scene = new THREE.Scene(); scene.background = new THREE.Color(0xe7eee3); scene.fog = new THREE.Fog(0xe7eee3, 1500, 3300);
     camera = new THREE.PerspectiveCamera(42, 1, 1, 7000); camera.position.copy(initialCamera);
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false }); renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setClearColor(0xf5f4ed); renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1;
+    renderer.setClearColor(0xe7eee3); renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1;
+    renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap; renderer.shadowMap.autoUpdate = false;
     renderer.domElement.setAttribute('aria-label', '燕园三维地图，拖动旋转，双指缩放。建筑也可通过下方列表选择。');
     host.value.prepend(renderer.domElement);
     controls = new OrbitControls(camera, renderer.domElement); controls.target.copy(initialTarget); controls.enableDamping = true;
     controls.minDistance = 65; controls.maxDistance = 2350; controls.minPolarAngle = .25; controls.maxPolarAngle = Math.PI * .46; controls.enablePan = true;
     controls.screenSpacePanning = false;
     controls.addEventListener('start', () => { tween = null; });
-    scene.add(new THREE.HemisphereLight(0xffffff, 0xc7cdc7, 1.55));
-    const sun = new THREE.DirectionalLight(0xfff9ec, 1.5); sun.position.set(-500, 900, 500); scene.add(sun);
+    scene.add(new THREE.HemisphereLight(0xe9f1ff, 0x819476, 1.65));
+    const sun = new THREE.DirectionalLight(0xfff2d5, 2.6); sun.position.set(-450, 800, 450); sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -1250, right: 1250, top: 1250, bottom: -1250, near: 10, far: 2400 }); sun.shadow.bias = -.0002; sun.shadow.normalBias = .5; scene.add(sun);
     // 校界只用于交互范围；连续地面跨过校界，远处以同色雾自然淡出。
-    surface([[-4000, -4000], [4000, -4000], [4000, 4000], [-4000, 4000]], 0xe6ede2, 0);
-    [...campus.green, ...campus.context.green].forEach(g => surface(g.points, 0xd5e3cf, .07));
-    [...campus.water, ...campus.context.water].forEach(w => surface(w.points, 0xb5d4df, .15));
+    surface([[-4000, -4000], [4000, -4000], [4000, 4000], [-4000, 4000]], 0xaabc91, 0);
+    [...campus.green, ...campus.context.green].forEach(g => surface(g.points, g.kind === 'pitch' ? 0x89a771 : 0x94ae79, .07));
+    [...campus.water, ...campus.context.water].forEach(w => scene.add(createWater(w)));
     const roadVertices = [];
     for (const road of campus.context.roads) {
       const [a, b] = road.points, dx = b[0] - a[0], dz = b[1] - a[1], length = Math.hypot(dx, dz);
@@ -177,18 +189,22 @@ onMounted(() => {
       [0, 1, 2, 0, 2, 3].forEach(i => roadVertices.push(...p[i]));
     }
     const roads = new THREE.BufferGeometry(); roads.setAttribute('position', new THREE.Float32BufferAttribute(roadVertices, 3)); roads.computeVertexNormals();
-    scene.add(new THREE.Mesh(roads, new THREE.MeshLambertMaterial({ color: 0xfaf9f3, side: THREE.DoubleSide })));
+    const roadMesh = new THREE.Mesh(roads, new THREE.MeshStandardMaterial({ color: 0xd4d2ba, roughness: 1, side: THREE.DoubleSide })); roadMesh.receiveShadow = true; scene.add(roadMesh);
     buildings = campus.buildings;
     for (const b of buildings) {
-      const mesh = new THREE.Mesh(extrusion(b.points, Math.min(80, Math.max(4, b.height))), new THREE.MeshLambertMaterial({ color: 0xe9e9e6 }));
-      mesh.userData.building = b.id; edge(mesh); scene.add(mesh); meshes.set(b.id, mesh); selectable.push(mesh);
+      const mesh = createBuilding(b); scene.add(mesh); meshes.set(b.id, mesh); selectable.push(mesh);
     }
     // 周边是实际轮廓的背景模型，合并绘制，避免增加数百次绘制调用。
-    const contextGeometry = campus.context.buildings.map(b => extrusion(b.points, Math.min(80, Math.max(4, b.height))));
+    const contextGeometry = campus.context.buildings.map(b => {
+      const g = extrudeFootprint(b, profileFor(b).height), color = new THREE.Color(profileFor(b).wall), colors = [];
+      for (let i = 0; i < g.attributes.position.count; i++) colors.push(color.r, color.g, color.b);
+      g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3)); return g;
+    });
     if (contextGeometry.length) {
-      contextBuildings = new THREE.Mesh(mergeGeometries(contextGeometry), new THREE.MeshLambertMaterial({ color: 0xe6e6e2 }));
-      contextGeometry.forEach(g => g.dispose()); edge(contextBuildings); scene.add(contextBuildings);
+      contextBuildings = new THREE.Mesh(mergeGeometries(contextGeometry), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 })); contextBuildings.castShadow = true; contextBuildings.receiveShadow = true;
+      contextGeometry.forEach(g => g.dispose()); scene.add(contextBuildings);
     }
+    vegetation = createVegetation(campus); scene.add(vegetation); renderer.shadowMap.needsUpdate = true;
     locationMarker = new THREE.Mesh(new THREE.SphereGeometry(12, 12, 8), new THREE.MeshBasicMaterial({ color: 0x4387bb })); locationMarker.position.set(demoLocation[0], 12, demoLocation[1]); scene.add(locationMarker);
     locationRing = new THREE.Mesh(new THREE.RingGeometry(17, 24, 32), new THREE.MeshBasicMaterial({ color: 0x77a5c6, transparent: true, opacity: .5, side: THREE.DoubleSide })); locationRing.rotation.x = -Math.PI / 2; locationRing.position.set(demoLocation[0], .5, demoLocation[1]); scene.add(locationRing);
     observer = new ResizeObserver(() => { const { width, height } = host.value.getBoundingClientRect(); renderer.setSize(width, height); camera.aspect = width / height; camera.updateProjectionMatrix(); }); observer.observe(host.value);

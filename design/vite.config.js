@@ -13,7 +13,7 @@ export default defineConfig({
           fileName: 'assets/fonts/Xiaolai-OFL.txt',
           source: readFileSync(new URL('./assets/fonts/Xiaolai-OFL.txt', import.meta.url), 'utf8'),
         });
-        for (const filename of ['LICENSE.md', 'source.json', 'campus.json', 'yanyuan-osm.json']) {
+        for (const filename of ['LICENSE.md', 'source.json', 'campus.json', 'yanyuan-osm.json', 'yanyuan-details-osm.json', 'details-source.json']) {
           this.emitFile({ type: 'asset', fileName: `assets/maps/${filename}`, source: readFileSync(new URL(`./assets/maps/${filename}`, import.meta.url)) });
         }
         this.emitFile({ type: 'asset', fileName: 'assets/licenses/Three-MIT.txt', source: readFileSync(new URL('./node_modules/three/LICENSE', import.meta.url)) });

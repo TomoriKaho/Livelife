@@ -8,13 +8,15 @@ import { RouterLink } from 'vue-router';
 import AppIcon from '../components/AppIcon.vue';
 import campus from '../../assets/maps/campus.json';
 import { activities, filters, venues } from './map/demo.js';
+import { profileFor } from './map/model-profiles.mjs';
 const CampusScene = defineAsyncComponent(() => import('./map/CampusScene.vue'));
 const mode = ref('3d'), filter = ref('all'), search = ref(''), selected = ref(null), floor = ref(2), scene = ref(null), located = ref(false), detail = ref(null), dialog = ref(null);
 const visibleActivities = computed(() => activities.filter(a => filter.value === 'all' || a.type === filter.value));
 const currentBuilding = computed(() => {
   if (!selected.value) return null;
   const building = campus.buildings.find(b => b.id === selected.value), venue = venues.find(v => v.id === selected.value);
-  return { ...building, ...venue, short: venue?.short || building?.name || '校园建筑', floors: venue?.floors || Math.min(6, building?.levels || 3) };
+  const profile = building ? profileFor(building) : {};
+  return { ...building, ...venue, short: venue?.short || building?.name || '校园建筑', floors: venue?.floors || Math.min(6, profile.floors || 3), scenic: profile.scenic };
 });
 const floorActivities = computed(() => visibleActivities.value.filter(a => a.building === selected.value && a.floor === floor.value));
 const results = computed(() => {
@@ -56,14 +58,16 @@ function setMode(value) { mode.value = value; selected.value = null; search.valu
           <button v-sketch class="sketch" aria-label="回到初始视角" @click="selected ? select(null) : scene?.reset()">⌂</button>
           <button v-sketch class="sketch locate-button" :data-pencil="located ? 'blue' : undefined" aria-label="查看示例定位附近的活动" @click="locate">◎</button>
         </div>
-        <div class="map-hint">{{ selected ? '点楼层查看活动 · 拖动查看另一侧' : '点建筑，看看楼层里正在发生什么' }}</div>
+        <div class="map-hint">{{ currentBuilding?.scenic ? '拖动环绕博雅塔 · 缩小看看未名湖' : selected ? '点楼层查看活动 · 拖动查看另一侧' : '点建筑，看看楼层里正在发生什么' }}</div>
         <a class="map-attribution" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a>
       </template>
     </div>
     <div v-if="mode === '3d'" class="map-sheet">
       <div class="sheet-grip" aria-hidden="true"></div>
       <template v-if="currentBuilding">
-        <div class="sheet-heading"><div><p class="sheet-eyebrow">BUILDING / 楼层探索</p><h2>{{ currentBuilding.short }}</h2></div><button v-sketch class="sketch collapse-button" @click="select(null)">收起楼层 ↙</button></div>
+        <div class="sheet-heading"><div><p class="sheet-eyebrow">{{ currentBuilding.scenic ? 'LANDMARK / 燕园风景' : 'BUILDING / 楼层探索' }}</p><h2>{{ currentBuilding.short }}</h2></div><button v-sketch class="sketch collapse-button" @click="select(null)">{{ currentBuilding.scenic ? '返回地图 ↙' : '收起楼层 ↙' }}</button></div>
+        <p v-if="currentBuilding.scenic" class="landmark-note">未名湖东南的十三重密檐塔。保留完整外观，拖动地图可环绕查看塔身与湖岸。<small>外观为实景特征的简化建模 · 此地标暂无示例活动</small></p>
+        <template v-else>
         <p class="model-note">楼层 / 室内为示意 · 活动为固定演示数据</p>
         <div class="floor-picker" aria-label="选择建筑楼层">
           <button v-for="number in currentBuilding.floors" :key="number" v-sketch class="sketch" :data-pencil="floor === number ? 'blue' : undefined" :aria-pressed="floor === number" @click="floor = number">{{ number }}F<span v-if="visibleActivities.some(a => a.building === selected && a.floor === number)" class="floor-dot"></span></button>
@@ -73,6 +77,7 @@ function setMode(value) { mode.value = value; selected.value = null; search.valu
           <span class="room-tag">{{ activity.room }}<small>{{ activity.category }}</small></span><span class="activity-copy"><strong>{{ activity.title }}</strong><span>{{ activity.time }} · {{ activity.source }}</span></span><span class="card-arrow">↗</span>
         </button>
         <p v-if="!floorActivities.length" class="floor-empty">这一层先留一点空白，等新的校园故事。<br>可切换楼层或活动分类继续探索。</p>
+        </template>
       </template>
       <template v-else>
         <div class="sheet-heading"><div><p class="sheet-eyebrow">NEARBY / 今天在燕园</p><h2>{{ located ? '示例位置附近' : '发现身边的小精彩' }}</h2></div><span class="activity-count">{{ visibleActivities.length }} 项</span></div>
@@ -125,6 +130,7 @@ h2 { font-size: 19px; line-height: 1.4; font-weight: 400; margin: 0; }.activity-
 .treehole-note { display: flex; gap: 12px; padding: 11px 13px; margin-top: 7px; font-size: 11px; align-items: center; }.treehole-note > span { white-space: nowrap; font-size: 12px; }.treehole-note p { margin: 0; line-height: 1.6; }.treehole-note small { display: block; font-size: 9px; color: #71867a; }
 .agent-entry { display: flex; align-items: center; gap: 8px; padding: 10px 12px; margin-top: 10px; font-size: 11px; min-height: 43px; }.agent-entry .icon { width: 20px; height: 20px; }.agent-entry > span:last-child { margin-left: auto; }
 .collapse-button { background: transparent; font-size: 10px; padding: 7px 10px; min-height: 36px; white-space: nowrap; }
+.landmark-note { font-size: 12px; line-height: 1.8; color: #657e6e; margin: 12px 0; }.landmark-note small { display: block; margin-top: 7px; font-size: 9px; color: #8c968f; }
 .floor-picker { display: flex; gap: 7px; margin-top: 10px; }.floor-picker button { position: relative; min-width: 42px; min-height: 36px; background: transparent; padding: 7px 10px; font-size: 12px; }.floor-dot { width: 4px; height: 4px; border-radius: 50%; background: #3986ba; position: absolute; top: 7px; right: 7px; }
 .floor-summary { display: flex; justify-content: space-between; color: #789089; font-size: 10px; margin: 13px 0 7px; }
 .activity-card { display: flex; width: 100%; align-items: center; gap: 11px; padding: 12px; background: transparent; text-align: left; margin-top: 6px; }.room-tag { min-width: 35px; text-align: center; font-size: 17px; }.room-tag small { display: block; font-size: 9px; color: #5d788c; margin-top: 3px; }.activity-copy { display: grid; gap: 6px; }.activity-copy strong { font-weight: 400; font-size: 15px; }.activity-copy > span { font-size: 10px; color: #637b8d; }.card-arrow { margin-left: auto; }.floor-empty { text-align: center; padding: 16px 0; font-size: 12px; color: #8c9c95; line-height: 1.8; }

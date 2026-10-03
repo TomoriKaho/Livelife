@@ -14,7 +14,7 @@ const query = `[out:json][timeout:120];(
   relation[amenity=university][name="北京大学"](${bbox.join(',')});
   relation[type=multipolygon][building](${bbox.join(',')});
   relation[type=multipolygon][natural=water](${bbox.join(',')});
-);out tags geom;`;
+);out body geom;`;
 
 const endpoint = 'https://overpass-api.de/api/interpreter';
 const response = await fetch(endpoint, {
@@ -38,4 +38,5 @@ await writeFile(new URL('source.json', directory), JSON.stringify({
   dataTimestamp: raw.osm3s?.timestamp_osm_base,
 }, null, 2));
 console.log(`已保存 ${raw.elements.length} 个 OSM 要素至 assets/maps/yanyuan-osm.json`);
+await import('./download-campus-details.mjs');
 await import('./prepare-campus-map.mjs');

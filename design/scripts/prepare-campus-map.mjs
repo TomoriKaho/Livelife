@@ -1,8 +1,10 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { project, contains, center, clipRoad, origin } from '../src/pages/map/geometry.mjs';
+import { joinRings } from '../src/pages/map/rings.mjs';
 const directory = new URL('../assets/maps/', import.meta.url);
 const raw = JSON.parse(await readFile(new URL('yanyuan-osm.json', directory), 'utf8'));
 const source = JSON.parse(await readFile(new URL('source.json', directory), 'utf8'));
+const details = JSON.parse(await readFile(new URL('yanyuan-details-osm.json', directory), 'utf8'));
 const campus = raw.elements.find(e => e.type === 'way' && e.tags?.amenity === 'university' && e.tags.name === '北京大学' && e.geometry?.length);
 if (!campus) throw new Error('OSM 数据缺少北京大学校界，不能退回矩形范围');
 const boundary = campus.geometry.map(project);
@@ -10,6 +12,27 @@ const buildings = [], roads = [], water = [], green = [];
 const [south, west, north, east] = source.bbox;
 const extent = [[west, south], [east, south], [east, north], [west, north]].map(([lon, lat]) => project({ lon, lat }));
 const context = { extent, buildings: [], roads: [], water: [], green: [] };
+function addBuilding(e, points, holes = [], suffix = '') {
+  const tags = e.tags || {}, c = center(points);
+  if (!contains(c, extent)) return;
+  const area = contains(c, boundary) ? buildings : context.buildings;
+  const levels = Number.parseInt(tags['building:levels'], 10), height = Number.parseFloat(tags.height);
+  area.push({ id: `${e.type === 'relation' ? 'r' : ''}${e.id}${suffix}`, name: tags.name || '', points, holes,
+    height: Number.isFinite(height) ? height : (Number.isFinite(levels) ? levels : 3) * 3.8,
+    heightSource: Number.isFinite(height) ? 'osm-height' : Number.isFinite(levels) ? 'osm-levels' : 'estimated',
+    levels: Number.isFinite(levels) ? levels : null, kind: tags.building,
+    roof: tags['roof:shape'] || '', wallColor: tags['building:colour'] || '', roofColor: tags['roof:colour'] || '',
+  });
+}
+const relationMembers = new Set();
+for (const e of details.elements.filter(e => e.type === 'relation' && e.tags?.building)) {
+  const members = (e.members || []).filter(m => m.type === 'way' && m.geometry?.length);
+  const outer = joinRings(members.filter(m => m.role === 'outer' || !m.role).map(m => m.geometry.map(project)));
+  const inner = joinRings(members.filter(m => m.role === 'inner').map(m => m.geometry.map(project)));
+  if (!outer.length) throw new Error(`建筑关系 ${e.id} 外圈不完整`);
+  outer.forEach((points, i) => addBuilding(e, points, inner.filter(h => contains(h[0], points)), i ? `-${i}` : ''));
+  members.forEach(m => relationMembers.add(m.ref));
+}
 for (const e of raw.elements) {
   if (e.type !== 'way' || !e.geometry?.length || e.id === campus.id) continue;
   const points = e.geometry.map(project), tags = e.tags || {};
@@ -23,14 +46,14 @@ for (const e of raw.elements) {
   if (!inCampus && !contains(center(points), extent)) continue;
   const area = inCampus ? { buildings, water, green } : context;
   if (tags.building && tags.building !== 'no') {
-    const levels = Number.parseInt(tags['building:levels'], 10);
-    const height = Number.parseFloat(tags.height);
-    area.buildings.push({ id: String(e.id), name: tags.name || '', points, height: Number.isFinite(height) ? height : (Number.isFinite(levels) ? levels : 3) * 3.8, levels: Number.isFinite(levels) ? levels : null });
+    if (!relationMembers.has(e.id)) addBuilding(e, points);
   } else if (tags.natural === 'water' || tags.water || tags.landuse === 'reservoir') area.water.push({ name: tags.name || '', points });
-  else if (['grass', 'meadow', 'forest'].includes(tags.landuse) || ['wood', 'grassland', 'scrub'].includes(tags.natural) || ['garden', 'park', 'pitch'].includes(tags.leisure)) area.green.push({ points });
+  else if (['grass', 'meadow', 'forest'].includes(tags.landuse) || ['wood', 'grassland', 'scrub'].includes(tags.natural) || ['garden', 'park', 'pitch'].includes(tags.leisure)) area.green.push({ points, kind: tags.leisure || tags.natural || tags.landuse });
 }
 // 四舍五入到分米；足够设计展示，减小离线资源体积。
-const data = JSON.parse(JSON.stringify({ origin, boundary, buildings, roads, water, green, context, attribution: '© OpenStreetMap contributors', license: 'ODbL 1.0', dataTimestamp: raw.osm3s.timestamp_osm_base }, (_, value) => typeof value === 'number' ? Math.round(value * 10) / 10 : value));
+const trees = details.elements.filter(e => e.type === 'node' && e.tags?.natural === 'tree').map(e => ({ point: project(e), leaf: e.tags.leaf_type || '' }));
+const treeRows = details.elements.filter(e => e.type === 'way' && e.tags?.natural === 'tree_row').map(e => ({ points: e.geometry.map(project) }));
+const data = JSON.parse(JSON.stringify({ origin, boundary, buildings, roads, water, green, context, trees, treeRows, attribution: '© OpenStreetMap contributors', license: 'ODbL 1.0', dataTimestamp: raw.osm3s.timestamp_osm_base, detailsTimestamp: details.osm3s.timestamp_osm_base }, (_, value) => typeof value === 'number' ? Math.round(value * 10) / 10 : value));
 // 经纬度原点不应跟随米制坐标取整。
 data.origin = origin;
 await writeFile(new URL('campus.json', directory), JSON.stringify(data));
