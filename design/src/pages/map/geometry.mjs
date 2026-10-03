@@ -11,11 +11,26 @@ export function contains(point, polygon) {
   }
   return inside;
 }
+// 保留校内点；校外点投影到最近校界。凹形边界也适用，不用矩形范围替代校界。
+export function constrainToBoundary(point, polygon) {
+  if (contains(point, polygon)) return [...point];
+  let nearest = [...point], distance = Infinity;
+  for (let i = 0; i < polygon.length; i++) {
+    const a = polygon[i], b = polygon[(i + 1) % polygon.length];
+    const dx = b[0] - a[0], dz = b[1] - a[1], lengthSquared = dx * dx + dz * dz;
+    if (!lengthSquared) continue;
+    const t = Math.max(0, Math.min(1, ((point[0] - a[0]) * dx + (point[1] - a[1]) * dz) / lengthSquared));
+    const candidate = [a[0] + t * dx, a[1] + t * dz];
+    const squared = (candidate[0] - point[0]) ** 2 + (candidate[1] - point[1]) ** 2;
+    if (squared < distance) { nearest = candidate; distance = squared; }
+  }
+  return nearest;
+}
 export function center(points) {
   const ring = points.length > 1 && points[0][0] === points.at(-1)[0] && points[0][1] === points.at(-1)[1] ? points.slice(0, -1) : points;
   return ring.reduce((sum, p) => [sum[0] + p[0] / ring.length, sum[1] + p[1] / ring.length], [0, 0]);
 }
-// 将每一条道路线段与校界求交，避免道路延伸到清华或校外。
+// 与指定范围逐段求交：可生成校内统计道路，也可保留下载范围内连续的渲染道路。
 export function clipRoad(points, boundary) {
   const result = [];
   const cross = (a, b) => a[0] * b[1] - a[1] * b[0];

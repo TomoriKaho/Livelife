@@ -2,18 +2,22 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import campus from '../../../assets/maps/campus.json';
-import { center, contains } from './geometry.mjs';
-import { venues } from './demo.js';
+import { center, contains, constrainToBoundary } from './geometry.mjs';
+import { venues, demoLocation } from './demo.js';
+import { initialView } from './view.mjs';
 
 const props = defineProps({ selected: String, floor: Number, activities: Array });
 const emit = defineEmits(['select', 'floor', 'ready']);
 const host = ref(null), failed = ref(false), loading = ref(true), labels = ref([]);
+const panTarget = ref(initialView.target.filter((_, i) => i !== 1).join(','));
 const activeVenue = computed(() => venues.find(v => v.id === props.selected));
-let renderer, scene, camera, controls, observer, frame, buildings = [], exploded, floorMeshes = [], tween, pointerStart, disposed = false, explosionStart = 0, locationMarker, locationRing;
+let renderer, scene, camera, controls, observer, frame, buildings = [], exploded, floorMeshes = [], tween, pointerStart, disposed = false, explosionStart = 0, locationMarker, locationRing, contextBuildings;
 const meshes = new Map(), selectable = [], raycaster = new THREE.Raycaster();
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-const overviewTarget = new THREE.Vector3(30, 0, 170), overviewCamera = new THREE.Vector3(430, 1100, 1450);
+const initialTarget = new THREE.Vector3(...initialView.target);
+const initialCamera = initialTarget.clone().add(new THREE.Vector3(...initialView.offset));
 function shape(points) { return new THREE.Shape(points.map(p => new THREE.Vector2(p[0], -p[1]))); }
 function extrusion(points, depth) {
   const g = new THREE.ExtrudeGeometry(shape(points), { depth, bevelEnabled: false, steps: 1, curveSegments: 1 });
@@ -41,9 +45,10 @@ function expand() {
   floorMeshes = [];
   // 聚焦时隔离主建筑，保留校区地形和道路作空间参照。
   for (const mesh of meshes.values()) mesh.visible = !props.selected;
+  if (contextBuildings) contextBuildings.visible = !props.selected;
   if (locationMarker) locationMarker.visible = locationRing.visible = !props.selected;
   const building = buildings.find(b => b.id === props.selected);
-  if (!building) { fly(overviewCamera.clone(), overviewTarget.clone()); return; }
+  if (!building) { fly(initialCamera.clone(), initialTarget.clone()); return; }
   meshes.get(building.id).visible = false;
   exploded = new THREE.Group(); scene.add(exploded);
   const venue = activeVenue.value, count = venue?.floors || Math.min(6, building.levels || 3);
@@ -116,9 +121,13 @@ function tick(now) {
     camera.position.lerpVectors(tween.from, tween.to, ease); controls.target.lerpVectors(tween.targetFrom, tween.targetTo, ease);
     if (t === 1) tween = null;
   }
-  controls.target.x = THREE.MathUtils.clamp(controls.target.x, -490, 520);
-  controls.target.z = THREE.MathUtils.clamp(controls.target.z, -650, 690);
-  controls.update(); renderer.render(scene, camera);
+  controls.update();
+  // 在 OrbitControls 应用拖动及惯性后约束目标；相机同步平移，避免到校界时视角歪斜。
+  const [x, z] = constrainToBoundary([controls.target.x, controls.target.z], campus.boundary);
+  camera.position.x += x - controls.target.x; camera.position.z += z - controls.target.z;
+  controls.target.x = x; controls.target.z = z;
+  panTarget.value = `${x.toFixed(2)},${z.toFixed(2)}`;
+  renderer.render(scene, camera);
   if (exploded) {
     const t = reducedMotion ? 1 : Math.min(1, (now - explosionStart) / 1000), ease = 1 - (1 - t) ** 3;
     exploded.children.forEach(o => { if (o.userData.finalY !== undefined) o.position.y = o.userData.finalY * (.12 + .88 * ease); });
@@ -130,8 +139,8 @@ function tick(now) {
   });
 }
 function zoom(scale) { if (!camera) return; tween = null; camera.position.sub(controls.target).multiplyScalar(scale).add(controls.target); }
-function reset() { if (!scene) return; if (props.selected) emit('select', null); else fly(overviewCamera.clone(), overviewTarget.clone()); }
-function locate() { if (!scene) return; fly(new THREE.Vector3(380, 480, 610), new THREE.Vector3(240, 0, 135)); }
+function reset() { if (!scene) return; if (props.selected) emit('select', null); else fly(initialCamera.clone(), initialTarget.clone()); }
+function locate() { if (!scene) return; fly(initialCamera.clone(), initialTarget.clone()); }
 defineExpose({ zoom, reset, locate });
 watch(() => props.selected, expand);
 watch(() => props.floor, highlight);
@@ -143,22 +152,24 @@ watch(() => props.activities, () => {
 });
 onMounted(() => {
   try {
-    scene = new THREE.Scene(); scene.background = new THREE.Color(0xf5f4ed);
-    camera = new THREE.PerspectiveCamera(42, 1, 1, 7000); camera.position.copy(overviewCamera);
+    scene = new THREE.Scene(); scene.background = new THREE.Color(0xf5f4ed); scene.fog = new THREE.Fog(0xf5f4ed, 1600, 3600);
+    camera = new THREE.PerspectiveCamera(42, 1, 1, 7000); camera.position.copy(initialCamera);
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false }); renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor(0xf5f4ed); renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1;
     renderer.domElement.setAttribute('aria-label', '燕园三维地图，拖动旋转，双指缩放。建筑也可通过下方列表选择。');
     host.value.prepend(renderer.domElement);
-    controls = new OrbitControls(camera, renderer.domElement); controls.target.copy(overviewTarget); controls.enableDamping = true;
+    controls = new OrbitControls(camera, renderer.domElement); controls.target.copy(initialTarget); controls.enableDamping = true;
     controls.minDistance = 65; controls.maxDistance = 2350; controls.minPolarAngle = .25; controls.maxPolarAngle = Math.PI * .46; controls.enablePan = true;
+    controls.screenSpacePanning = false;
     controls.addEventListener('start', () => { tween = null; });
     scene.add(new THREE.HemisphereLight(0xffffff, 0xc7cdc7, 1.55));
     const sun = new THREE.DirectionalLight(0xfff9ec, 1.5); sun.position.set(-500, 900, 500); scene.add(sun);
-    surface(campus.boundary, 0xe6ede2, 0);
-    campus.green.forEach(g => surface(g.points, 0xd5e3cf, .07));
-    campus.water.forEach(w => surface(w.points, 0xb5d4df, .15));
+    // 校界只用于交互范围；连续地面跨过校界，远处以同色雾自然淡出。
+    surface([[-4000, -4000], [4000, -4000], [4000, 4000], [-4000, 4000]], 0xe6ede2, 0);
+    [...campus.green, ...campus.context.green].forEach(g => surface(g.points, 0xd5e3cf, .07));
+    [...campus.water, ...campus.context.water].forEach(w => surface(w.points, 0xb5d4df, .15));
     const roadVertices = [];
-    for (const road of campus.roads) {
+    for (const road of campus.context.roads) {
       const [a, b] = road.points, dx = b[0] - a[0], dz = b[1] - a[1], length = Math.hypot(dx, dz);
       if (!length) continue;
       const nx = -dz / length * road.width / 2, nz = dx / length * road.width / 2;
@@ -172,8 +183,14 @@ onMounted(() => {
       const mesh = new THREE.Mesh(extrusion(b.points, Math.min(80, Math.max(4, b.height))), new THREE.MeshLambertMaterial({ color: 0xe9e9e6 }));
       mesh.userData.building = b.id; edge(mesh); scene.add(mesh); meshes.set(b.id, mesh); selectable.push(mesh);
     }
-    locationMarker = new THREE.Mesh(new THREE.SphereGeometry(12, 12, 8), new THREE.MeshBasicMaterial({ color: 0x4387bb })); locationMarker.position.set(175, 12, 135); scene.add(locationMarker);
-    locationRing = new THREE.Mesh(new THREE.RingGeometry(17, 24, 32), new THREE.MeshBasicMaterial({ color: 0x77a5c6, transparent: true, opacity: .5, side: THREE.DoubleSide })); locationRing.rotation.x = -Math.PI / 2; locationRing.position.set(175, .5, 135); scene.add(locationRing);
+    // 周边是实际轮廓的背景模型，合并绘制，避免增加数百次绘制调用。
+    const contextGeometry = campus.context.buildings.map(b => extrusion(b.points, Math.min(80, Math.max(4, b.height))));
+    if (contextGeometry.length) {
+      contextBuildings = new THREE.Mesh(mergeGeometries(contextGeometry), new THREE.MeshLambertMaterial({ color: 0xe6e6e2 }));
+      contextGeometry.forEach(g => g.dispose()); edge(contextBuildings); scene.add(contextBuildings);
+    }
+    locationMarker = new THREE.Mesh(new THREE.SphereGeometry(12, 12, 8), new THREE.MeshBasicMaterial({ color: 0x4387bb })); locationMarker.position.set(demoLocation[0], 12, demoLocation[1]); scene.add(locationMarker);
+    locationRing = new THREE.Mesh(new THREE.RingGeometry(17, 24, 32), new THREE.MeshBasicMaterial({ color: 0x77a5c6, transparent: true, opacity: .5, side: THREE.DoubleSide })); locationRing.rotation.x = -Math.PI / 2; locationRing.position.set(demoLocation[0], .5, demoLocation[1]); scene.add(locationRing);
     observer = new ResizeObserver(() => { const { width, height } = host.value.getBoundingClientRect(); renderer.setSize(width, height); camera.aspect = width / height; camera.updateProjectionMatrix(); }); observer.observe(host.value);
     renderer.domElement.addEventListener('pointerdown', e => { pointerStart = { x: e.clientX, y: e.clientY, time: performance.now() }; });
     renderer.domElement.addEventListener('pointerup', hit);
@@ -185,7 +202,7 @@ onBeforeUnmount(() => { disposed = true; cancelAnimationFrame(frame); observer?.
 </script>
 
 <template>
-  <div ref="host" class="campus-scene" :data-building="selected || 'overview'" :data-floor="floor">
+  <div ref="host" class="campus-scene" :data-building="selected || 'overview'" :data-floor="floor" :data-pan-target="panTarget">
     <div v-if="loading" class="scene-message" role="status">正在展开燕园…</div>
     <div v-if="failed" class="scene-message" role="alert">此设备暂不能绘制 3D 地图。<br>仍可用下方建筑列表查看楼层活动。</div>
     <template v-if="!failed">

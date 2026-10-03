@@ -53,7 +53,7 @@ function setMode(value) { mode.value = value; selected.value = null; search.valu
         <div class="map-tools" aria-label="地图控制">
           <button v-sketch class="sketch" aria-label="放大地图" @click="scene?.zoom(.8)">＋</button>
           <button v-sketch class="sketch" aria-label="缩小地图" @click="scene?.zoom(1.25)">−</button>
-          <button v-sketch class="sketch" aria-label="回到燕园全景" @click="selected ? select(null) : scene?.reset()">⌂</button>
+          <button v-sketch class="sketch" aria-label="回到初始视角" @click="selected ? select(null) : scene?.reset()">⌂</button>
           <button v-sketch class="sketch locate-button" :data-pencil="located ? 'blue' : undefined" aria-label="查看示例定位附近的活动" @click="locate">◎</button>
         </div>
         <div class="map-hint">{{ selected ? '点楼层查看活动 · 拖动查看另一侧' : '点建筑，看看楼层里正在发生什么' }}</div>

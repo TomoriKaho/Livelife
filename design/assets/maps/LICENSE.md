@@ -7,7 +7,7 @@
 - 数据来源：OpenStreetMap，通过 Overpass API 获取。
 - `yanyuan-osm.json`：原始查询结果，保留完整下载快照。
 - `source.json`：查询语句、下载时间、接口地址与数据时间。
-- `campus.json`：基于上述快照的燕园裁切及米制坐标转换结果，同样按 ODbL 1.0 提供。
+- `campus.json`：基于上述快照的燕园及周边数据、校内互动要素筛选和米制坐标转换结果，同样按 ODbL 1.0 提供。
 
 所有文件随仓库保留，并在生产构建中放入 `assets/maps/`。界面持续显示 OpenStreetMap 署名。
 建筑轮廓、道路和水面来自 OSM。示意楼层、内部教室、活动及示例定位由本项目自行编写，不是 OSM 室内地图或实时校园信息。
