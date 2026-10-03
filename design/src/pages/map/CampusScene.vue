@@ -84,7 +84,9 @@ function expand() {
   contextBuildings.visible = vegetation.visible = !building || !!scenic;
   locationMarker.visible = locationRing.visible = !building;
   renderer.shadowMap.needsUpdate = true;
-  if (!building) { fly(initialCamera.clone(), initialTarget.clone()); return; }
+  // 收起只合拢模型；终止尚未完成的聚焦，保留当前相机与观察目标。
+  // 返回示例位置由显式 locate() 操作负责。
+  if (!building) { tween = null; return; }
   const [cx, cz] = center(building.points);
   if (scenic) {
     const target = new THREE.Vector3(cx, 16, cz);
