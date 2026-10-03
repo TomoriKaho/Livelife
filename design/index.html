@@ -3,82 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#fff0a3">
-  <title>活动地图 · PKU LiveLife</title>
-  <link rel="stylesheet" href="./styles.css">
-  <script src="./sketch.js" defer></script>
-  <script src="./app.js" defer></script>
+  <meta name="theme-color" content="#ffdf32">
+  <title>PKU LiveLife · 手机端设计</title>
 </head>
 <body>
-  <!-- 图标使用本地 SVG，开发复现时无需字体图标或第三方依赖。 -->
-  <svg class="svg-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <defs>
-      <symbol id="icon-map" viewBox="0 0 32 32"><path fill="currentColor" stroke-width="1" d="M3 7l8-3v22l-8 3Z M14 5l7 3v22l-7-3Z M24 7l5-2v22l-5 2Z"/></symbol>
-      <symbol id="icon-calendar" viewBox="0 0 32 32"><path d="M7 7h19l1 21H5L6 7Z M10 3v8 M22 3v8 M6 14h20 M11 20h3 M19 20h3"/></symbol>
-      <symbol id="icon-star" viewBox="0 0 32 32"><path d="m16 3 4.2 9 9.8 1-7.3 6.5 2 9.5-8.7-4.8L7.3 29l2-9.5L2 13l9.8-1Z"/></symbol>
-      <symbol id="icon-agent" viewBox="0 0 32 32"><path d="M16 3v5 M12 3h7 M8 9h16q4 0 4 5v9q0 4-5 4H9q-5 0-5-4v-9q0-5 4-5Z M1 16v5 M31 16v5 M12 23h8"/><circle cx="11" cy="18" r="1" fill="currentColor"/><circle cx="21" cy="18" r="1" fill="currentColor"/></symbol>
-      <symbol id="icon-user" viewBox="0 0 32 32"><path fill="currentColor" stroke-width="1" d="M22 9a6 6 0 1 1-12 0 6 6 0 0 1 12 0Z M4 29q1-12 12-12t12 12Z"/></symbol>
-      <symbol id="icon-bell" viewBox="0 0 32 32"><path d="M5 24h22l-3-5v-7q0-8-8-8t-8 8v7Z M13 28q3 4 6 0 M16 2v2"/></symbol>
-      <symbol id="icon-pin" viewBox="0 0 32 32"><path d="M26 13c0 8-10 17-10 17S6 21 6 13a10 10 0 0 1 20 0Z"/><circle cx="16" cy="13" r="3.5" fill="white" stroke="none"/></symbol>
-      <symbol id="icon-chevron" viewBox="0 0 32 32"><path d="m9 12 7 8 8-8"/></symbol>
-      <symbol id="icon-back" viewBox="0 0 32 32"><path d="m17 6-10 10 10 10 M8 16h20"/></symbol>
-      <symbol id="icon-grid" viewBox="0 0 32 32"><path d="M4 4h9v9H4Z M19 4h9v9h-9Z M4 19h9v9H4Z M19 19h9v9h-9Z"/></symbol>
-      <symbol id="icon-pencil" viewBox="0 0 32 32"><path d="m7 20 15-15q2-2 5 1t1 4L13 25l-9 3Z M20 7l6 6 M7 20l6 5 M4 28l2-6"/></symbol>
-      <symbol id="icon-close" viewBox="0 0 32 32"><path d="m8 8 16 16 M24 8 8 24"/></symbol>
-      <symbol id="icon-spark" viewBox="0 0 32 32"><path d="m16 3 3 10 10 3-10 3-3 10-3-10-10-3 10-3Z"/></symbol>
-    </defs>
-  </svg>
-
-  <div class="phone-shell">
-    <header class="app-header">
-      <div class="brand-row">
-        <a class="brand sketch pencil-fill" data-pencil="yellow" href="#/map" aria-label="PKU LiveLife，返回活动地图"><span>PKU<span class="brand-life">LiveLife</span></span></a>
-        <span class="campus"><svg class="icon" aria-hidden="true"><use href="#icon-pin"/></svg>燕园</span>
-        <button class="icon-button notification-button" type="button" aria-label="消息通知" data-notification><svg class="icon" aria-hidden="true"><use href="#icon-bell"/></svg><span class="notification-dot" aria-hidden="true"></span></button>
-      </div>
-      <div class="header-caption"><span>校园生活 · 随手发现</span><span class="handwritten">Life, in color.</span></div>
-    </header>
-
-    <main id="main-content" class="page-main">
-      <div class="page-heading">
-        <div class="page-title-group">
-          <button id="back-button" class="icon-button back-button" type="button" aria-label="返回上一页" hidden><svg class="icon" aria-hidden="true"><use href="#icon-back"/></svg></button>
-          <div><p id="page-eyebrow" class="eyebrow">EXPLORE THE CAMPUS</p><h1 id="page-title" tabindex="-1">活动地图</h1></div>
-        </div>
-        <button id="directory-button" class="directory-button sketch" type="button" aria-haspopup="dialog" aria-controls="page-directory"><svg class="icon" aria-hidden="true"><use href="#icon-grid"/></svg><span>页面目录</span></button>
-      </div>
-
-      <!-- 每个页面只保留空占位。后续的业务 UI 在此区域内逐页实现。 -->
-      <section id="page-outlet" class="page-outlet" aria-labelledby="placeholder-title">
-        <span id="page-code" class="page-code">D-02 / MAP</span>
-        <div class="placeholder">
-          <div id="placeholder-art" class="placeholder-art" aria-hidden="true"><span class="art-paper sketch pencil-fill"><svg class="icon"><use id="placeholder-icon" href="#icon-map"/></svg></span><svg class="art-spark icon"><use href="#icon-spark"/></svg><span class="art-dash"></span></div>
-          <p class="placeholder-kicker">留一点空白，给接下来的灵感</p>
-          <h2 id="placeholder-title">地图主页</h2>
-          <p class="placeholder-description">页面内容待设计</p>
-          <span class="placeholder-rule" aria-hidden="true"></span>
-        </div>
-        <span class="outlet-corner" aria-hidden="true"><svg class="icon"><use href="#icon-pencil"/></svg></span>
-      </section>
-
-      <footer class="page-footer"><span class="footer-dash" aria-hidden="true"></span><p>把校园生活，画进每一天</p><span class="footer-dash" aria-hidden="true"></span></footer>
-    </main>
-
-    <nav class="bottom-nav pencil-fill" data-pencil="yellow" aria-label="主导航">
-      <a class="nav-item" href="#/map" data-nav="map" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#icon-map"/></svg><span>活动地图</span></a>
-      <a class="nav-item" href="#/calendar" data-nav="calendar"><svg class="icon" aria-hidden="true"><use href="#icon-calendar"/></svg><span>活动日历</span></a>
-      <a class="nav-item" href="#/interests" data-nav="interests"><svg class="icon" aria-hidden="true"><use href="#icon-star"/></svg><span>兴趣广场</span></a>
-      <a class="nav-item" href="#/agent" data-nav="agent"><svg class="icon" aria-hidden="true"><use href="#icon-agent"/></svg><span>智能助手</span></a>
-      <a class="nav-item" href="#/more" data-nav="more"><svg class="icon" aria-hidden="true"><use href="#icon-user"/></svg><span>我的</span></a>
-    </nav>
-  </div>
-
-  <dialog id="page-directory" class="page-directory sketch" aria-labelledby="directory-title">
-    <div class="directory-header"><div><p class="eyebrow">OUR LITTLE SKETCHBOOK</p><h2 id="directory-title">页面目录</h2></div><button id="close-directory" class="icon-button" type="button" aria-label="关闭页面目录"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button></div>
-    <p class="directory-description">先搭好框架，再一页页填上生活。</p>
-    <nav id="directory-links" aria-label="全部设计页面"></nav>
-    <p class="directory-note">D-00 — D-07 · 当前均为内容占位</p>
-  </dialog>
-  <div id="toast" class="toast sketch" role="status" hidden></div>
+  <div id="app"></div>
+  <script type="module" src="/src/main.js"></script>
 </body>
 </html>

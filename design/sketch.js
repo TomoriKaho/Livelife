@@ -3,7 +3,7 @@
  * 彩铅由宽笔触交叠平涂与纸齿透明度组成；SVG 底面透明。
  * 固定随机种子保证同一控件不会在导航或刷新时改变笔迹。
  */
-(() => {
+export function createHandDrawnRenderer() {
   const NS = 'http://www.w3.org/2000/svg';
   const palettes = {
     yellow: ['#ffd600', '#ffdf16', '#ffe93d', '#fbd21a'],
@@ -14,6 +14,7 @@
   };
   let nextId = 0;
   const drawings = new WeakMap();
+  const tracked = new Set();
 
   function random(seed) {
     let value = seed >>> 0;
@@ -233,18 +234,36 @@
   }
 
   const observer = new ResizeObserver(entries => entries.forEach(({ target }) => draw(target)));
+  function release(element) {
+    const record = drawings.get(element);
+    if (!record) return;
+    observer.unobserve(element);
+    record.svg.remove();
+    element.classList.remove('has-sketch');
+    drawings.delete(element);
+    tracked.delete(element);
+  }
   function refresh() {
+    tracked.forEach(element => { if (!element.isConnected) release(element); });
     const elements = document.querySelectorAll('.sketch, .nav-item, .directory-link, .bottom-nav, .page-outlet, .icon-button:not(.notification-button)');
     elements.forEach(element => {
       if (!drawings.has(element)) {
         const svg = node('svg', { class: 'sketch-render', 'aria-hidden': 'true', focusable: 'false', preserveAspectRatio: 'none' });
-        element.classList.add('has-sketch');
         element.prepend(svg);
         drawings.set(element, { svg, seed: ++nextId * 127, current: '' });
+        tracked.add(element);
         observer.observe(element);
       }
+      // Vue/RouterLink 可能重写 class 或内容，恢复装饰层而不更换笔迹种子。
+      element.classList.add('has-sketch');
+      const { svg } = drawings.get(element);
+      if (svg.parentNode !== element) element.prepend(svg);
     });
     elements.forEach(draw);
   }
-  window.HandDrawn = { refresh };
-})();
+  function dispose() {
+    tracked.forEach(release);
+    observer.disconnect();
+  }
+  return { refresh, release, dispose };
+}

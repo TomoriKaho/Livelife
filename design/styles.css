@@ -24,6 +24,7 @@
 }
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 280px; background: transparent; }
+#app { width: 100%; }
 button, a { -webkit-tap-highlight-color: transparent; }
 button { font: inherit; color: inherit; cursor: pointer; }
 a { color: inherit; text-decoration: none; }

@@ -1,33 +1,39 @@
 # PKU LiveLife · 手机端统一设计规范
 
-本目录是供开发组参考和复现的静态 UI 原型。页面范围来自 [issue #13](https://github.com/TomoriKaho/Livelife/issues/13)，视觉参考为 `picture_reference/0.png`、`1.png`、`2.png`。
+本目录是供开发组参考和复现的 Vue 3 手机端 UI 原型，采用 Vite、Vue Router 与独立 `.vue` 页面。页面范围来自 [issue #13](https://github.com/TomoriKaho/Livelife/issues/13)，视觉参考为 `picture_reference/0.png`、`1.png`、`2.png`。
 
 本文记录截至 2026-10-03 经多轮调整确认的公共视觉基线，供后续页面设计、组件扩展及开发复现使用。参数以当前 `styles.css`、`sketch.js` 为准；后续修改公共样式时同步更新本文件。业务模块与页面数量由 issue 决定，参考图用于确定视觉语言，不直接照搬其中的业务内容。
 
 ## 打开方式
 
-直接用浏览器打开 `index.html` 即可，无需安装依赖或构建。也可以在仓库根目录运行：
+在仓库根目录运行以下命令（Node.js `^20.19.0 || >=22.12.0`）：
 
 ```powershell
-python -m http.server 8765 --bind 127.0.0.1 --directory design
+cd design
+npm ci
+npm run dev
 ```
 
 然后访问 `http://127.0.0.1:8765`。电脑端仍然呈现手机布局，最大宽度 430px；窄屏铺满视口。页眉和底部导航固定在框架中，内容区单独滚动，并预留移动设备安全区。
+
+开发源文件需要通过 Vite 预览，不能再直接双击 `index.html` 或用 Python 服务原始目录。`npm run build` 生成 `dist/`，`npm run preview` 在 8766 端口预览构建结果。构建产物也可通过静态服务器提供：`python -m http.server 8766 --bind 127.0.0.1 --directory dist`。字体、脚本及样式均本地打包，字体许可证随构建输出。
+
+`index.html` 是 Vue 的单一挂载入口；各界面的实际内容已分在 `src/pages/` 的八个文件里。团队并行工作应修改所负责页面的 `.vue` 文件，不需要复制入口 HTML 或重复维护公共页眉、Tab。
 
 ## 当前范围
 
 已搭建品牌页眉、校区标识、通知入口、页面标题栏、页面目录、内容占位、简短页脚和五项底部导航。通知入口仅显示占位提示；校区暂时固定为燕园。所有业务页面均为空占位，无模拟活动、地图、表单或对话数据。
 
-| ID | 哈希地址 | 内容占位 | 底部导航归属 |
-| --- | --- | --- | --- |
-| D-00 | `#/system` | 设计规范 & 组件库 | 无 |
-| D-01 | `#/onboarding` | 授权、兴趣引导页 | 无 |
-| D-02 | `#/map` | 地图主页（默认页） | 活动地图 |
-| D-03 | `#/detail` | 信息详情页 | 活动地图 |
-| D-04 | `#/calendar` | 日历 / 活动列表页 | 活动日历 |
-| D-05 | `#/interests` | 兴趣推荐列表页 | 兴趣广场 |
-| D-06 | `#/agent` | Agent 对话页 | 智能助手 |
-| D-07 | `#/more` | 其他功能页 | 我的 |
+| ID | 哈希地址 | 独立文件（`src/pages/`） | 内容占位 | 底部导航归属 |
+| --- | --- | --- | --- | --- |
+| D-00 | `#/system` | `DesignSystemPage.vue` | 设计规范 & 组件库 | 无 |
+| D-01 | `#/onboarding` | `OnboardingPage.vue` | 授权、兴趣引导页 | 无 |
+| D-02 | `#/map` | `MapPage.vue` | 地图主页（默认页） | 活动地图 |
+| D-03 | `#/detail` | `DetailPage.vue` | 信息详情页 | 活动地图 |
+| D-04 | `#/calendar` | `CalendarPage.vue` | 日历 / 活动列表页 | 活动日历 |
+| D-05 | `#/interests` | `InterestsPage.vue` | 兴趣推荐列表页 | 兴趣广场 |
+| D-06 | `#/agent` | `AgentPage.vue` | Agent 对话页 | 智能助手 |
+| D-07 | `#/more` | `MorePage.vue` | 其他功能页 | 我的 |
 
 所有页面可通过「页面目录」访问。此阶段为便于设计审阅，各页统一保留公共框架；引导页与详情页后续可单独调整导航。D-00、D-01、D-03 的标题栏提供返回入口。哈希地址支持刷新与浏览器前进/后退；未知地址回到地图页。页面目录支持键盘导航、Escape 关闭以及点击遮罩关闭。
 
@@ -79,7 +85,7 @@ python -m http.server 8765 --bind 127.0.0.1 --directory design
 
 品牌与整条 Tab 栏使用黄色；当前 Tab 使用蓝色。其他颜色按业务语义少量使用，同一页面保持明确的主次，不把每个模块都涂成不同颜色。
 
-当前占位插画的页面强调色来自 `app.js`：设计规范/智能助手为淡紫，引导/兴趣广场为粉红，地图为蓝色，详情/日历为薄荷绿，“我的”为黄色。这些是当前原型的默认分配，不是已经定义好的业务状态色；成功、错误、告警等语义仍需在具体页面设计时补充。
+当前占位插画的页面强调色来自各页面文件导出的 `pageMeta.accent`：设计规范/智能助手为淡紫，引导/兴趣广场为粉红，地图为蓝色，详情/日历为薄荷绿，“我的”为黄色。这些是当前原型的默认分配，不是已经定义好的业务状态色；成功、错误、告警等语义仍需在具体页面设计时补充。
 
 ### 2.3 透明背景的准确含义
 
@@ -295,7 +301,7 @@ opacity  = (.11 + random × .12) × pressure
 
 ### 6.4 图标与小装饰
 
-使用 `index.html` 中的本地 SVG symbol 与 `<use>`，图标基准 `viewBox="0 0 32 32"`。通用图标默认 26px、线宽 2.1、圆头与圆滑连接，颜色继承 `currentColor`。地图、人物采用实心形状；日历、星星、机器人等采用线描，机器人眼睛为点状。
+使用 `src/components/IconSprite.vue` 中的本地 SVG symbol 与 `<use>`，通过 `<AppIcon name="map" />` 复用。图标基准 `viewBox="0 0 32 32"`。通用图标默认 26px、线宽 2.1、圆头与圆滑连接，颜色继承 `currentColor`。地图、人物采用实心形状；日历、星星、机器人等采用线描，机器人眼睛为点状。
 
 新增图标应延续简洁轮廓和圆滑笔画，避免混入极细线、尖锐几何图标、立体渐变或不同图标字体。图标不必套用卡片级随机轮廓算法；手绘卡片与简洁图标一起构成层级。通知铃铛当前为 32px，校区定位图标为蓝色 `#398def`。
 
@@ -314,21 +320,21 @@ opacity  = (.11 + random × .12) × pressure
 
 ## 7. 复用与开发接入
 
-### 7.1 静态 HTML 接入
+### 7.1 Vue 模板接入
 
-复用 `.sketch` 接入轮廓，用 `data-pencil` 选择彩铅色阶。没有 `data-pencil` 时只画勾线；`.pencil-fill` 是透明底面的辅助类，本身不生成纹理。
+复用 `.sketch` 接入轮廓，用 `data-pencil` 选择彩铅色阶，加上全局 `v-sketch` 指令在挂载和更新后自动绘制。没有 `data-pencil` 时只画勾线；`.pencil-fill` 是透明底面的辅助类，本身不生成纹理。
 
 ```html
 <!-- 只有铅笔轮廓的按钮 -->
-<button class="sketch action-button" type="button">查看详情</button>
+<button v-sketch class="sketch action-button" type="button">查看详情</button>
 
 <!-- 有彩铅填色的按钮 -->
-<button class="sketch pencil-fill action-button" data-pencil="yellow" type="button">
+<button v-sketch class="sketch pencil-fill action-button" data-pencil="yellow" type="button">
   查看详情
 </button>
 
 <!-- 后续业务卡片：内容与留白由业务组件确定 -->
-<article class="sketch pencil-fill activity-card" data-pencil="mint">
+<article v-sketch class="sketch pencil-fill activity-card" data-pencil="mint">
   <h2>活动标题</h2>
   <p>活动说明</p>
 </article>
@@ -355,7 +361,7 @@ opacity  = (.11 + random × .12) × pressure
 }
 ```
 
-脚本顺序保持 `sketch.js` 在 `app.js` 之前。新增 DOM 或改变 `data-pencil`、选中状态后调用：
+`src/main.js` 统一安装路由、`v-sketch` 插件并加载公共 CSS，页面不需要自行添加 `<script src>`。常规 Vue 模板中的挂载、更新和配色变化由指令处理；若在 Vue 之外添加 DOM，可在更新完成后手动调用：
 
 ```js
 window.HandDrawn.refresh();
@@ -369,17 +375,29 @@ window.HandDrawn.refresh();
 
 同一 DOM 元素在页面切换或尺寸重绘时保留自己的种子，避免笔迹闪动。新建元素或改变初始化顺序可能改变笔迹；当前种子并不是按业务 ID 持久化的。后续若需要跨组件重建保持完全一致，应在统一渲染器中扩展稳定 ID 机制，不在各业务页面随意调用 `Math.random()`。
 
-`ResizeObserver` 在真实尺寸改变后重画，当前宽高不足 8px 的隐藏/极小元素跳过绘制。缓存键包含尺寸、配色和当前 Tab；相同输入不重复绘制。颜色属性改变后需要主动调用 `refresh()`，不能只依赖尺寸观察。
+`ResizeObserver` 在真实尺寸改变后重画，当前宽高不足 8px 的隐藏/极小元素跳过绘制。缓存键包含尺寸、配色和当前 Tab；相同输入不重复绘制。颜色属性改变也需要刷新：Vue 模板由 `v-sketch` 的更新钩子处理；外部直接修改 DOM 时主动调用 `refresh()`，不能只依赖尺寸观察。
 
 装饰 SVG 使用 `aria-hidden="true"`、`focusable="false"` 和 `pointer-events: none`。宿主有 `isolation: isolate`，SVG 绝对定位、`z-index: −1`，在内容后方但保留在该组件层叠上下文中；`overflow: visible` 留出轻微偏移笔迹。不要把 SVG 放到文字上面，也不要因父层裁剪切掉勾线。
 
-### 7.3 Vue 或其他框架迁移
+Vue 与 RouterLink 更新可能重写宿主的 class 或子内容。每次刷新会恢复 `has-sketch` 层叠类及原装饰 SVG，同时保留已分配的种子；不要用频繁删除、重新初始化的方式恢复纹理。
 
-推荐拆分公共结构为 `AppShell`、`AppHeader`、`PageHeading`、`BottomNav`、`PageDirectory`，业务内容放入路由视图。页面清单及导航归属沿用 `app.js` 的 `pages` 元数据，避免复制多套页眉与导航。
+### 7.3 当前组件与渲染生命周期
 
-在 DOM 挂载和更新完成后调用渲染器；Vue 中可在 `onMounted` 或必要的状态变化后 `await nextTick()`，再调用 `HandDrawn.refresh()`。统一管理 resize 观察与组件卸载时的清理；当前静态渲染器仅公开 `refresh()`，正式组件化时如需销毁接口应集中补充。
+`src/App.vue` 管理手机框架、路由视图、目录与占位通知；`AppHeader`、`PageHeading`、`PageFooter`、`BottomNav`、`PageDirectory` 提供公共结构，`PagePlaceholder` 提供当前占位展示。所有页面只负责自己的内容，不重复编写公共框架。
 
-迁移时继续按真实像素尺寸重绘 SVG，不把一张小按钮纹理图片拉伸成大卡片；不改变字体文件、透明底层、涂抹方向或主轮廓参数。新增功能与风格调整分开评估，先继承公共基线。
+`src/plugins/sketch.js` 注册全局 `v-sketch` 指令。同一帧内多个组件的 mounted/updated 合并到一次 `requestAnimationFrame`，等 Vue 完成 DOM 更新后测量并绘制。`beforeUnmount` 调用 `release(element)` 取消该元素的尺寸观察并移除装饰 SVG；应用卸载调用 `dispose()` 清理观察器与待执行帧。`refresh()` 同时回收已断开连接的元素，避免反复路由切换残留观察目标。
+
+`sketch.js` 已改为 ES 模块，公开 `createHandDrawnRenderer()`，实例提供 `refresh()`、`release()`、`dispose()`。常规页面只使用指令，不能在每个页面单独创建渲染器。渲染器保持按真实像素尺寸绘制；字体文件、透明底层、涂抹方向和轮廓参数沿用本规范。
+
+### 7.4 团队并行工作方式
+
+每个 `src/pages/*Page.vue` 自己导出 `pageMeta`，包含 `key`、`id`、`title`、`placeholder`、`label`、`eyebrow`、`icon`、`accent`、`nav` 和 `back`。`src/router/index.js` 自动发现这些文件，按 ID 排序并生成哈希路由与页面目录；`nav` 决定底部导航归属，`back` 决定标题栏是否显示返回入口。
+
+日常开发只需在负责页面的 `<template>` 中替换 `<PagePlaceholder :page="pageMeta" />`，逻辑写在 `<script setup>`，专属样式写在本页 `<style scoped>`。需要子组件时可放在 `src/pages/<页面名>/`，只由该页面导入；不要命名为顶层 `*Page.vue`，以免被识别为独立路由。
+
+已有页面补内容无需修改 `index.html`、路由清单或其他页面文件。新增页面才需要新增顶层 `*Page.vue`，并提供唯一的 `pageMeta.key` 和合适的 ID；新 Tab 项属于公共导航变更，需要统一调整 `BottomNav.vue`。目前八页五项导航由 issue 决定，不自行增减。
+
+`styles.css`、`sketch.js` 和 `src/components/` 是公共基线。页面专属布局优先留在 scoped 样式里；公共样式或共享组件的修改应由团队集中协调，并同步更新本规范。`node_modules/`、`dist/` 不提交；`package-lock.json` 提交，以便团队用 `npm ci` 安装一致依赖。
 
 ## 8. 后续页面的设计与验收
 
@@ -404,12 +422,20 @@ window.HandDrawn.refresh();
 
 | 文件 | 职责 |
 | --- | --- |
-| `index.html` | 公共结构、本地 SVG 图标库、内容占位与目录弹层 |
+| `index.html` | 单一 HTML 挂载入口，只加载 `src/main.js` |
+| `src/main.js` | 安装 Vue、路由、手绘指令插件，加载公共样式 |
+| `src/App.vue` | 手机框架、路由视图、公共组件组合与占位通知 |
+| `src/pages/*Page.vue` | 八个独立界面及各自的页面元数据；团队主要工作区 |
+| `src/components/` | 公共页眉、标题栏、页脚、Tab、目录、占位、图标组件 |
+| `src/router/index.js` | 自动发现页面、哈希路由、默认页与未知地址回退 |
+| `src/plugins/sketch.js` | Vue 手绘指令、合并刷新与卸载清理 |
 | `styles.css` | 字族、语义色、手机布局、图文比例、间距、状态与响应式规则 |
 | `sketch.js` | 通用圆角轮廓、Tab 开放上沿、彩铅平涂、纸齿、漏色与稳定重绘 |
-| `app.js` | 页面元数据、哈希导航、公共框架状态更新 |
+| `package.json` / `package-lock.json` | 开发、构建、预览命令与依赖版本 |
+| `vite.config.js` | Vue 编译、相对资源路径、预览端口、字体许可证输出 |
+| `README.md` | 团队启动方法、页面分工和开发步骤 |
 | `assets/fonts/` | 当前小赖字体、许可证与来源说明；旧字体为未加载的历史备选 |
 | `assets/pencil-grain.svg` | 备用资源，当前不使用 |
 | `picture_reference/` | 三张视觉参考图，作为配色与风格校准依据 |
 
-后续逐页替换 `#page-outlet` 内的占位内容，保留共享框架和上述公共基线。D-00 目前仍为空占位；本文是已经可用的统一样式规范，后续可以在 D-00 将这些规则转成可视化组件示例。
+后续逐页替换各页面文件中的 `PagePlaceholder`，保留共享框架和上述公共基线。D-00 目前仍为空占位；本文是已经可用的统一样式规范，后续可以在 `DesignSystemPage.vue` 将这些规则转成可视化组件示例。
