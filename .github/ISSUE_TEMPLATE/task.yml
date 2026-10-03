@@ -7,14 +7,14 @@ body:
       label: 背景与目标
       description: 为什么需要这项工作？最终要达到什么结果？
     validations:
-      required: true
+      required: false
   - type: textarea
     id: scope
     attributes:
       label: 工作范围
       description: 列出本任务包含的内容，必要时说明边界。
     validations:
-      required: true
+      required: false
   - type: textarea
     id: acceptance
     attributes:
@@ -22,7 +22,7 @@ body:
       description: 使用可检查的结果，可填写 Markdown 勾选清单。
       placeholder: "- [ ] 保存后再次查询，结果一致"
     validations:
-      required: true
+      required: false
   - type: textarea
     id: dependencies
     attributes:
