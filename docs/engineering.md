@@ -1,0 +1,80 @@
+# 工程规范
+
+## 选型状态
+
+（下面的技术栈需要后续选型 Issue 和 PR 确认，仅作参考）。
+
+| 层次       | 候选方案                                        | 决策考虑                                                         |
+| ---------- | ----------------------------------------------- | ---------------------------------------------------------------- |
+| 移动客户端 | uni-app + Vue 3 + TypeScript；或 Flutter + Dart | Vue 基础及小程序需求优先考虑 uni-app；APP 体验优先可考虑 Flutter |
+| 后端 API   | Python + FastAPI                                | 便于整合采集、检索和 AI                                          |
+| 数据库     | PostgreSQL                                      | 用户、订阅、信息、地点与推送记录                                 |
+| 检索       | 全文检索，必要时增加 pgvector                   | 先验证检索质量，避免过早复杂化                                   |
+| 后台任务   | 独立 worker；必要时 Redis + Celery              | 定时采集、去重、推荐和提醒                                       |
+| 部署       | Docker Compose                                  | 课程阶段集中部署，兼顾开源自部署                                 |
+
+uni-app 可以生成 APP 并接入系统能力，普通 Vue 页面主要使用 WebView，nvue 提供原生渲染。推送还需配置平台凭证和 Android 厂商通道，不是编译后自动可用。Flutter 支持多平台及原生代码互操作，小程序通常需另外实现。第一版优先二维地图和活动标记，3D 地图另做选型验证。
+
+参考：[uni-app 渲染](https://uniapp.dcloud.net.cn/tutorial/nvue-outline)、[uni-push](https://uniapp.dcloud.io/unipush)、[Flutter 平台支持](https://docs.flutter.dev/platform-integration)。
+
+## 目录与启动命令
+
+根目录保留 README、贡献指南和 Agent 入口；docs/ 放正式文档；frontend/ 放客户端；backend/ 放服务端；.github/ 放协作模板及未来工作流。
+
+后续初始化工程的负责人必须在本节补充：
+
+1. 运行时及包管理器版本、安装工具方式。
+2. 从克隆仓库到启动前后端的完整命令及工作目录。
+3. `.env.example`、各变量含义、必填项和获取方式；示例不得包含秘密。
+4. 数据库启动、迁移、测试数据初始化及清理方法。
+5. 格式、类型、单元测试、集成测试和构建命令。
+6. 默认地址、端口、健康检查、常见启动故障。
+
+## 编码约定
+
+- 遵循选定语言和框架的主流格式化工具，在初始化 PR 中固定配置和检查命令。
+- 命名体现用途，模块职责明确；不混合页面逻辑、数据库访问和后台采集。
+- 配置通过环境变量或配置层提供，环境差异不散落在业务代码中。
+- 用户输入校验、资源权限检查和敏感操作由服务端保证。
+- 接口与数据库变更同步契约、迁移和测试说明。
+- 日志包含可追踪任务或请求标识，不输出秘密和真实私有信息。
+- 仅提交源码、必要配置和锁文件；产物、缓存、依赖目录加入忽略规则。
+- 测试围绕行为与风险；不为低影响文档修正编写镜像式测试。
+
+## commit 规范
+
+格式为 `type(scope): 描述`，scope 可省略，描述统一中文。一次提交表达一个明确目的，不使用“update”“修改一下”“最终版”等模糊信息。本项目不设置提交模板，不要求成员配置 commit.template。
+
+| type     | 用途                                       |
+| -------- | ------------------------------------------ |
+| feat     | 新增功能                                   |
+| fix      | 修复缺陷                                   |
+| docs     | 文档                                       |
+| refactor | 保持外部行为的结构调整                     |
+| perf     | 性能优化                                   |
+| test     | 测试                                       |
+| style    | 格式调整，不改变逻辑；不是所有界面样式修改 |
+| build    | 构建或依赖                                 |
+| ci       | 自动检查、部署工作流                       |
+| chore    | 其他维护                                   |
+| revert   | 撤销改动                                   |
+
+scope 建议使用 subscription、map、auth、frontend、backend、infra、workflow 等稳定名称。
+
+```text
+feat(subscription): 新增兴趣订阅接口
+fix(map): 修复活动标记点击异常
+docs(workflow): 补充 PR 评审教程
+```
+
+不兼容变更用 `!` 并说明影响：
+
+```text
+feat(api)!: 调整订阅响应结构
+
+BREAKING CHANGE: interests 改为 subscriptions，客户端需要同步修改。
+```
+
+建议 Squash merge；合并时检查最终提交信息。普通开发提交不强制逐条写 Issue 编号，PR 中统一关联。格式检查自动化待后续配置，当前为团队约定。
+
+参考：[Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)。

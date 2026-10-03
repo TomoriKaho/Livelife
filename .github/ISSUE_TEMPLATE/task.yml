@@ -1,0 +1,34 @@
+name: 子任务
+description: 开发、文档、调研或基础设施工作
+title: ""
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: 背景与目标
+      description: 为什么需要这项工作？最终要达到什么结果？
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: 工作范围
+      description: 列出本任务包含的内容，必要时说明边界。
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收条件
+      description: 使用可检查的结果，可填写 Markdown 勾选清单。
+      placeholder: "- [ ] 保存后再次查询，结果一致"
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: 依赖和参考资料
+      description: 关联 Issue、接口契约、设计稿或资料；无则写无。
+  - type: markdown
+    attributes:
+      value: "提交后请设置负责人、模块标签、Milestone 和 Project；优先级在 Project 的 Priority 字段中设置。如为子任务，请在父 Issue 中关联。"
