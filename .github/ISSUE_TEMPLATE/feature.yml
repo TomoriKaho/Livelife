@@ -34,4 +34,4 @@ body:
       label: 依赖与参考资料
   - type: markdown
     attributes:
-      value: "提交后设置 epic 标签（如尚未创建，请维护者创建）、负责人、Milestone 和 Project。子任务需分别设置元数据，不假设自动继承。"
+      value: "提交后设置负责人、Milestone 和 Project。"
