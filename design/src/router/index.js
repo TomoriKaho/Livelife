@@ -2,7 +2,7 @@ import { createRouter, createWebHashHistory } from 'vue-router';
 
 // 每个页面自己维护元数据；新增页面无需编辑一份共享路由清单。
 const modules = import.meta.glob('../pages/*Page.vue', { eager: true });
-export const pages = Object.entries(modules)
+const pages = Object.entries(modules)
   .map(([file, module]) => {
     if (!module.pageMeta?.key || !module.pageMeta?.id) {
       throw new Error(`${file} 必须导出包含 key、id 的 pageMeta`);

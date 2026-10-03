@@ -6,18 +6,15 @@ import AppHeader from './components/AppHeader.vue';
 import PageHeading from './components/PageHeading.vue';
 import PageFooter from './components/PageFooter.vue';
 import BottomNav from './components/BottomNav.vue';
-import PageDirectory from './components/PageDirectory.vue';
 
 const route = useRoute();
 const router = useRouter();
 const page = computed(() => route.meta);
 const main = ref(null);
 const heading = ref(null);
-const directory = ref(null);
 const toastVisible = ref(false);
 let toastTimer;
 
-function focusHeading() { nextTick(() => heading.value?.focusTitle()); }
 function goBack() {
   if (router.options.history.state.back) router.back();
   else router.replace('/map');
@@ -43,12 +40,11 @@ onBeforeUnmount(() => clearTimeout(toastTimer));
   <div v-sketch class="phone-shell">
     <AppHeader @notify="showNotification" />
     <main id="main-content" ref="main" class="page-main" :class="{ 'immersive-main': page.immersive }">
-      <PageHeading ref="heading" :page="page" @back="goBack" @directory="directory.open()" />
+      <PageHeading ref="heading" :page="page" @back="goBack" />
       <RouterView />
       <PageFooter v-if="!page.immersive" />
     </main>
     <BottomNav :active="page.nav" />
   </div>
-  <PageDirectory ref="directory" :active="route.name" @select="focusHeading" />
   <div id="toast" v-sketch v-show="toastVisible" class="toast sketch" role="status"><span>消息通知区域待设计</span></div>
 </template>

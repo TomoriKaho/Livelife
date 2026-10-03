@@ -40,7 +40,6 @@ npm run preview:phone
 
 | 界面 | 独立页面文件 | 地址 |
 | --- | --- | --- |
-| D-00 设计规范与组件库 | [DesignSystemPage.vue](./src/pages/DesignSystemPage.vue) | `#/system` |
 | D-01 授权与兴趣引导 | [OnboardingPage.vue](./src/pages/OnboardingPage.vue) | `#/onboarding` |
 | D-02 地图主页 | [MapPage.vue](./src/pages/MapPage.vue) | `#/map` |
 | D-03 信息详情 | [DetailPage.vue](./src/pages/DetailPage.vue) | `#/detail` |
@@ -70,11 +69,11 @@ npm run preview:phone
 
 ## 减少并行编辑冲突
 
-- 每个页面自行导出 `pageMeta`，路由与页面目录自动收集顶层 `*Page.vue`；补全已有页面不需要改共享路由表。
+- 每个页面自行导出 `pageMeta`，路由自动收集顶层 `*Page.vue`；补全已有页面不需要改共享路由表。
 - 不在每个页面复制页眉、Tab、字体或纹理算法；通过共享组件与指令复用。
 - 页面样式优先 scoped。`styles.css`、`sketch.js` 和 `src/components/` 的公共修改集中协调，并同步 DESIGN.md。
 - 保留并提交 `package-lock.json`，使用 `npm ci`；不提交 `node_modules/` 和 `dist/`。
-- 新增路由文件必须导出唯一的 `pageMeta.key` 和 `id`；当前八页五项 Tab 的范围保持 issue #13 的约定。
+- 新增路由文件必须导出唯一的 `pageMeta.key` 和 `id`；当前保留七个业务页面和五项 Tab，统一样式规范由 `DESIGN.md` 维护。
 
 字体本地加载，许可证在 `assets/fonts/`，构建时会携带当前字体的 OFL 文件。
 

@@ -215,7 +215,7 @@ export function createHandDrawnRenderer() {
     const ink = faint ? '#7f91a3' : '#20304b';
     // 参考图中的黄蓝偏移笔迹，模拟彩铅在右下沿留下的轻描边。
     const accent = element.classList.contains('art-paper') ? '#9ac8f2' : '#ffdf32';
-    const highlighted = element.matches('.brand, .directory-button, .art-paper, .directory-link') || (element.classList.contains('nav-item') && element.hasAttribute('aria-current'));
+    const highlighted = element.matches('.brand, .art-paper') || (element.classList.contains('nav-item') && element.hasAttribute('aria-current'));
     if (highlighted) {
       svg.append(node('path', { d: pathFor(outline.slice(0, Math.ceil(outline.length * .58)), false, true), fill: 'none', stroke: accent, 'stroke-width': '3.6', opacity: '.72', transform: 'translate(2 3)', 'stroke-linecap': 'round' }));
     }
@@ -245,7 +245,7 @@ export function createHandDrawnRenderer() {
   }
   function refresh() {
     tracked.forEach(element => { if (!element.isConnected) release(element); });
-    const elements = document.querySelectorAll('.sketch, .nav-item, .directory-link, .bottom-nav, .page-outlet, .icon-button:not(.notification-button)');
+    const elements = document.querySelectorAll('.sketch, .nav-item, .bottom-nav, .page-outlet, .icon-button:not(.notification-button)');
     elements.forEach(element => {
       if (!drawings.has(element)) {
         const svg = node('svg', { class: 'sketch-render', 'aria-hidden': 'true', focusable: 'false', preserveAspectRatio: 'none' });
