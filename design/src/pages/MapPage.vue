@@ -47,7 +47,7 @@ function setMode(value) { mode.value = value; selected.value = null; search.valu
       <span class="demo-stamp">今日 · 演示</span>
     </div>
     <div class="map-stage" :class="{ 'empty-2d': mode === '2d', 'building-focus': selected }" :style="{ '--drawer-peek': `${mode === '3d' ? drawerPeek : 0}px` }">
-      <CampusScene v-if="mode === '3d'" ref="scene" :style="{ bottom: 'var(--drawer-peek)' }" :selected="selected" :floor="floor" :activities="visibleActivities" @select="select" @floor="floor = $event" />
+      <CampusScene v-if="mode === '3d'" ref="scene" :focus-inset="drawerPeek" :selected="selected" :floor="floor" :activities="visibleActivities" @select="select" @floor="floor = $event" />
       <div v-else class="blank-map" aria-label="2D 地图留白，待后续设计"></div>
       <div class="mode-switch" aria-label="地图显示模式">
         <button v-for="item in ['3d', '2d']" :key="item" v-sketch class="sketch" :data-pencil="mode === item ? 'blue' : undefined" :aria-pressed="mode === item" @click="setMode(item)">{{ item.toUpperCase() }}</button>

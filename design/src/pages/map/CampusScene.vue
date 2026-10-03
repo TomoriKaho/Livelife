@@ -14,7 +14,7 @@ import { insideFootprint } from './rings.mjs';
 import { pencilMaterial, pencilEdge } from './pencil-material.mjs';
 import { prepareStoreys, transitionModel, animateModel } from './storeys.mjs';
 
-const props = defineProps({ selected: String, floor: Number, activities: Array });
+const props = defineProps({ selected: String, floor: Number, activities: Array, focusInset: { type: Number, default: 0 } });
 const emit = defineEmits(['select', 'floor', 'ready']);
 const host = ref(null), failed = ref(false), loading = ref(true), labels = ref([]);
 const modelIdentity = ref(''), modelProgress = ref('0');
@@ -159,7 +159,16 @@ function tick(now) {
 function zoom(scale) { if (!camera) return; tween = null; camera.position.sub(controls.target).multiplyScalar(scale).add(controls.target); }
 function locate() { if (!scene) return; fly(initialCamera.clone(), initialTarget.clone()); }
 defineExpose({ zoom, locate });
+function resizeViewport() {
+  if (!renderer || !camera || !host.value) return;
+  const { width, height } = host.value.getBoundingClientRect();
+  renderer.setSize(width, height);
+  // 聚焦中心仍在默认抽屉上方，但完整画布延伸到 Tab，隐藏抽屉后不露空白。
+  // 抽屉换档不改变该视口或相机，避免动画中地图跳动。
+  camera.setViewOffset(width, Math.max(1, height - props.focusInset), 0, 0, width, height);
+}
 watch(() => props.selected, expand);
+watch(() => props.focusInset, resizeViewport);
 watch(() => props.floor, highlight);
 watch(() => props.activities, updateActivities);
 onMounted(async () => {
@@ -216,7 +225,7 @@ onMounted(async () => {
     vegetation = createVegetation(campus); scene.add(vegetation); renderer.shadowMap.needsUpdate = true;
     locationMarker = new THREE.Mesh(new THREE.SphereGeometry(4.5, 16, 10), new THREE.MeshBasicMaterial({ color: 0x4387bb })); locationMarker.position.set(demoLocation[0], 4.5, demoLocation[1]); scene.add(locationMarker);
     locationRing = new THREE.Mesh(new THREE.RingGeometry(7, 10, 32), new THREE.MeshBasicMaterial({ color: 0x77a5c6, transparent: true, opacity: .5, side: THREE.DoubleSide })); locationRing.rotation.x = -Math.PI / 2; locationRing.position.set(demoLocation[0], .5, demoLocation[1]); scene.add(locationRing);
-    observer = new ResizeObserver(() => { const { width, height } = host.value.getBoundingClientRect(); renderer.setSize(width, height); camera.aspect = width / height; camera.updateProjectionMatrix(); }); observer.observe(host.value);
+    observer = new ResizeObserver(resizeViewport); observer.observe(host.value);
     renderer.domElement.addEventListener('pointerdown', e => { pointerStart = { x: e.clientX, y: e.clientY, time: performance.now() }; });
     renderer.domElement.addEventListener('pointerup', hit);
     await renderer.compileAsync(scene, camera);
