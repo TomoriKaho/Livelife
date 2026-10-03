@@ -1,7 +1,7 @@
 @font-face {
-  font-family: 'LiveLife Handwritten';
-  src: url('./assets/fonts/LXGWWenKaiLite-Medium.ttf') format('truetype');
-  font-weight: 500;
+  font-family: 'LiveLife Rounded';
+  src: url('./assets/fonts/Xiaolai-Regular.ttf') format('truetype');
+  font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
@@ -16,8 +16,8 @@
   --pink: #fac4ba;
   --lavender: #d9c8f3;
   --phone-width: 430px;
-  font-family: 'LiveLife Handwritten', 'KaiTi', 'STKaiti', cursive;
-  font-weight: 500;
+  font-family: 'LiveLife Rounded', 'Comic Sans MS', cursive;
+  font-weight: 400;
   color: var(--ink);
   background: transparent;
   font-synthesis: none;
@@ -42,7 +42,7 @@ button:active, .nav-item:active { transform: translateY(1px); }
 .brand-row { display: flex; align-items: center; gap: 10px; }
 .brand { padding: 9px 14px 10px; white-space: nowrap; }
 .brand::before { content: ''; position: absolute; left: -7px; top: 11px; width: 6px; height: 3px; background: var(--yellow); box-shadow: -2px 10px 0 var(--yellow), 4px 19px 0 var(--yellow); transform: rotate(25deg); }
-.brand > span { display: block; font-weight: 500; font-size: 32px; letter-spacing: -.9px; line-height: 1.15; -webkit-text-stroke: .65px var(--ink); }
+.brand > span { display: block; font-weight: 400; font-size: 32px; letter-spacing: -.9px; line-height: 1.15; -webkit-text-stroke: .2px var(--ink); }
 .brand-life { font-size: 31px; letter-spacing: -1px; padding-left: 2px; }
 .campus { display: inline-flex; gap: 3px; align-items: center; font-size: 16px; white-space: nowrap; -webkit-text-stroke: .22px var(--ink); }
 .campus .icon { width: 21px; height: 24px; color: #398def; fill: currentColor; stroke-width: 1.8; }
@@ -57,7 +57,7 @@ button:active, .nav-item:active { transform: translateY(1px); }
 .page-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 19px; flex: 0 0 auto; }
 .page-title-group { display: flex; align-items: center; min-width: 0; gap: 5px; }
 .eyebrow { font-size: 9px; letter-spacing: 1.2px; margin: 0 0 5px; color: var(--muted); line-height: 1.4; }
-h1 { font-size: 28px; letter-spacing: .5px; margin: 0; font-weight: 500; line-height: 1.3; outline: none; -webkit-text-stroke: .32px var(--ink); }
+h1 { font-size: 28px; letter-spacing: .5px; margin: 0; font-weight: 400; line-height: 1.3; outline: none; -webkit-text-stroke: .12px var(--ink); }
 .back-button { width: 30px; padding: 3px; margin-left: -5px; }
 .directory-button { display: flex; align-items: center; gap: 5px; font-size: 13px; padding: 0 12px; min-height: 44px; background: transparent; white-space: nowrap; -webkit-text-stroke: .15px var(--ink); }
 .directory-button .icon { width: 14px; height: 14px; stroke-width: 2.2; }
@@ -70,7 +70,7 @@ h1 { font-size: 28px; letter-spacing: .5px; margin: 0; font-weight: 500; line-he
 .art-spark { position: absolute; right: -5px; top: 0; width: 23px; height: 23px; color: #b4a570; stroke-width: 1.7; transform: rotate(8deg); }
 .art-dash { position: absolute; width: 14px; height: 3px; border-radius: 70%; left: 0; bottom: 20px; background: #b4a570; transform: rotate(-25deg); }
 .placeholder-kicker { font-size: 10px; letter-spacing: 1.3px; color: #91958d; margin: 0 0 12px; }
-.placeholder h2 { font-size: 23px; font-weight: 500; letter-spacing: 1px; margin: 0 0 9px; -webkit-text-stroke: .18px var(--ink); }
+.placeholder h2 { font-size: 23px; font-weight: 400; letter-spacing: 1px; margin: 0 0 9px; -webkit-text-stroke: .18px var(--ink); }
 .placeholder-description { font-size: 11px; color: #8e948f; letter-spacing: 1px; margin: 0; }
 .placeholder-rule { display: block; width: 45px; height: 4px; background: var(--page-accent, var(--blue)); border-radius: 60% 40% 55% 45%; transform: rotate(-3deg); margin: 22px auto 0; }
 .outlet-corner { position: absolute; right: 17px; bottom: 16px; color: #b5b7ab; transform: rotate(5deg); }
@@ -80,13 +80,13 @@ h1 { font-size: 28px; letter-spacing: .5px; margin: 0; font-weight: 500; line-he
 .footer-dash { width: 13px; height: 1px; background: #b9b9a9; transform: rotate(-8deg); }
 .footer-dash:last-child { transform: rotate(8deg); }
 .bottom-nav { position: relative; isolation: isolate; flex-shrink: 0; display: flex; justify-content: space-around; gap: 2px; padding: 5px 10px calc(9px + env(safe-area-inset-bottom, 0px)); background: transparent; border-top: 2px solid transparent; }
-.nav-item { position: relative; display: flex; flex-direction: column; gap: 7px; align-items: center; justify-content: center; flex: 1; min-height: 70px; min-width: 0; border: 1.6px solid transparent; font-size: 14px; white-space: nowrap; -webkit-text-stroke: .23px var(--ink); }
+.nav-item { position: relative; display: flex; flex-direction: column; gap: 7px; align-items: center; justify-content: center; flex: 1; min-height: 70px; min-width: 0; border: 1.6px solid transparent; font-size: 14px; white-space: nowrap; }
 .nav-item .icon { width: 30px; height: 30px; stroke-width: 2.3; }
 .nav-item[aria-current='page'] .icon { color: #245888; }
 .page-directory { width: min(390px, calc(100% - 32px)); max-height: calc(100dvh - 48px); padding: 23px; color: var(--ink); background: transparent; overflow-y: auto; }
 .page-directory::backdrop { background: rgb(255 255 255 / 90%); backdrop-filter: blur(6px); }
 .directory-header { display: flex; align-items: center; justify-content: space-between; }
-.directory-header h2 { margin: 0; font-size: 22px; font-weight: 500; }
+.directory-header h2 { margin: 0; font-size: 22px; font-weight: 400; }
 .directory-description { font-size: 11px; color: var(--muted); margin: 15px 0 19px; }
 #directory-links { display: flex; flex-direction: column; gap: 7px; }
 .directory-link { position: relative; display: flex; align-items: center; gap: 12px; border: 1px solid transparent; min-height: 44px; padding: 10px 12px; font-size: 13px; }
@@ -100,7 +100,7 @@ h1 { font-size: 28px; letter-spacing: .5px; margin: 0; font-weight: 500; line-he
 }
 @media (max-width: 359px) {
   .app-header { padding-left: 15px; padding-right: 15px; }
-  .brand-row { gap: 6px; }
+  .brand-row { gap: 4px; }
   .brand { padding-left: 10px; padding-right: 10px; }
   .brand > span { font-size: 26px; }
   .brand-life { font-size: 25px; }
