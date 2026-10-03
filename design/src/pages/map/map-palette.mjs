@@ -5,10 +5,11 @@ export const mapPalette = {
   heritageRoof: '#83cbb4',
   glass: '#83c9e5',
   paper: '#fffaf0',
-  ground: '#dcf0b5',
-  green: '#c5e99c',
-  pitch: '#b4df87',
-  road: '#fff0ca',
-  water: '#93d9e5',
-  trees: ['#9bd47d', '#b5e28c', '#83caa2', '#c6e89b', '#97d58d'],
+  sky: '#9ac8f2', // APP 主样式 --blue
+  ground: '#c2ef98',
+  green: '#a6e879',
+  pitch: '#9bdd67',
+  road: '#ffffff',
+  water: '#7dd6fa',
+  trees: ['#84de68', '#a9ea78', '#71d991', '#b8ef86', '#91e579'],
 };

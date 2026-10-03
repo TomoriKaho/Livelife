@@ -163,10 +163,10 @@ watch(() => props.floor, highlight);
 watch(() => props.activities, updateActivities);
 onMounted(async () => {
   try {
-    scene = new THREE.Scene(); scene.background = new THREE.Color(mapPalette.paper); scene.fog = new THREE.Fog(mapPalette.paper, 1500, 3300);
+    scene = new THREE.Scene(); scene.background = new THREE.Color(mapPalette.sky); scene.fog = new THREE.Fog(mapPalette.sky, 650, 2000);
     camera = new THREE.PerspectiveCamera(42, 1, 1, 7000); camera.position.copy(initialCamera);
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false }); renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setClearColor(mapPalette.paper); renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.NoToneMapping;
+    renderer.setClearColor(mapPalette.sky); renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.NoToneMapping;
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap; renderer.shadowMap.autoUpdate = false;
     renderer.domElement.setAttribute('aria-label', '燕园三维地图，拖动旋转，双指缩放。建筑也可通过下方列表选择。');
     host.value.prepend(renderer.domElement);
