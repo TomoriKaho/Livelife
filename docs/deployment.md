@@ -87,9 +87,3 @@ GitHub Environment 只管理配置、保护规则和部署记录，不提供服�
 Android 可生成签名测试 APK，让成员安装并连接测试后端。iOS 免费 Apple Account 可做有限个人真机开发测试，付费 Developer Program 支持 TestFlight 等渠道，官方年费为 99 美元或当地货币价格，应在注册时核对。TestFlight 构建最长测试 90 天，外部测试可能需要 Beta 审核，不能作为永久发布渠道。需要本地 iOS 原生调试时准备 Mac/Xcode。
 
 正式上架准备功能完整性、审核访问账号、隐私说明、账号删除和第三方数据处理说明；中国大陆分发所需备案材料按应用功能和苹果要求核实。目标是阶段性交付时，测试渠道与商店正式上架分开安排。服务端更新不会自动替换安装在手机里的原生代码。
-
-## 参考
-
-- [Actions 概念](https://docs.github.com/en/actions/get-started/understand-github-actions)
-- [触发事件](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows)
-- [部署到外部平台](https://docs.github.com/en/actions/how-tos/deploy/deploy-to-third-party-platforms)
