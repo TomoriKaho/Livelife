@@ -42,10 +42,10 @@ onBeforeUnmount(() => clearTimeout(toastTimer));
   <IconSprite />
   <div v-sketch class="phone-shell">
     <AppHeader @notify="showNotification" />
-    <main id="main-content" ref="main" class="page-main">
+    <main id="main-content" ref="main" class="page-main" :class="{ 'immersive-main': page.immersive }">
       <PageHeading ref="heading" :page="page" @back="goBack" @directory="directory.open()" />
       <RouterView />
-      <PageFooter />
+      <PageFooter v-if="!page.immersive" />
     </main>
     <BottomNav :active="page.nav" />
   </div>

@@ -55,6 +55,11 @@ button:active, .nav-item:active { transform: translateY(1px); }
 .header-caption { display: flex; justify-content: space-between; align-items: baseline; color: var(--muted); margin-top: 10px; padding: 0 3px; font-size: 11px; letter-spacing: 1px; }
 .handwritten { letter-spacing: .4px; font-size: 12px; }
 .page-main { flex: 1; min-height: 0; overflow-y: auto; padding: 22px 17px 0; display: flex; flex-direction: column; scrollbar-width: thin; }
+.page-main.immersive-main { padding: 12px 0 0; }
+.immersive-main .page-heading { margin: 0 17px 10px; }
+.immersive-main .page-heading .eyebrow { display: none; }
+.immersive-main .page-heading h1 { font-size: 23px; }
+.immersive-main .directory-button { min-height: 36px; font-size: 11px; }
 .page-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 19px; flex: 0 0 auto; }
 .page-title-group { display: flex; align-items: center; min-width: 0; gap: 5px; }
 .eyebrow { font-size: 9px; letter-spacing: 1.2px; margin: 0 0 5px; color: var(--muted); line-height: 1.4; }
