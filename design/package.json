@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "preview:phone": "vite preview --host 0.0.0.0",
     "map:prepare": "node scripts/prepare-campus-map.mjs",
     "map:download": "node scripts/download-campus-map.mjs",
     "test:map": "node --test scripts/campus-map.test.mjs"
