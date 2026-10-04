@@ -40,7 +40,7 @@ onBeforeUnmount(() => clearTimeout(toastTimer));
   <div v-sketch class="phone-shell">
     <AppHeader @notify="showNotification" />
     <main id="main-content" ref="main" class="page-main" :class="{ 'immersive-main': page.immersive }">
-      <PageHeading ref="heading" :page="page" @back="goBack" />
+      <PageHeading v-if="!page.customHeading" ref="heading" :page="page" @back="goBack" />
       <RouterView />
       <PageFooter v-if="!page.immersive" />
     </main>
