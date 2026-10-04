@@ -10,6 +10,7 @@ export const pageMeta = {
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import AgentIcon from './agent/AgentIcon.vue';
 import LiLiAvatar from './agent/LiLiAvatar.vue';
+import UserPlaneAvatar from './agent/UserPlaneAvatar.vue';
 
 const originals = [
   { id: 1, role: 'user', text: '哈喽哈喽LiLi，百讲人好多啊，现在有什么活动吗' },
@@ -92,14 +93,14 @@ onBeforeUnmount(() => { mounted.value = false; clearTimeout(noticeTimer); releas
   <section class="agent-page" aria-label="LiLi 智能助手对话">
     <header class="chat-heading">
       <button ref="historyTrigger" v-sketch class="sketch history-button" type="button" aria-label="打开历史对话" aria-controls="lili-history" :aria-expanded="historyOpen" @click="historyOpen = true"><AgentIcon name="menu" /></button>
-      <div class="heading-title"><h1>LiLi<span>智能助手</span></h1><p>和我聊聊校园里的新鲜事</p></div>
+      <div class="heading-title"><h1>LiLi<span>智能助手</span></h1></div>
       <span class="heading-doodle" aria-hidden="true"><svg viewBox="0 0 44 34"><path d="m8 20 6-12 M21 16l2-12 M30 21l8-7" /></svg></span>
     </header>
 
     <div class="conversation" role="region" aria-label="当前对话" tabindex="0">
       <p class="conversation-date">今天</p>
       <article v-for="message in messages" :key="message.id" class="message" :class="[`message-${message.role}`, { 'is-withdrawn': message.withdrawn }]" :aria-label="message.role === 'user' ? '你的消息' : 'LiLi 的消息'">
-        <div class="message-avatar" aria-hidden="true"><LiLiAvatar v-if="message.role === 'agent'" :thinking="message.thinking" /><svg v-else class="user-avatar" viewBox="0 0 48 48"><g stroke="#20304b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path fill="#c4eed7" d="M5 42q1-14 19-15 18 1 19 15Z" /><path fill="#fff1d7" d="M13 13q11-7 22 0l-1 13q-3 9-10 9t-11-9Z" /><path fill="#20304b" d="M11 18q-2-17 13-17 15 0 13 17l-6-7-4 4-6-3-10 6Z" /><path fill="none" d="M16 23h6v5h-6Z M26 23h6v5h-6Z M22 25h4 M22 30q2 2 4 0" /></g></svg></div>
+        <div class="message-avatar" aria-hidden="true"><LiLiAvatar v-if="message.role === 'agent'" /><UserPlaneAvatar v-else /></div>
         <div class="message-content">
           <p v-if="message.withdrawn" class="withdrawn-message">你撤回了一条消息</p>
           <div v-else v-sketch class="sketch pencil-fill message-bubble" :data-pencil="message.color">
@@ -136,14 +137,14 @@ onBeforeUnmount(() => { mounted.value = false; clearTimeout(noticeTimer); releas
 
 <style scoped>
 .agent-page { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: hidden; padding: 0 17px; }
-.chat-heading { display: flex; flex: none; align-items: center; gap: 12px; padding: 7px 0 15px; }
+.chat-heading { display: flex; flex: none; align-items: center; gap: 12px; padding: 2px 0 6px; }
 .history-button { display: grid; place-items: center; width: 44px; height: 44px; padding: 8px; flex: none; background: transparent; }
-.heading-title { flex: 1; min-width: 0; }.heading-title h1 { font-size: 28px; display: flex; align-items: baseline; gap: 10px; }.heading-title h1 span { font-size: 13px; letter-spacing: 0; -webkit-text-stroke: 0; color: var(--muted); }.heading-title p { margin: 3px 0 0; font-size: 11px; color: var(--muted); }
+.heading-title { display: flex; align-items: center; flex: 1; min-width: 0; height: 44px; }.heading-title h1 { margin: 0; line-height: 1; font-size: 28px; display: flex; align-items: baseline; gap: 10px; }.heading-title h1 span { font-size: 13px; letter-spacing: 0; -webkit-text-stroke: 0; color: var(--muted); }
 .heading-doodle { width: 33px; color: #d5b729; }.heading-doodle svg { width: 100%; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
 .conversation { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; padding: 0 2px 18px; outline-offset: -3px; }
 .conversation-date { text-align: center; color: var(--muted); font-size: 10px; margin: 0 0 12px; letter-spacing: 2px; }.message { display: flex; gap: 6px; margin-bottom: 10px; }.message:last-child { margin-bottom: 0; }.message-user { flex-direction: row-reverse; }
-.message-avatar { width: 43px; height: 47px; flex: none; margin-top: 3px; }.message-user .message-avatar { width: 34px; height: 38px; margin-top: 6px; }.user-avatar { width: 100%; height: 100%; display: block; }
-.message-content { max-width: calc(100% - 49px); min-width: 0; }.message-user .message-content { max-width: calc(100% - 48px); }
+.message-avatar { width: 43px; height: 47px; flex: none; margin-top: 3px; }.message-user .message-avatar { width: 43px; height: 47px; margin-top: 3px; }
+.message-content { max-width: calc(100% - 49px); min-width: 0; }.message-user .message-content { max-width: calc(100% - 49px); }
 .message-bubble { padding: 11px 16px 12px; min-height: 49px; background: transparent; }.message-text { margin: 0; font-size: 14px; line-height: 1.85; overflow-wrap: anywhere; white-space: pre-wrap; }.message-text strong { font-weight: 400; -webkit-text-stroke: .35px var(--ink); text-decoration: underline; text-decoration-color: #20304b44; text-decoration-thickness: 3px; text-underline-offset: 3px; }
 .message-actions { display: flex; align-items: center; gap: 0; margin: 1px 1px 0; min-height: 34px; }.message-user .message-actions { justify-content: flex-end; }.message-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 3px; padding: 7px 6px; min-height: 34px; border: 0; background: transparent; color: var(--muted); font-size: 10px; white-space: nowrap; }.message-actions .agent-icon { width: 14px; height: 14px; stroke-width: 1.8; }.message-actions .rating-action { min-width: 34px; }.message-actions .rating-action .agent-icon { width: 16px; height: 16px; }.message-actions .selected { color: #245888; }.message-actions .selected .agent-icon { fill: #9ac8f244; stroke-width: 2.2; }.message-actions button:disabled { opacity: .35; cursor: default; }
 .thinking-message { display: flex; align-items: center; gap: 8px; min-height: 24px; font-size: 13px; white-space: nowrap; }.thinking-orbit { position: relative; display: block; width: 22px; height: 22px; flex: none; }.thinking-orbit i { position: absolute; width: 5px; height: 5px; background: var(--ink); border-radius: 45% 55% 50% 48%; opacity: .6; }.thinking-orbit i:nth-child(1) { left: 8px; top: 1px; }.thinking-orbit i:nth-child(2) { left: 1px; top: 13px; }.thinking-orbit i:nth-child(3) { right: 1px; top: 13px; }.thinking-dots { display: inline-flex; margin-left: 2px; }.thinking-dots i { font-style: normal; margin: 0 1px; }
@@ -159,6 +160,6 @@ onBeforeUnmount(() => { mounted.value = false; clearTimeout(noticeTimer); releas
 .attachment-pop-enter-active,.attachment-pop-leave-active { transition: transform .18s ease, opacity .18s ease; }.attachment-pop-enter-from,.attachment-pop-leave-to { opacity: 0; transform: translateY(6px) scale(.97); }.chat-toast-enter-active,.chat-toast-leave-active { transition: opacity .2s ease; }.chat-toast-enter-from,.chat-toast-leave-to { opacity: 0; }
 @media(prefers-reduced-motion:no-preference) { .thinking-orbit { animation: lili-think 2.8s linear infinite; }.thinking-dots i { animation: lili-dot 1.4s ease-in-out infinite; }.thinking-dots i:nth-child(2) { animation-delay: .18s; }.thinking-dots i:nth-child(3) { animation-delay: .36s; } }
 @keyframes lili-think { to { transform: rotate(360deg); } }@keyframes lili-dot { 0%,70%,100% { opacity: .3; transform: translateY(0); }35% { opacity: 1; transform: translateY(-2px); } }
-@media(max-width:359px) { .agent-page { padding: 0 10px; }.chat-heading { gap: 8px; }.heading-title h1 { font-size: 25px; }.heading-title p { font-size: 10px; }.heading-doodle { width: 25px; }.message-avatar { width: 36px; height: 40px; }.message-user .message-avatar { width: 30px; height: 34px; }.message-content,.message-user .message-content { max-width: calc(100% - 41px); }.message-bubble { padding: 12px 13px; }.message-text { font-size: 13px; }.message-actions button { padding-left: 5px; padding-right: 5px; }.message-actions .rating-action { min-width: 29px; }.composer-box { padding-left: 12px; gap: 3px; }.composer-tools { gap: 0; }.history-drawer { padding-left: 10px; padding-right: 10px; }.history-drawer h2 { font-size: 19px; }.history-item { padding-left: 8px; padding-right: 8px; }.history-item strong { font-size: 12px; } }
+@media(max-width:359px) { .agent-page { padding: 0 10px; }.chat-heading { gap: 8px; }.heading-title h1 { font-size: 25px; }.heading-doodle { width: 25px; }.message-avatar { width: 36px; height: 40px; }.message-user .message-avatar { width: 36px; height: 40px; }.message-content,.message-user .message-content { max-width: calc(100% - 41px); }.message-bubble { padding: 12px 13px; }.message-text { font-size: 13px; }.message-actions button { padding-left: 5px; padding-right: 5px; }.message-actions .rating-action { min-width: 29px; }.composer-box { padding-left: 12px; gap: 3px; }.composer-tools { gap: 0; }.history-drawer { padding-left: 10px; padding-right: 10px; }.history-drawer h2 { font-size: 19px; }.history-item { padding-left: 8px; padding-right: 8px; }.history-item strong { font-size: 12px; } }
 @media(prefers-reduced-motion:reduce) { .history-slide-enter-active,.history-slide-leave-active,.history-slide-enter-active .history-drawer,.history-slide-leave-active .history-drawer,.attachment-pop-enter-active,.attachment-pop-leave-active,.chat-toast-enter-active,.chat-toast-leave-active { transition: none; } }
 </style>
