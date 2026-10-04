@@ -61,6 +61,20 @@ const records = [
   { id: 'oct29-film', title: '午夜场电影', chip: '电影', category: 'show', date: '2026-10-29', start: '20:00', end: '22:00', place: '百周年纪念讲堂', building: halls.hall, floor: 1, room: '大厅' },
 ];
 
+// 建筑 ID 来自已下载的 OSM 校园模型；室外地点使用前端示意坐标（米）。
+const extraPlaces = {
+  '新太阳活动中心': { building: '445016209' },
+  '校史馆': { building: '226704254' },
+  '五四体育馆': { building: '240832253' },
+  '图书馆': { building: 'r3249649' },
+  '人文楼报告厅': { building: '986745064' },
+  '未名湖': { mapPosition: [-28.8, -189.4] },
+  '未名湖畔': { mapPosition: [-28.8, -140] },
+  '燕南园': { mapPosition: [-90, 315] },
+  '艺园': { mapPosition: [-275.1, 484.1] },
+  '正大国际中心': { mapPosition: [650, 220] },
+};
+
 export const activities = records.map(item => {
   const category = categories[item.category];
   return {
@@ -70,6 +84,7 @@ export const activities = records.map(item => {
     source: '校园活动',
     description: `${item.title}。固定演示内容，仅供界面设计参考。`,
     ...item,
+    ...extraPlaces[item.place],
     label: category.label,
     time: `${item.start}–${item.end}`,
     distance: item.building ? distanceOf[item.building] : '',

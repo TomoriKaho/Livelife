@@ -14,7 +14,7 @@ import { insideFootprint } from './rings.mjs';
 import { pencilMaterial, pencilEdge } from './pencil-material.mjs';
 import { prepareStoreys, transitionModel, animateModel } from './storeys.mjs';
 
-const props = defineProps({ selected: String, floor: Number, activities: Array, focusInset: { type: Number, default: 0 } });
+const props = defineProps({ selected: String, floor: Number, activities: Array, focusPoint: Array, focusInset: { type: Number, default: 0 } });
 const emit = defineEmits(['select', 'floor', 'ready']);
 const host = ref(null), failed = ref(false), loading = ref(true), labels = ref([]);
 const modelIdentity = ref(''), modelProgress = ref('0');
@@ -158,6 +158,11 @@ function tick(now) {
 }
 function zoom(scale) { if (!camera) return; tween = null; camera.position.sub(controls.target).multiplyScalar(scale).add(controls.target); }
 function locate() { if (!scene) return; fly(initialCamera.clone(), initialTarget.clone()); }
+function focusPlace() {
+  if (!scene || loading.value || !props.focusPoint) return;
+  const target = new THREE.Vector3(props.focusPoint[0], initialTarget.y, props.focusPoint[1]);
+  fly(target.clone().add(new THREE.Vector3(...initialView.offset)), target);
+}
 defineExpose({ zoom, locate });
 function resizeViewport() {
   if (!renderer || !camera || !host.value) return;
@@ -168,6 +173,7 @@ function resizeViewport() {
   camera.setViewOffset(width, Math.max(1, height - props.focusInset), 0, 0, width, height);
 }
 watch(() => props.selected, expand);
+watch(() => props.focusPoint, focusPlace);
 watch(() => props.focusInset, resizeViewport);
 watch(() => props.floor, highlight);
 watch(() => props.activities, updateActivities);
@@ -232,6 +238,7 @@ onMounted(async () => {
     if (disposed) return;
     loading.value = false;
     if (props.selected) expand();
+    else if (props.focusPoint) focusPlace();
     emit('ready'); tick(performance.now());
   } catch (error) { if (!disposed) { console.error('校园 3D 地图初始化失败', error); failed.value = true; loading.value = false; } }
 });

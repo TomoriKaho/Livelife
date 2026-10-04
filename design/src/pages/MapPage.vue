@@ -3,8 +3,9 @@ export const pageMeta = { key: 'map', id: 'D-02', title: '活动地图', placeho
 </script>
 
 <script setup>
-import { computed, defineAsyncComponent, nextTick, ref } from 'vue';
-import { RouterLink } from 'vue-router';
+import { computed, defineAsyncComponent, nextTick, onMounted, ref, watch } from 'vue';
+import { RouterLink, useRoute } from 'vue-router';
+import { saved, toggleSave, activityDetailRoute } from '../data/favorites.js';
 import AppIcon from '../components/AppIcon.vue';
 import ActivityDrawer from './map/ActivityDrawer.vue';
 import mascot from '../../picture_reference/mascot.png';
@@ -12,6 +13,7 @@ import campus from '../../assets/maps/campus.json';
 import { activities, categories, filters, venues } from './map/demo.js';
 import { profileFor } from './map/model-profiles.mjs';
 const CampusScene = defineAsyncComponent(() => import('./map/CampusScene.vue'));
+const route = useRoute(), focusPoint = ref(null), routedActivity = ref(null);
 const mode = ref('3d'), filter = ref('all'), search = ref(''), selected = ref(null), floor = ref(2), scene = ref(null), located = ref(false), detail = ref(null), dialog = ref(null);
 const drawer = ref(null), drawerPeek = ref(180);
 let drawerBeforeSelection = null;
@@ -64,6 +66,7 @@ function syncPage(event, which) {
   else activityPage.value = index;
 }
 function select(id) {
+  focusPoint.value = null; routedActivity.value = null;
   if (id) {
     // 只记录进入建筑探索前的档位，切换建筑或查看详情不覆盖这份状态。
     if (!selected.value) drawerBeforeSelection = drawer.value?.getState() ?? 'middle';
@@ -78,14 +81,26 @@ function select(id) {
 async function openActivity(activity) { detail.value = activity; await nextTick(); dialog.value.showModal(); }
 async function locate() {
   // 复位只调整地图，保留操作当下的抽屉档位；结束本次建筑探索记录。
-  drawerBeforeSelection = null; located.value = true; selected.value = null;
+  drawerBeforeSelection = null; located.value = true; selected.value = null; focusPoint.value = null; routedActivity.value = null;
   await nextTick(); scene.value?.locate();
 }
 async function setMode(value) {
-  drawerBeforeSelection = null; mode.value = value; selected.value = null; search.value = '';
+  drawerBeforeSelection = null; mode.value = value; selected.value = null; search.value = ''; focusPoint.value = null; routedActivity.value = null;
   await nextTick();
   window.HandDrawn?.refresh();
 }
+async function applyActivityRoute() {
+  const item = activities.find(activity => activity.id === route.query.activity);
+  if (!item) return;
+  filter.value = 'all'; mode.value = '3d';
+  await nextTick();
+  select(item.building);
+  floor.value = item.floor;
+  focusPoint.value = item.mapPosition || null;
+  routedActivity.value = item;
+}
+onMounted(applyActivityRoute);
+watch(() => route.query.activity, applyActivityRoute);
 </script>
 
 <template>
@@ -93,11 +108,11 @@ async function setMode(value) {
     <h1 id="page-title" class="map-page-title" tabindex="-1">活动地图</h1>
     <div class="map-rule" aria-hidden="true"></div>
     <div class="map-stage" :class="{ 'empty-2d': mode === '2d', 'building-focus': selected }" :style="{ '--drawer-peek': `${mode === '3d' ? drawerPeek : 0}px` }">
-      <CampusScene v-if="mode === '3d'" ref="scene" :focus-inset="drawerPeek" :selected="selected" :floor="floor" :activities="visibleActivities" @select="select" @floor="floor = $event" />
+      <CampusScene v-if="mode === '3d'" ref="scene" :focus-inset="drawerPeek" :focus-point="focusPoint" :selected="selected" :floor="floor" :activities="visibleActivities" @select="select" @floor="floor = $event" />
       <div v-else class="blank-map" aria-label="2D 地图留白，待后续设计"></div>
       <template v-if="mode === '3d'">
         <span class="campus-caption">北京大学 · 燕园</span>
-        <div class="map-hint">{{ currentBuilding?.scenic ? '拖动环绕博雅塔 · 缩小看看未名湖' : selected ? '点楼层查看活动 · 拖动查看另一侧' : '点建筑，看看楼层里正在发生什么' }}</div>
+        <div class="map-hint">{{ routedActivity ? `${routedActivity.title}${focusPoint ? ' · 地点示意' : ` · ${floor}F`}` : currentBuilding?.scenic ? '拖动环绕博雅塔 · 缩小看看未名湖' : selected ? '点楼层查看活动 · 拖动查看另一侧' : '点建筑，看看楼层里正在发生什么' }}</div>
         <a class="map-attribution" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a>
       </template>
       <div class="map-overlay">
@@ -209,7 +224,7 @@ async function setMode(value) {
       </template>
     </ActivityDrawer>
     <dialog ref="dialog" class="map-activity-dialog" @click="event => { if (event.target === dialog) dialog.close(); }">
-      <template v-if="detail"><div class="detail-heading"><span>{{ detail.label }} · 今日演示</span><button aria-label="关闭活动详情" @click="dialog.close()"><AppIcon name="close" /></button></div><h2>{{ detail.title }}</h2><p>{{ detail.time }}</p><p>{{ venues.find(v => v.id === detail.building)?.short }} · {{ detail.floor }}F · {{ detail.room }}</p><p class="detail-description">{{ detail.description }}</p><p class="detail-source">来源：{{ detail.source }}<br>固定演示内容，仅供界面设计参考。</p><button v-sketch class="sketch" data-pencil="yellow" @click="dialog.close(); select(detail.building); floor = detail.floor">返回楼层地图</button></template>
+      <template v-if="detail"><div class="detail-heading"><span>{{ detail.label }} · 今日演示</span><button aria-label="关闭活动详情" @click="dialog.close()"><AppIcon name="close" /></button></div><h2>{{ detail.title }}</h2><p>{{ detail.time }}</p><p>{{ detail.place }} · {{ detail.floor }}F</p><p class="detail-description">{{ detail.description }}</p><p class="detail-source">来源：{{ detail.source }}<br>固定演示内容，仅供界面设计参考。</p><div class="dialog-actions"><button v-sketch class="sketch" :data-pencil="saved.has(detail.id) ? 'yellow' : undefined" type="button" :aria-pressed="saved.has(detail.id)" @click="toggleSave(detail.id)">{{ saved.has(detail.id) ? '已收藏 · 取消收藏' : '收藏活动' }}</button><RouterLink v-sketch class="sketch" data-pencil="blue" :to="activityDetailRoute(detail)" @click="dialog.close()">跳转至详情页</RouterLink></div><button v-sketch class="sketch" data-pencil="yellow" @click="dialog.close(); select(detail.building); floor = detail.floor">返回楼层地图</button></template>
     </dialog>
   </section>
 </template>
@@ -301,5 +316,6 @@ h2 { font-size: 19px; line-height: 1.4; font-weight: 400; margin: 0; }
 .floor-empty { text-align: center; padding: 16px 0; font-size: 12px; color: #8c9c95; line-height: 1.8; }
 .map-activity-dialog { width: min(365px, calc(100% - 38px)); max-height: calc(100dvh - 70px); overflow: auto; border: 1.5px solid #657987; border-radius: 17px 15px 19px 14px; padding: 23px; color: var(--ink); background: #fbf8ef; }
 .map-activity-dialog::backdrop { background: #20304b5c; backdrop-filter: blur(3px); }.detail-heading { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: #7e9186; }.detail-heading button { background: transparent; border: 0; width: 36px; height: 36px; }.detail-heading .icon { width: 20px; height: 20px; }.map-activity-dialog h2 { margin: 16px 0; font-size: 22px; }.map-activity-dialog p { font-size: 12px; line-height: 1.8; }.detail-description { margin: 20px 0; }.map-activity-dialog .detail-source { font-size: 10px; color: #88958b; }.map-activity-dialog > button { min-height: 42px; width: 100%; background: transparent; font-size: 12px; margin-top: 12px; }
+.dialog-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin-top: 18px; }.dialog-actions button,.dialog-actions a { display: grid; place-items: center; min-height: 44px; padding: 8px 4px; font-size: 12px; background: transparent; color: var(--ink); text-decoration: none; }
 @media (max-width: 359px) { .filter-row { gap: 3px; }.filter-chip { padding: 7px 10px; }.map-search-wrap { margin: 0 15px; }.building-copy h2, .activity-body strong { font-size: 14px; }.activity-meta span { font-size: 10px; }.agent-promo { grid-template-columns: minmax(0, 1fr) 88px; }.agent-bubble h2 { font-size: 18px; }.agent-bubble p { font-size: 12px; }.agent-mascot { width: 88px; height: 88px; } }
 </style>

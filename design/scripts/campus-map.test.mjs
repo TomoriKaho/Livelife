@@ -5,7 +5,7 @@ import { contains, clipRoad, project, origin, constrainToBoundary } from '../src
 import { activities, venues, demoLocation } from '../src/pages/map/demo.js';
 import { initialView } from '../src/pages/map/view.mjs';
 import { joinRings, insideFootprint } from '../src/pages/map/rings.mjs';
-import { createBuilding, extrudeFootprint } from '../src/pages/map/architecture.mjs';
+import { createBuilding, extrudeFootprint, profileFor } from '../src/pages/map/architecture.mjs';
 import { treeLayout } from '../src/pages/map/landscape.mjs';
 import * as THREE from 'three';
 import { prepareStoreys, sliceGeometry, transitionModel, animateModel } from '../src/pages/map/storeys.mjs';
@@ -161,8 +161,15 @@ test('本地校区资源完整，演示活动映射到实际 OSM 建筑且楼层
   assert.ok(campus.buildings.every(b => b.points.every(p => p.every(Number.isFinite)) && b.height > 0));
   assert.ok(campus.roads.every(r => contains([(r.points[0][0] + r.points[1][0]) / 2, (r.points[0][1] + r.points[1][1]) / 2], campus.boundary)));
   for (const a of activities) {
-    assert.ok(campus.buildings.some(b => b.id === a.building));
+    if (!a.building) {
+      assert.equal(a.mapPosition?.length, 2, a.title);
+      assert.ok(a.mapPosition.every(Number.isFinite), a.title);
+      continue;
+    }
+    const building = campus.buildings.find(b => b.id === a.building);
+    assert.ok(building, a.title);
     const venue = venues.find(v => v.id === a.building);
-    assert.ok(venue && a.floor > 0 && a.floor <= venue.floors);
+    const floors = venue?.floors || Math.min(6, profileFor(building).floors);
+    assert.ok(a.floor > 0 && a.floor <= floors, a.title);
   }
 });

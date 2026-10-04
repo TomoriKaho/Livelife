@@ -21,6 +21,7 @@ import { computed, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import AppIcon from '../components/AppIcon.vue';
 import CalendarIcon from './calendar/CalendarIcon.vue';
+import { saved, toggleSave } from '../data/favorites.js';
 import PencilSwatch from './calendar/PencilSwatch.vue';
 import {
   TODAY,
@@ -51,7 +52,6 @@ const category = ref('all');
 const selectedKey = ref(TODAY);
 const monthCursor = ref(parseKey(TODAY));
 const weekStart = ref(parseKey(TODAY));
-const saved = ref(new Set());
 
 const selectedDate = computed(() => parseKey(selectedKey.value));
 const selectedEvents = computed(() => eventsOn(selectedKey.value, category.value));
@@ -97,12 +97,6 @@ function selectDay(key) {
   selectedKey.value = key;
 }
 
-function toggleSave(id) {
-  const next = new Set(saved.value);
-  if (next.has(id)) next.delete(id);
-  else next.add(id);
-  saved.value = next;
-}
 
 function marks(key) {
   return marksOn(key, category.value);

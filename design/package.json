@@ -12,7 +12,8 @@
     "map:download": "node scripts/download-campus-map.mjs",
     "test:map": "node --test scripts/campus-map.test.mjs",
     "test:drawer": "node --test scripts/activity-drawer.test.mjs",
-    "test:composer": "node --test scripts/composer-layout.test.mjs"
+    "test:composer": "node --test scripts/composer-layout.test.mjs",
+    "test:favorites": "node --test scripts/favorites.test.mjs"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
