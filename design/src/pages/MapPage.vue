@@ -15,7 +15,7 @@ import { profileFor } from './map/model-profiles.mjs';
 const CampusScene = defineAsyncComponent(() => import('./map/CampusScene.vue'));
 const CampusPlan = defineAsyncComponent(() => import('./map/CampusPlan.vue'));
 const route = useRoute(), focusPoint = ref(null), routedActivity = ref(null);
-const mode = ref('3d'), filter = ref('all'), search = ref(''), selected = ref(null), floor = ref(2), scene = ref(null), located = ref(false), detail = ref(null), dialog = ref(null);
+const mode = ref('3d'), filter = ref('all'), search = ref(''), selected = ref(null), floor = ref(2), scene = ref(null), located = ref(false), detail = ref(null);
 const drawer = ref(null), drawerPeek = ref(180);
 const planView = ref(null);
 let drawerBeforeSelection = null;
@@ -56,6 +56,8 @@ const venueCards = computed(() => venues.map(venue => {
 function activityIcon(type) { return categories[type]?.icon || 'star'; }
 function floorActivityIcon(type) { return categories[type]?.floorIcon || 'flag'; }
 function activityPencil(type) { return categories[type]?.pencil || 'yellow'; }
+const pencilInk = { yellow: '#ffdf32', blue: '#9ac8f2', mint: '#7ec9a8', pink: '#f4b2ab', lavender: '#c9b6f0' };
+function activityInk(type) { return pencilInk[activityPencil(type)] || pencilInk.yellow; }
 function buildingPencil(id) { return venuePencil[id] || 'yellow'; }
 function roomLabel(activity) { return /^\d/.test(activity.room) ? `${currentBuilding.value?.label || '教室'} ${activity.room}` : activity.room; }
 function startTime(time) { return time.split('–')[0]; }
@@ -67,8 +69,27 @@ function syncPage(event, which) {
   else if (which === 'liked') likedPage.value = index;
   else activityPage.value = index;
 }
+function placeLine(activity) {
+  const venue = venues.find(item => item.id === activity.building);
+  return [venue?.short || activity.place || '校园', `${activity.floor}F`, activity.room].filter(Boolean).join(' · ');
+}
+function openActivity(activity) {
+  if (!activity?.building) return;
+  if (!selected.value) drawerBeforeSelection = drawer.value?.getState() ?? 'middle';
+  selected.value = activity.building;
+  floor.value = activity.floor || 1;
+  detail.value = activity;
+  search.value = '';
+  drawer.value?.setState('expanded');
+  nextTick(() => window.HandDrawn?.refresh());
+}
+function closeDetail() {
+  detail.value = null;
+  drawer.value?.setState(drawer.value?.getState() || 'expanded');
+  nextTick(() => window.HandDrawn?.refresh());
+}
 function select(id) {
-  focusPoint.value = null; routedActivity.value = null;
+  focusPoint.value = null; routedActivity.value = null; detail.value = null;
   if (id) {
     // 只记录进入建筑探索前的档位，切换建筑或查看详情不覆盖这份状态。
     if (!selected.value) drawerBeforeSelection = drawer.value?.getState() ?? 'middle';
@@ -80,10 +101,9 @@ function select(id) {
   selected.value = id; search.value = '';
   floor.value = visibleActivities.value.find(a => a.building === id)?.floor || 1;
 }
-async function openActivity(activity) { detail.value = activity; await nextTick(); dialog.value.showModal(); }
 async function locate() {
   // 复位只调整地图，保留操作当下的抽屉档位；结束本次建筑探索记录。
-  drawerBeforeSelection = null; located.value = true; selected.value = null; focusPoint.value = null; routedActivity.value = null;
+  drawerBeforeSelection = null; located.value = true; selected.value = null; detail.value = null; focusPoint.value = null; routedActivity.value = null;
   await nextTick(); scene.value?.locate();
 }
 async function setMode(value) {
@@ -95,12 +115,15 @@ async function setMode(value) {
   window.HandDrawn?.refresh();
 }
 async function applyActivityRoute() {
-  const item = activities.find(activity => activity.id === route.query.activity);
+  const raw = route.query.activity;
+  const id = Array.isArray(raw) ? raw[0] : raw;
+  const item = activities.find(activity => activity.id === id);
   if (!item) return;
   filter.value = 'all'; mode.value = '3d';
   await nextTick();
-  select(item.building);
-  floor.value = item.floor;
+  if (item.building) openActivity(item);
+  else select(null);
+  floor.value = item.floor || 1;
   focusPoint.value = item.mapPosition || null;
   routedActivity.value = item;
 }
@@ -141,7 +164,27 @@ watch(() => route.query.activity, applyActivityRoute);
       </div>
     </div>
     <ActivityDrawer ref="drawer" @measure="drawerPeek = $event">
-      <template v-if="currentBuilding">
+      <template v-if="detail">
+        <section class="activity-intro" :aria-label="detail.title" :style="{ '--intro-ink': activityInk(detail.category) }">
+          <span v-sketch class="intro-pill sketch pencil-fill sketch-cast" :data-pencil="activityPencil(detail.category)" :data-cast="activityPencil(detail.category)"><i :style="{ background: categories[detail.category].mark }"></i>{{ detail.label }}</span>
+          <div class="intro-title-row">
+            <h2 v-sketch :key="detail.id" class="intro-name sketch pencil-fill sketch-cast" :data-pencil="activityPencil(detail.category)" :data-cast="activityPencil(detail.category)">{{ detail.title }}</h2>
+            <div class="intro-actions">
+              <button class="intro-save" type="button" :aria-pressed="saved.has(detail.id)" :aria-label="saved.has(detail.id) ? '取消收藏' : '收藏活动'" @click="toggleSave(detail.id)">
+                <span v-if="saved.has(detail.id)" v-sketch :key="detail.category" class="bookmark-pencil sketch pencil-fill sketch-fill-only" :data-pencil="activityPencil(detail.category)"></span>
+                <svg viewBox="0 0 24 32" aria-hidden="true"><path d="M4 2.5h16v26l-8-6-8 6Z" /></svg>
+              </button>
+              <button class="intro-back" type="button" aria-label="返回楼层地图" @click="closeDetail"><AppIcon name="back" /></button>
+            </div>
+          </div>
+          <p class="intro-fact"><svg class="intro-solid" viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M16 4a12 12 0 1 0 .01 0ZM15 9h2v7.2l4.2 2.4-1 1.7-5.2-3V9Z" /></svg><strong>{{ detail.time.replace('–', '-') }}</strong></p>
+          <p class="intro-fact"><svg class="intro-solid" viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M16 2a10 10 0 0 0-10 11c0 8 10 17 10 17s10-9 10-17A10 10 0 0 0 16 2Zm0 7.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7Z" /></svg><strong>{{ placeLine(detail) }}</strong></p>
+          <h3 class="intro-heading">活动简介<AppIcon class="title-spark" name="spark" /></h3>
+          <p class="intro-copy">{{ detail.description }}</p>
+          <RouterLink v-sketch class="intro-more sketch pencil-fill sketch-cast" data-pencil="yellow" data-cast="yellow" :to="activityDetailRoute(detail)">查看活动详情 <AppIcon name="chevron" /></RouterLink>
+        </section>
+      </template>
+      <template v-else-if="currentBuilding">
         <div class="building-head">
           <span v-sketch class="building-mark sketch pencil-fill sketch-cast" :data-pencil="buildingPencil(currentBuilding.id)" :data-cast="buildingPencil(currentBuilding.id)" aria-hidden="true">
             <svg class="building-art" viewBox="0 0 48 48"><circle cx="9" cy="27" r="5" fill="#7dbe78"/><circle cx="39" cy="28" r="4.2" fill="#8fce86"/><path d="M8.2 31.5v6M38.4 32v5" stroke="#5f8a58" stroke-width="1.6"/><path d="M16 20.5 24 13l8 7.5" fill="#f4d2c4" stroke="#20304b" stroke-width="1.4" stroke-linejoin="round"/><path d="M17 20.5h14V36H17Z" fill="#fffaf3" stroke="#20304b" stroke-width="1.4"/><path d="M22 36V25.5h4V36M28 36V25.5h3.2" fill="none" stroke="#20304b" stroke-width="1.3"/></svg>
@@ -190,7 +233,7 @@ watch(() => route.query.activity, applyActivityRoute);
             <button class="see-all" type="button" @click="showAll('activity')">查看全部 <AppIcon name="chevron" /></button>
           </div>
           <div class="snap-row" aria-label="附近活动" @scroll.passive="syncPage($event, 'activity')">
-            <button v-for="activity in visibleActivities" :key="activity.id" v-sketch class="event-card sketch sketch-white sketch-cast" :data-cast="activityPencil(activity.category)" @click="select(activity.building); floor = activity.floor">
+            <button v-for="activity in visibleActivities" :key="activity.id" v-sketch class="event-card sketch sketch-white sketch-cast" :data-cast="activityPencil(activity.category)" @click="openActivity(activity)">
               <span v-sketch class="place-badge sketch pencil-fill sketch-cast" :data-pencil="activityPencil(activity.category)" :data-cast="activityPencil(activity.category)"><AppIcon :name="activityIcon(activity.category)" /></span>
               <span class="event-copy"><small>{{ activity.label }}</small><strong>{{ activity.title }}</strong><span><AppIcon name="pin" />{{ activity.distance }} · {{ startTime(activity.time) }}</span></span>
               <AppIcon class="card-forward" name="chevron" />
@@ -205,7 +248,7 @@ watch(() => route.query.activity, applyActivityRoute);
             <button class="see-all" type="button" @click="showAll('liked')">查看全部 <AppIcon name="chevron" /></button>
           </div>
           <div class="snap-row" aria-label="猜你喜欢" @scroll.passive="syncPage($event, 'liked')">
-            <button v-for="activity in likedActivities" :key="activity.id" v-sketch class="event-card sketch sketch-white sketch-cast" :data-cast="activityPencil(activity.category)" @click="select(activity.building); floor = activity.floor">
+            <button v-for="activity in likedActivities" :key="activity.id" v-sketch class="event-card sketch sketch-white sketch-cast" :data-cast="activityPencil(activity.category)" @click="openActivity(activity)">
               <span v-sketch class="place-badge sketch pencil-fill sketch-cast" :data-pencil="activityPencil(activity.category)" :data-cast="activityPencil(activity.category)"><AppIcon :name="activityIcon(activity.category)" /></span>
               <span class="event-copy"><small>{{ activity.label }}</small><strong>{{ activity.title }}</strong><span><AppIcon name="pin" />{{ activity.distance }} · {{ startTime(activity.time) }}</span></span>
               <AppIcon class="card-forward" name="chevron" />
@@ -224,9 +267,6 @@ watch(() => route.query.activity, applyActivityRoute);
         </section>
       </template>
     </ActivityDrawer>
-    <dialog ref="dialog" class="map-activity-dialog" @click="event => { if (event.target === dialog) dialog.close(); }">
-      <template v-if="detail"><div class="detail-heading"><span>{{ detail.label }} · 今日演示</span><button aria-label="关闭活动详情" @click="dialog.close()"><AppIcon name="close" /></button></div><h2>{{ detail.title }}</h2><p>{{ detail.time }}</p><p>{{ detail.place }} · {{ detail.floor }}F</p><p class="detail-description">{{ detail.description }}</p><p class="detail-source">来源：{{ detail.source }}<br>固定演示内容，仅供界面设计参考。</p><div class="dialog-actions"><button v-sketch class="sketch" :data-pencil="saved.has(detail.id) ? 'yellow' : undefined" type="button" :aria-pressed="saved.has(detail.id)" @click="toggleSave(detail.id)">{{ saved.has(detail.id) ? '已收藏 · 取消收藏' : '收藏活动' }}</button><RouterLink v-sketch class="sketch" data-pencil="blue" :to="activityDetailRoute(detail)" @click="dialog.close()">跳转至详情页</RouterLink></div><button v-sketch class="sketch" data-pencil="yellow" @click="dialog.close(); select(detail.building); floor = detail.floor">返回楼层地图</button></template>
-    </dialog>
   </section>
 </template>
 
@@ -312,8 +352,24 @@ h2 { font-size: 19px; line-height: 1.4; font-weight: 400; margin: 0; }
 .ask-agent .icon { width: 16px; height: 16px; transform: rotate(-90deg); }
 .landmark-note { font-size: 12px; line-height: 1.8; color: #657e6e; margin: 12px 0; }.landmark-note small { display: block; margin-top: 7px; font-size: 9px; color: #8c968f; }
 .floor-empty { text-align: center; padding: 16px 0; font-size: 12px; color: #8c9c95; line-height: 1.8; }
-.map-activity-dialog { width: min(365px, calc(100% - 38px)); max-height: calc(100dvh - 70px); overflow: auto; border: 1.5px solid #657987; border-radius: 17px 15px 19px 14px; padding: 23px; color: var(--ink); background: #fbf8ef; }
-.map-activity-dialog::backdrop { background: #20304b5c; backdrop-filter: blur(3px); }.detail-heading { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: #7e9186; }.detail-heading button { background: transparent; border: 0; width: 36px; height: 36px; }.detail-heading .icon { width: 20px; height: 20px; }.map-activity-dialog h2 { margin: 16px 0; font-size: 22px; }.map-activity-dialog p { font-size: 12px; line-height: 1.8; }.detail-description { margin: 20px 0; }.map-activity-dialog .detail-source { font-size: 10px; color: #88958b; }.map-activity-dialog > button { min-height: 42px; width: 100%; background: transparent; font-size: 12px; margin-top: 12px; }
-.dialog-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin-top: 18px; }.dialog-actions button,.dialog-actions a { display: grid; place-items: center; min-height: 44px; padding: 8px 4px; font-size: 12px; background: transparent; color: var(--ink); text-decoration: none; }
+.activity-intro { display: grid; gap: 12px; padding-bottom: 8px; }
+.intro-pill { justify-self: start; display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 2px 10px; background: transparent; font-size: 13px; }
+.intro-pill i { width: 8px; height: 8px; border-radius: 50%; }
+.intro-title-row { display: flex; align-items: flex-start; gap: 8px; margin-top: -8px; }
+.intro-actions { display: flex; align-items: center; gap: 0; flex: none; margin-left: auto; }
+.intro-back { width: 36px; height: 36px; border: 0; background: transparent; padding: 6px; }
+.intro-back .icon { width: 22px; height: 22px; }
+.intro-save { position: relative; display: grid; place-items: center; width: 36px; height: 36px; border: 0; background: transparent; padding: 6px; }
+.bookmark-pencil { position: absolute; left: 50%; top: 50%; width: 128px; height: 176px; margin: -88px 0 0 -64px; border: 0; transform: scale(.125); pointer-events: none; clip-path: polygon(16.7% 7.8%, 83.3% 7.8%, 83.3% 89.1%, 50% 70.3%, 16.7% 89.1%); }
+.intro-save svg { position: relative; z-index: 1; width: 16px; height: 22px; fill: transparent; stroke: var(--ink); stroke-width: 1.8; stroke-linejoin: round; }
+.intro-name { width: max-content; max-width: calc(100% - 80px); margin: 0; padding: 10px 14px; font-size: 28px; font-weight: 400; line-height: 1.2; }
+.intro-fact { display: flex; align-items: center; gap: 10px; margin: 0; }
+.intro-solid { width: 22px; height: 22px; flex: none; color: var(--ink); }
+.intro-fact strong { font-weight: 400; font-size: 16px; }
+.intro-heading { display: inline-flex; align-items: center; gap: 4px; margin: 4px 0 0; font-size: 20px; font-weight: 400; background: linear-gradient(var(--intro-ink), var(--intro-ink)) left 78% / 4.2em 8px no-repeat; }
+.intro-heading .title-spark { color: var(--intro-ink); }
+.intro-copy { margin: 0; font-size: 14px; line-height: 1.55; }
+.intro-more { justify-self: start; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin-top: 4px; padding: 8px 18px; background: transparent; font-size: 16px; }
+.intro-more .icon { width: 16px; height: 16px; transform: rotate(-90deg); }
 @media (max-width: 359px) { .filter-row { gap: 3px; }.filter-chip { padding: 7px 8px; }.map-search-wrap { margin: 0 15px; }.building-copy h2, .activity-body strong { font-size: 14px; }.activity-meta span { font-size: 10px; }.agent-promo { grid-template-columns: minmax(0, 1fr) 88px; }.agent-bubble h2 { font-size: 18px; }.agent-bubble p { font-size: 12px; }.agent-mascot { width: 88px; height: 88px; } }
 </style>
