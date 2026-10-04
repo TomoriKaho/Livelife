@@ -140,7 +140,7 @@ fix: (地图) 修复地图标记点击异常
 docs: (部署) 补充部署说明
 ```
 
-分支名使用 `feat/12-subscription-api` 等形式。
+优先在 Issue 的 Development 区域点击 **Create a branch**，从 `main` 创建并关联分支。名称使用默认的 `编号-Issue名`，较长时缩短为 `编号-简短任务名`，例如 `12-subscription-api`。本地拉取和创建方法见 [创建开发分支](../CONTRIBUTING.md#3-创建开发分支)。
 
 ### 创建与填写 PR
 

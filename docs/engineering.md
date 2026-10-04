@@ -60,7 +60,7 @@ commit 和 PR 标题统一使用 `类型: (范围) 描述`，使用英文冒号�
 | chore    | 其他维护                                   |
 | revert   | 撤销改动                                   |
 
-分支名称继续使用 `feat/12-subscription-api`、`fix/28-map-marker` 等格式。
+基于 Issue 的分支优先通过 Issue 页面右侧 Development 中的 **Create a branch** 创建，使用默认的 `编号-Issue名`；名称较长时缩短为 `编号-简短任务名`，例如 `12-subscription-api`、`28-map-marker`。从 `main` 创建，已有分支继续使用。操作教程见 [创建开发分支](../CONTRIBUTING.md#3-创建开发分支)。
 
 ```text
 feat: (订阅) 新增兴趣订阅接口

@@ -54,7 +54,7 @@
 
 ```text
 请先读取根目录 AGENTS.md 和相关文档。
-在 feat/12-subscription-api 分支实现 Issue #12。
+在 12-subscription-api 分支实现 Issue #12。
 接口以已确认的订阅契约为准，验收条件见 Issue。
 完成后执行相关检查，并说明改动、验证结果和待解决问题。
 如果需要改变接口契约，请先说明影响和建议。

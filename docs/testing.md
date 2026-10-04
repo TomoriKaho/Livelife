@@ -24,11 +24,11 @@
 
 ### 本地拉取
 
-在无待处理改动的工作区，先 fetch，再创建自己的评审分支。例如 PR 的来源为同仓库 feat/12-subscription-api：
+在无待处理改动的工作区，先 fetch，再创建自己的评审分支。例如 PR 的来源为同仓库 12-subscription-api：
 
 ```bash
 git fetch origin
-git switch -c review/12 origin/feat/12-subscription-api
+git switch -c review/12 origin/12-subscription-api
 ```
 
 按工程启动文档运行，按 PR 步骤验证。若已有同名本地分支，使用另一个名称，不覆盖已有工作。跨仓库 PR 可使用 GitHub CLI 的 `gh pr checkout <编号>`，前提是已安装并认证。评审完成切回原分支；不要顺手修改作者分支并推送。
