@@ -13,7 +13,8 @@
     "test:map": "node --test scripts/campus-map.test.mjs",
     "test:drawer": "node --test scripts/activity-drawer.test.mjs",
     "test:composer": "node --test scripts/composer-layout.test.mjs",
-    "test:favorites": "node --test scripts/favorites.test.mjs"
+    "test:favorites": "node --test scripts/favorites.test.mjs",
+    "test:plan": "node --test scripts/campus-plan.test.mjs"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"

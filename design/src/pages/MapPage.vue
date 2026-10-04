@@ -13,9 +13,11 @@ import campus from '../../assets/maps/campus.json';
 import { activities, categories, filters, venues } from './map/demo.js';
 import { profileFor } from './map/model-profiles.mjs';
 const CampusScene = defineAsyncComponent(() => import('./map/CampusScene.vue'));
+const CampusPlan = defineAsyncComponent(() => import('./map/CampusPlan.vue'));
 const route = useRoute(), focusPoint = ref(null), routedActivity = ref(null);
 const mode = ref('3d'), filter = ref('all'), search = ref(''), selected = ref(null), floor = ref(2), scene = ref(null), located = ref(false), detail = ref(null), dialog = ref(null);
 const drawer = ref(null), drawerPeek = ref(180);
+const planView = ref(null);
 let drawerBeforeSelection = null;
 const campusActivities = activities.filter(item => item.building);
 const visibleActivities = computed(() => campusActivities.filter(item => filter.value === 'all' || item.category === filter.value));
@@ -75,7 +77,7 @@ function select(id) {
     if (drawerBeforeSelection !== null) drawer.value?.setState(drawerBeforeSelection);
     drawerBeforeSelection = null;
   }
-  selected.value = id; search.value = ''; mode.value = '3d';
+  selected.value = id; search.value = '';
   floor.value = visibleActivities.value.find(a => a.building === id)?.floor || 1;
 }
 async function openActivity(activity) { detail.value = activity; await nextTick(); dialog.value.showModal(); }
@@ -85,7 +87,10 @@ async function locate() {
   await nextTick(); scene.value?.locate();
 }
 async function setMode(value) {
-  drawerBeforeSelection = null; mode.value = value; selected.value = null; search.value = ''; focusPoint.value = null; routedActivity.value = null;
+  if (value === mode.value) return;
+  if (mode.value === '2d') planView.value = scene.value?.getView();
+  // 两种地图共用建筑、楼层和抽屉状态，切换后继续查看同一处活动。
+  mode.value = value; search.value = '';
   await nextTick();
   window.HandDrawn?.refresh();
 }
@@ -107,14 +112,12 @@ watch(() => route.query.activity, applyActivityRoute);
   <section class="map-page" aria-label="燕园活动探索">
     <h1 id="page-title" class="map-page-title" tabindex="-1">活动地图</h1>
     <div class="map-rule" aria-hidden="true"></div>
-    <div class="map-stage" :class="{ 'empty-2d': mode === '2d', 'building-focus': selected }" :style="{ '--drawer-peek': `${mode === '3d' ? drawerPeek : 0}px` }">
+    <div class="map-stage" :class="{ 'building-focus': selected, 'plan-mode': mode === '2d' }" :style="{ '--drawer-peek': `${drawerPeek}px` }">
       <CampusScene v-if="mode === '3d'" ref="scene" :focus-inset="drawerPeek" :focus-point="focusPoint" :selected="selected" :floor="floor" :activities="visibleActivities" @select="select" @floor="floor = $event" />
-      <div v-else class="blank-map" aria-label="2D 地图留白，待后续设计"></div>
-      <template v-if="mode === '3d'">
-        <span class="campus-caption">北京大学 · 燕园</span>
-        <div class="map-hint">{{ routedActivity ? `${routedActivity.title}${focusPoint ? ' · 地点示意' : ` · ${floor}F`}` : currentBuilding?.scenic ? '拖动环绕博雅塔 · 缩小看看未名湖' : selected ? '点楼层查看活动 · 拖动查看另一侧' : '点建筑，看看楼层里正在发生什么' }}</div>
+      <CampusPlan v-else ref="scene" :focus-inset="drawerPeek" :focus-point="focusPoint" :selected="selected" :activities="visibleActivities" :starting-view="planView" @select="select" />
+        <span v-if="mode === '3d'" class="campus-caption">北京大学 · 燕园</span>
+        <div class="map-hint">{{ routedActivity ? `${routedActivity.title}${focusPoint ? ' · 地点示意' : ` · ${floor}F`}` : mode === '2d' ? selected ? '俯视建筑 · 在下方切换楼层查看活动' : '点建筑查看活动 · 拖动平移 · 双指缩放' : currentBuilding?.scenic ? '拖动环绕博雅塔 · 缩小看看未名湖' : selected ? '点楼层查看活动 · 拖动查看另一侧' : '点建筑，看看楼层里正在发生什么' }}</div>
         <a class="map-attribution" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a>
-      </template>
       <div class="map-overlay">
       <div class="map-search-wrap">
         <label v-sketch class="map-search sketch sketch-white"><AppIcon name="pin" /><input v-model="search" type="search" placeholder="找建筑、教室或活动…" aria-label="搜索燕园建筑、教室或活动" autocomplete="off" /><span class="search-campus">燕园</span></label>
@@ -132,14 +135,14 @@ watch(() => route.query.activity, applyActivityRoute);
         <div v-sketch class="mode-switch sketch sketch-white sketch-cast" data-cast="blue" role="tablist" aria-label="地图显示模式">
           <button v-for="item in ['3d', '2d']" :key="`${item}-${mode === item}`" v-sketch class="mode-tab" :class="mode === item ? 'sketch pencil-fill sketch-fill-only' : ''" :data-pencil="mode === item ? 'blue' : undefined" type="button" role="tab" :aria-selected="mode === item" @click="setMode(item)">{{ item.toUpperCase() }}</button>
         </div>
-        <div v-if="mode === '3d'" class="map-tools" aria-label="地图控制">
+        <div class="map-tools" aria-label="地图控制">
           <button v-sketch class="sketch" aria-label="放大地图" @click="scene?.zoom(.8)">＋</button>
           <button v-sketch class="sketch" aria-label="缩小地图" @click="scene?.zoom(1.25)">−</button>
           <button v-sketch class="sketch locate-button" :data-pencil="located ? 'blue' : undefined" aria-label="查看示例定位附近的活动" @click="locate">◎</button>
         </div>
       </div>
     </div>
-    <ActivityDrawer v-if="mode === '3d'" ref="drawer" @measure="drawerPeek = $event">
+    <ActivityDrawer ref="drawer" @measure="drawerPeek = $event">
       <template v-if="currentBuilding">
         <div class="building-head">
           <span v-sketch class="building-mark sketch pencil-fill sketch-cast" :data-pencil="buildingPencil(currentBuilding.id)" :data-cast="buildingPencil(currentBuilding.id)" aria-hidden="true">
@@ -151,7 +154,7 @@ watch(() => route.query.activity, applyActivityRoute);
           </div>
           <button class="building-back" type="button" aria-label="返回" @click="select(null)"><AppIcon name="back" /></button>
         </div>
-        <p v-if="currentBuilding.scenic" class="landmark-note">未名湖东南的十三重密檐塔。保留完整外观，拖动地图可环绕查看塔身与湖岸。<small>外观为实景特征的简化建模 · 此地标暂无示例活动</small></p>
+        <p v-if="currentBuilding.scenic" class="landmark-note">未名湖东南的十三重密檐塔。{{ mode === '2d' ? '俯视图展示塔顶与湖岸位置，切换 3D 可环绕查看塔身。' : '保留完整外观，拖动地图可环绕查看塔身与湖岸。' }}<small>外观为实景特征的简化建模 · 此地标暂无示例活动</small></p>
         <template v-else>
           <div v-sketch class="floor-switch sketch sketch-white" role="tablist" aria-label="选择建筑楼层">
             <button v-for="number in currentBuilding.floors" :key="`${number}-${floor === number}`" v-sketch class="floor-tab" :class="floor === number ? 'sketch pencil-fill sketch-fill-only' : ''" :data-pencil="floor === number ? 'blue' : undefined" type="button" role="tab" :aria-selected="floor === number" @click="floor = number">{{ number }}F</button>
@@ -244,9 +247,8 @@ watch(() => route.query.activity, applyActivityRoute);
 .search-results button { display: flex; gap: 7px; width: 100%; padding: 12px 4px; align-items: center; background: transparent; border: 0; text-align: left; font-size: 12px; }
 .search-results button span:last-child { margin-left: auto; }.search-results .icon { width: 15px; height: 15px; }.search-results p { font-size: 12px; }
 .filter-row { display: flex; align-items: center; gap: 6px; padding: 8px 17px 0; pointer-events: auto; }
-.filter-chip { padding: 7px 10px; min-height: 36px; font-size: 12px; background: transparent; }.demo-stamp { margin-left: auto; font-size: 10px; color: #899287; white-space: nowrap; }
+.filter-chip { flex: none; padding: 7px 10px; min-height: 36px; font-size: 12px; white-space: nowrap; background: transparent; }.demo-stamp { margin-left: auto; font-size: 10px; color: #899287; white-space: nowrap; }
 .map-stage { position: relative; min-height: 0; flex: 1; overflow: hidden; background: var(--blue); }
-.blank-map { position: absolute; inset: 0; }
 .map-rail { position: absolute; right: 12px; top: 104px; z-index: 6; display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .mode-switch { display: grid; grid-template-columns: 1fr; width: 44px; padding: 3px; background: transparent; }
 .mode-tab { min-height: 34px; border: 0; background: transparent; font-size: 11px; color: var(--ink); padding: 4px 0; }
@@ -317,5 +319,5 @@ h2 { font-size: 19px; line-height: 1.4; font-weight: 400; margin: 0; }
 .map-activity-dialog { width: min(365px, calc(100% - 38px)); max-height: calc(100dvh - 70px); overflow: auto; border: 1.5px solid #657987; border-radius: 17px 15px 19px 14px; padding: 23px; color: var(--ink); background: #fbf8ef; }
 .map-activity-dialog::backdrop { background: #20304b5c; backdrop-filter: blur(3px); }.detail-heading { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: #7e9186; }.detail-heading button { background: transparent; border: 0; width: 36px; height: 36px; }.detail-heading .icon { width: 20px; height: 20px; }.map-activity-dialog h2 { margin: 16px 0; font-size: 22px; }.map-activity-dialog p { font-size: 12px; line-height: 1.8; }.detail-description { margin: 20px 0; }.map-activity-dialog .detail-source { font-size: 10px; color: #88958b; }.map-activity-dialog > button { min-height: 42px; width: 100%; background: transparent; font-size: 12px; margin-top: 12px; }
 .dialog-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin-top: 18px; }.dialog-actions button,.dialog-actions a { display: grid; place-items: center; min-height: 44px; padding: 8px 4px; font-size: 12px; background: transparent; color: var(--ink); text-decoration: none; }
-@media (max-width: 359px) { .filter-row { gap: 3px; }.filter-chip { padding: 7px 10px; }.map-search-wrap { margin: 0 15px; }.building-copy h2, .activity-body strong { font-size: 14px; }.activity-meta span { font-size: 10px; }.agent-promo { grid-template-columns: minmax(0, 1fr) 88px; }.agent-bubble h2 { font-size: 18px; }.agent-bubble p { font-size: 12px; }.agent-mascot { width: 88px; height: 88px; } }
+@media (max-width: 359px) { .filter-row { gap: 3px; }.filter-chip { padding: 7px 8px; }.map-search-wrap { margin: 0 15px; }.building-copy h2, .activity-body strong { font-size: 14px; }.activity-meta span { font-size: 10px; }.agent-promo { grid-template-columns: minmax(0, 1fr) 88px; }.agent-bubble h2 { font-size: 18px; }.agent-bubble p { font-size: 12px; }.agent-mascot { width: 88px; height: 88px; } }
 </style>
