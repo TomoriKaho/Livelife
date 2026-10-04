@@ -14,6 +14,10 @@
       <symbol id="icon-pencil" viewBox="0 0 32 32"><path d="m7 20 15-15q2-2 5 1t1 4L13 25l-9 3Z M20 7l6 6 M7 20l6 5 M4 28l2-6"/></symbol>
       <symbol id="icon-close" viewBox="0 0 32 32"><path d="m8 8 16 16 M24 8 8 24"/></symbol>
       <symbol id="icon-spark" viewBox="0 0 32 32"><path d="m16 3 3 10 10 3-10 3-3 10-3-10-10-3 10-3Z"/></symbol>
+      <symbol id="icon-clock" viewBox="0 0 32 32"><circle cx="16" cy="16" r="11"/><path d="M16 9v8l5 3"/></symbol>
+      <symbol id="icon-megaphone" viewBox="0 0 32 32"><path d="M7 13h4l13-7v20L11 19H7Z M11 19.2V25h3.2L16 19"/><path d="M24 12.5c2 1.2 2 5.8 0 7"/></symbol>
+      <symbol id="icon-people" viewBox="0 0 32 32"><circle cx="12" cy="11" r="3.2"/><circle cx="21.5" cy="12.2" r="2.5"/><path d="M4.5 26.5c.7-5.2 3.6-7.8 7.5-7.8s6.8 2.6 7.5 7.8"/><path d="M18.2 19.2c1.5-.7 3.2-1 4.8-.5 2.6.8 4 3.2 4.5 6.8"/></symbol>
+      <symbol id="icon-flag" viewBox="0 0 32 32"><path d="M9 4v24 M9 6h15l-3.2 5.2L24 16.5H9"/></symbol>
     </defs>
   </svg>
 </template>

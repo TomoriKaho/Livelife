@@ -220,13 +220,18 @@ export function createHandDrawnRenderer() {
     }
     const faint = element.classList.contains('page-outlet');
     const ink = faint ? '#7f91a3' : '#20304b';
-    if (fillOnly) return;
-    // 参考图中的黄蓝偏移笔迹，模拟彩铅在右下沿留下的轻描边。
+    // 偏移笔迹只沿右缘和底缘，在转入左边框之前停下。
     const accent = cast || (element.classList.contains('art-paper') ? '#9ac8f2' : '#ffdf32');
     const highlighted = Boolean(cast) || element.matches('.brand, .art-paper') || (element.classList.contains('nav-item') && element.hasAttribute('aria-current'));
     if (highlighted) {
-      svg.append(node('path', { d: pathFor(outline.slice(0, Math.ceil(outline.length * .58)), false, true), fill: 'none', stroke: accent, 'stroke-width': '3.6', opacity: '.72', transform: 'translate(2 3)', 'stroke-linecap': 'round' }));
+      const leftX = Math.max(18, Math.min(40, width * 0.18));
+      let end = outline.length;
+      for (let i = 6; i < outline.length; i++) {
+        if (outline[i][0] < leftX) { end = i; break; }
+      }
+      svg.append(node('path', { d: pathFor(outline.slice(0, Math.max(4, end)), false, true), fill: 'none', stroke: accent, 'stroke-width': '3.6', opacity: '.72', transform: 'translate(2 3)', 'stroke-linecap': 'round' }));
     }
+    if (fillOnly) return;
     // 主导航沿用参考图的视觉层级：只勾出当前项，其他入口保留图标和文字。
     if (element.classList.contains('nav-item') && !element.hasAttribute('aria-current')) return;
     // 主勾线、偏移复描，以及深浅不同的短线段共同形成石墨轮廓。

@@ -92,7 +92,7 @@ onBeforeUnmount(() => observer?.disconnect());
       <button class="drawer-handle" type="button" :aria-expanded="state !== 'hidden'" aria-controls="map-drawer-content" :aria-label="handleLabel"
         @click="toggle" @keydown.up.prevent="step(1)" @keydown.down.prevent="step(-1)"
         @pointerdown="pointerStart" @pointermove="event => move(event.clientX, event.clientY, event)" @pointerup="finish()" @pointercancel="finish(true)">
-        <span class="sheet-grip" aria-hidden="true"></span><span v-show="state !== 'hidden'" class="handle-caption">上滑发现更多，下滑隐藏内容</span>
+        <span class="sheet-grip" aria-hidden="true"></span>
       </button>
       <div id="map-drawer-content" ref="content" class="drawer-content" :inert="state === 'hidden'" :aria-hidden="state === 'hidden' ? true : undefined" @touchstart.passive="touchStart" @touchmove="touchMove" @touchend="finish()" @touchcancel="finish(true)">
         <slot />
@@ -102,14 +102,13 @@ onBeforeUnmount(() => observer?.disconnect());
 </template>
 
 <style scoped>
-.activity-drawer { position: absolute; left: 0; right: 0; z-index: 15; display: flex; flex-direction: column; min-height: 0; overflow: hidden; background: #fff; box-shadow: 0 -5px 18px #20304b0a; transition: height 620ms cubic-bezier(.22, 1, .36, 1); }
+.activity-drawer { position: absolute; left: 0; right: 0; z-index: 15; display: flex; flex-direction: column; min-height: 0; overflow: hidden; background: #f8f4ea; box-shadow: 0 -5px 18px #20304b0a; transition: height 620ms cubic-bezier(.22, 1, .36, 1); }
 .activity-drawer.dragging { transition: none; }
 .drawer-edge { position: absolute; top: 0; left: 0; width: 100%; height: 3px; pointer-events: none; fill: none; stroke: var(--ink); stroke-width: 1.6; }
 .drawer-handle { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; height: 38px; flex: 0 0 38px; border: 0; background: transparent; touch-action: none; cursor: ns-resize; }
 .drawer-handle:active { transform: none; }
 .drawer-handle:focus-visible { outline-offset: -6px; }
 .sheet-grip { width: 32px; height: 3px; border-radius: 70%; background: #8d9b9e; }
-.handle-caption { font-size: 9px; line-height: 1; color: var(--muted); }
 .drawer-content { flex: 1; min-height: 0; padding: 0 17px 18px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 @media (max-width: 359px) { .drawer-content { padding-left: 15px; padding-right: 15px; } }
 @media (prefers-reduced-motion: reduce) { .activity-drawer { transition: none; } }

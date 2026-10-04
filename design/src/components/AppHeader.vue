@@ -7,7 +7,7 @@ defineEmits(['notify']);
 
 <template>
   <header class="app-header">
-    <RouterLink v-sketch class="app-brand sketch pencil-fill" data-pencil="yellow" to="/map" aria-label="LiveLife，返回活动地图">
+    <RouterLink v-sketch class="app-brand sketch pencil-fill sketch-cast" data-pencil="yellow" data-cast="yellow" to="/map" aria-label="LiveLife，返回活动地图">
       <BalloonArt compact />
       <span class="brand-word">LiveLife</span>
     </RouterLink>
