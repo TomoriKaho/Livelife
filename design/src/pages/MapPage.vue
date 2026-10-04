@@ -73,14 +73,14 @@ function placeLine(activity) {
   const venue = venues.find(item => item.id === activity.building);
   return [venue?.short || activity.place || '校园', `${activity.floor}F`, activity.room].filter(Boolean).join(' · ');
 }
-function openActivity(activity) {
+function openActivity(activity, { expand = true } = {}) {
   if (!activity?.building) return;
   if (!selected.value) drawerBeforeSelection = drawer.value?.getState() ?? 'middle';
   selected.value = activity.building;
   floor.value = activity.floor || 1;
   detail.value = activity;
   search.value = '';
-  drawer.value?.setState('expanded');
+  drawer.value?.setState(expand ? 'expanded' : 'middle');
   nextTick(() => window.HandDrawn?.refresh());
 }
 function closeDetail() {
@@ -121,7 +121,7 @@ async function applyActivityRoute() {
   if (!item) return;
   filter.value = 'all'; mode.value = '3d';
   await nextTick();
-  if (item.building) openActivity(item);
+  if (item.building) openActivity(item, { expand: false });
   else select(null);
   floor.value = item.floor || 1;
   focusPoint.value = item.mapPosition || null;
@@ -166,15 +166,21 @@ watch(() => route.query.activity, applyActivityRoute);
     <ActivityDrawer ref="drawer" @measure="drawerPeek = $event">
       <template v-if="detail">
         <section class="activity-intro" :aria-label="detail.title" :style="{ '--intro-ink': activityInk(detail.category) }">
-          <span v-sketch class="intro-pill sketch pencil-fill sketch-cast" :data-pencil="activityPencil(detail.category)" :data-cast="activityPencil(detail.category)"><i :style="{ background: categories[detail.category].mark }"></i>{{ detail.label }}</span>
+          <div class="intro-head">
+            <button class="intro-back" type="button" aria-label="返回楼层地图" @click="closeDetail"><AppIcon name="back" /></button>
+            <span v-sketch class="intro-pill sketch pencil-fill sketch-cast" :data-pencil="activityPencil(detail.category)" :data-cast="activityPencil(detail.category)"><i :style="{ background: categories[detail.category].mark }"></i>{{ detail.label }}</span>
+          </div>
           <div class="intro-title-row">
-            <h2 v-sketch :key="detail.id" class="intro-name sketch pencil-fill sketch-cast" :data-pencil="activityPencil(detail.category)" :data-cast="activityPencil(detail.category)">{{ detail.title }}</h2>
+            <h2 v-sketch :key="detail.id" class="intro-name sketch sketch-white sketch-cast" :data-cast="activityPencil(detail.category)">{{ detail.title }}</h2>
             <div class="intro-actions">
               <button class="intro-save" type="button" :aria-pressed="saved.has(detail.id)" :aria-label="saved.has(detail.id) ? '取消收藏' : '收藏活动'" @click="toggleSave(detail.id)">
-                <span v-if="saved.has(detail.id)" v-sketch :key="detail.category" class="bookmark-pencil sketch pencil-fill sketch-fill-only" :data-pencil="activityPencil(detail.category)"></span>
+                <span v-sketch :key="detail.id" class="bookmark-pencil sketch sketch-fill-only" :class="saved.has(detail.id) ? 'pencil-fill' : 'sketch-white'" :data-pencil="saved.has(detail.id) ? 'yellow' : undefined"></span>
                 <svg viewBox="0 0 24 32" aria-hidden="true"><path d="M4 2.5h16v26l-8-6-8 6Z" /></svg>
               </button>
-              <button class="intro-back" type="button" aria-label="返回楼层地图" @click="closeDetail"><AppIcon name="back" /></button>
+              <RouterLink class="intro-view" :to="activityDetailRoute(detail)" aria-label="查看活动详情">
+                <span v-sketch class="eye-pencil sketch sketch-white sketch-fill-only" aria-hidden="true"></span>
+                <AppIcon name="eye" />
+              </RouterLink>
             </div>
           </div>
           <p class="intro-fact"><svg class="intro-solid" viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M16 4a12 12 0 1 0 .01 0ZM15 9h2v7.2l4.2 2.4-1 1.7-5.2-3V9Z" /></svg><strong>{{ detail.time.replace('–', '-') }}</strong></p>
@@ -353,16 +359,20 @@ h2 { font-size: 19px; line-height: 1.4; font-weight: 400; margin: 0; }
 .landmark-note { font-size: 12px; line-height: 1.8; color: #657e6e; margin: 12px 0; }.landmark-note small { display: block; margin-top: 7px; font-size: 9px; color: #8c968f; }
 .floor-empty { text-align: center; padding: 16px 0; font-size: 12px; color: #8c9c95; line-height: 1.8; }
 .activity-intro { display: grid; gap: 12px; padding-bottom: 8px; }
+.intro-head { display: flex; align-items: center; gap: 2px; min-height: 36px; }
 .intro-pill { justify-self: start; display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 2px 10px; background: transparent; font-size: 13px; }
 .intro-pill i { width: 8px; height: 8px; border-radius: 50%; }
 .intro-title-row { display: flex; align-items: flex-start; gap: 8px; margin-top: -8px; }
-.intro-actions { display: flex; align-items: center; gap: 0; flex: none; margin-left: auto; }
-.intro-back { width: 36px; height: 36px; border: 0; background: transparent; padding: 6px; }
+.intro-actions { display: flex; align-items: center; gap: 2px; flex: none; margin-left: auto; }
+.intro-back { display: grid; place-items: center; width: 36px; height: 36px; flex: none; border: 0; background: transparent; padding: 6px; color: var(--ink); }
 .intro-back .icon { width: 22px; height: 22px; }
-.intro-save { position: relative; display: grid; place-items: center; width: 36px; height: 36px; border: 0; background: transparent; padding: 6px; }
-.bookmark-pencil { position: absolute; left: 50%; top: 50%; width: 128px; height: 176px; margin: -88px 0 0 -64px; border: 0; transform: scale(.125); pointer-events: none; clip-path: polygon(16.7% 7.8%, 83.3% 7.8%, 83.3% 89.1%, 50% 70.3%, 16.7% 89.1%); }
-.intro-save svg { position: relative; z-index: 1; width: 16px; height: 22px; fill: transparent; stroke: var(--ink); stroke-width: 1.8; stroke-linejoin: round; }
-.intro-name { width: max-content; max-width: calc(100% - 80px); margin: 0; padding: 10px 14px; font-size: 28px; font-weight: 400; line-height: 1.2; }
+.intro-view { position: relative; display: grid; place-items: center; width: 42px; height: 42px; flex: none; border: 0; background: transparent; padding: 6px; color: var(--ink); text-decoration: none; }
+.intro-view .icon { position: relative; z-index: 1; width: 28px; height: 28px; }
+.eye-pencil { position: absolute; left: 50%; top: 50%; width: 224px; height: 224px; margin: -112px 0 0 -112px; border: 0; transform: scale(.125); pointer-events: none; clip-path: ellipse(39% 31% at 50% 50%); }
+.intro-save { position: relative; display: grid; place-items: center; width: 42px; height: 42px; border: 0; background: transparent; padding: 6px; }
+.bookmark-pencil { position: absolute; left: 50%; top: 50%; width: 176px; height: 240px; margin: -120px 0 0 -88px; border: 0; transform: scale(.125); pointer-events: none; clip-path: polygon(16.7% 7.8%, 83.3% 7.8%, 83.3% 89.1%, 50% 70.3%, 16.7% 89.1%); }
+.intro-save svg { position: relative; z-index: 1; width: 22px; height: 30px; fill: transparent; stroke: var(--ink); stroke-width: 1.8; stroke-linejoin: round; }
+.intro-name { width: max-content; max-width: calc(100% - 92px); margin: 0; padding: 10px 14px; font-size: 28px; font-weight: 400; line-height: 1.2; background: transparent; }
 .intro-fact { display: flex; align-items: center; gap: 10px; margin: 0; }
 .intro-solid { width: 22px; height: 22px; flex: none; color: var(--ink); }
 .intro-fact strong { font-weight: 400; font-size: 16px; }

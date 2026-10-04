@@ -18,6 +18,7 @@
       <symbol id="icon-megaphone" viewBox="0 0 32 32"><path d="M7 13h4l13-7v20L11 19H7Z M11 19.2V25h3.2L16 19"/><path d="M24 12.5c2 1.2 2 5.8 0 7"/></symbol>
       <symbol id="icon-people" viewBox="0 0 32 32"><circle cx="12" cy="11" r="3.2"/><circle cx="21.5" cy="12.2" r="2.5"/><path d="M4.5 26.5c.7-5.2 3.6-7.8 7.5-7.8s6.8 2.6 7.5 7.8"/><path d="M18.2 19.2c1.5-.7 3.2-1 4.8-.5 2.6.8 4 3.2 4.5 6.8"/></symbol>
       <symbol id="icon-flag" viewBox="0 0 32 32"><path d="M9 4v24 M9 6h15l-3.2 5.2L24 16.5H9"/></symbol>
+      <symbol id="icon-eye" viewBox="0 0 32 32"><path d="M3.4 16.1C7 8.8 11.6 6.2 16.1 6.4c4.6.2 9.2 3.2 12.5 9.6-3.6 7.4-8.2 10-12.7 9.8-4.6-.2-9-3.3-12.5-9.7Z"/><circle cx="16" cy="16" r="4.1"/><circle cx="16.4" cy="15.5" r="1.3" fill="currentColor" stroke="none"/></symbol>
     </defs>
   </svg>
 </template>

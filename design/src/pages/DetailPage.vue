@@ -1,5 +1,5 @@
 <script>
-// 详情不归属任何一个底部 Tab。标题栏和评论由本页绘制。
+// 详情不归属任何一个底部 Tab。返回、收藏和评论由本页绘制。
 export const pageMeta = {
   key: 'detail',
   id: 'D-03',
@@ -113,54 +113,57 @@ function publish() {
 <template>
   <section class="detail-page" :style="{ '--kind-ink': kindInk }" :aria-label="activity ? activity.title : '活动详情'">
     <div ref="scroller" class="detail-scroll">
-    <div class="toolbar">
-      <button v-sketch class="back sketch" type="button" @click="goBack">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5 7 12l7 7" /></svg>
-        返回
-      </button>
-      <h1 id="page-title" tabindex="-1">活动详情</h1>
-      <button
-        v-sketch
-        class="mark sketch"
-        :class="{ 'pencil-fill': saved }"
-        :data-pencil="saved ? 'yellow' : undefined"
-        type="button"
-        :aria-pressed="saved"
-        :aria-label="saved ? '取消收藏' : '收藏活动'"
-        @click="saved = !saved"
-      >
-        <svg viewBox="0 0 24 32" aria-hidden="true"><path d="M5 3h14v25l-7-5.5L5 28Z" /></svg>
-      </button>
-    </div>
-
     <template v-if="activity && category">
       <div class="hero">
-        <div class="hero-copy">
-          <p class="meta">
-            <span v-sketch :key="activity.id" class="kind sketch pencil-fill sketch-cast" :data-pencil="category.pencil" :data-cast="category.pencil">
-              <i :style="{ background: category.mark }"></i>{{ category.label }}
-            </span>
-          </p>
-          <h2 class="event-title">
-            <span>{{ activity.title }}</span>
-            <svg class="rays" viewBox="0 0 28 22" aria-hidden="true"><path d="M6 16c5-2 9-6 13-12" /><path d="M14 18c3-4 5-8 7-13" /></svg>
-          </h2>
-        </div>
-        <RouterLink v-if="activity.building" v-sketch class="to-map sketch pencil-fill sketch-cast" data-pencil="yellow" data-cast="yellow" :to="{ path: '/map', query: { activity: activity.id } }">前往地图</RouterLink>
+        <p class="meta">
+          <button class="back" type="button" aria-label="返回" @click="goBack">
+            <AppIcon name="back" />
+          </button>
+          <span v-sketch :key="activity.id" class="kind sketch pencil-fill sketch-cast" :data-pencil="category.pencil" :data-cast="category.pencil">
+            <i :style="{ background: category.mark }"></i>{{ category.label }}
+          </span>
+        </p>
+        <h1 id="page-title" class="event-title" tabindex="-1">
+          <span>{{ activity.title }}</span>
+          <svg class="rays" viewBox="0 0 28 22" aria-hidden="true"><path d="M6 16c5-2 9-6 13-12" /><path d="M14 18c3-4 5-8 7-13" /></svg>
+        </h1>
       </div>
 
-      <p class="fact">
-        <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="11" fill="currentColor" /><path d="M16 9.5V16l4.5 2.6" fill="none" stroke="#f8f4ea" stroke-width="2.2" stroke-linecap="round" /></svg>
-        <span>{{ activity.time }}</span>
-      </p>
-      <p class="fact">
-        <svg viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M16 2a10 10 0 0 0-10 11c0 8 10 17 10 17s10-9 10-17A10 10 0 0 0 16 2Z" /><circle cx="16" cy="13" r="3.2" fill="#f8f4ea" /></svg>
-        <span>{{ place }}</span>
-      </p>
-      <p class="fact">
-        <svg viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M8 4h12l6 6v18H8Z" /><path fill="#f8f4ea" d="M19 4v7h7" /><path fill="#f8f4ea" d="M12 16h9v2h-9zm0 5h7v2h-7z" /></svg>
-        <span>来源：{{ activity.source }}</span>
-      </p>
+      <div class="facts">
+        <div class="facts-copy">
+          <p class="fact">
+            <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="11" fill="currentColor" /><path d="M16 9.5V16l4.5 2.6" fill="none" stroke="#f8f4ea" stroke-width="2.2" stroke-linecap="round" /></svg>
+            <span>{{ activity.time }}</span>
+          </p>
+          <p class="fact">
+            <svg viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M16 2a10 10 0 0 0-10 11c0 8 10 17 10 17s10-9 10-17A10 10 0 0 0 16 2Z" /><circle cx="16" cy="13" r="3.2" fill="#f8f4ea" /></svg>
+            <span>{{ place }}</span>
+          </p>
+          <p class="fact">
+            <svg viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M8 4h12l6 6v18H8Z" /><path fill="#f8f4ea" d="M19 4v7h7" /><path fill="#f8f4ea" d="M12 16h9v2h-9zm0 5h7v2h-7z" /></svg>
+            <span>来源：{{ activity.source }}</span>
+          </p>
+        </div>
+        <div class="facts-actions">
+          <button
+            :key="`save-${saved}`"
+            v-sketch
+            class="action-chip sketch sketch-cast"
+            :class="saved ? 'pencil-fill' : 'sketch-white'"
+            :data-pencil="saved ? 'yellow' : undefined"
+            data-cast="yellow"
+            type="button"
+            :aria-pressed="saved"
+            @click="saved = !saved"
+          >{{ saved ? '已收藏' : '加入收藏' }}</button>
+          <RouterLink
+            v-sketch
+            class="action-chip sketch sketch-white sketch-cast"
+            data-cast="yellow"
+            :to="{ path: '/map', query: { activity: activity.id } }"
+          >前往地图</RouterLink>
+        </div>
+      </div>
 
       <h3 class="section-title">活动介绍<AppIcon name="spark" /></h3>
       <p class="intro">{{ activity.detail }}</p>
@@ -182,7 +185,12 @@ function publish() {
       </div>
     </template>
 
-    <p v-else class="missing">这场活动不在演示名单里。<button type="button" @click="router.replace('/map')">回到活动地图</button></p>
+    <div v-else class="missing">
+      <button class="back" type="button" aria-label="返回" @click="goBack">
+        <AppIcon name="back" />
+      </button>
+      <p>这场活动不在演示名单里。<button type="button" @click="router.replace('/map')">回到活动地图</button></p>
+    </div>
     </div>
     <form v-if="activity && category" class="composer" @submit.prevent="publish">
       <label v-sketch class="field sketch sketch-white">
@@ -199,26 +207,23 @@ function publish() {
 <style scoped>
 .detail-page { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .detail-scroll { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 8px; scrollbar-width: thin; }
-.toolbar { position: relative; display: flex; align-items: center; justify-content: space-between; min-height: 52px; margin-bottom: 12px; }
-.back, .mark { border: 0; background: transparent; color: var(--ink); }
-.back { display: inline-flex; align-items: center; gap: 2px; min-height: 40px; padding: 6px 12px 6px 8px; font-size: 15px; }
-.back svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
-.detail-page h1 { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); margin: 0; padding-bottom: 5px; font-size: 26px; line-height: 1.15; letter-spacing: .3px; white-space: nowrap; }
-.detail-page h1::after { content: ''; position: absolute; left: 1px; right: 6px; bottom: 0; height: 4px; border-radius: 5px; background: #ffdf32; transform: rotate(-2deg); }
-.mark { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; }
-.mark svg { width: 16px; height: 22px; fill: transparent; stroke: var(--ink); stroke-width: 1.8; stroke-linejoin: round; }
-.mark[aria-pressed='true'] svg { fill: var(--ink); stroke: var(--ink); }
-.hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; }
-.to-map { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; margin-bottom: 4px; padding: 6px 12px; background: transparent; color: inherit; font-size: 14px; line-height: 1.2; white-space: nowrap; }
-.meta { display: flex; align-items: center; margin: 0 0 6px; }
+.back { display: grid; place-items: center; width: 36px; height: 36px; flex: none; padding: 6px; border: 0; background: transparent; color: var(--ink); }
+.back :deep(.icon) { width: 22px; height: 22px; }
+.hero { display: flex; flex-direction: column; }
+.meta { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; }
 .kind { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 3px 10px 4px; background: transparent; font-size: 14px; color: var(--ink); }
 .kind i { width: 8px; height: 8px; border-radius: 50%; }
 .event-title { display: flex; align-items: flex-end; gap: 2px; margin: 0; font-size: 32px; font-weight: 400; line-height: 1.2; letter-spacing: .4px; }
 .event-title span { min-width: 0; background: linear-gradient(var(--kind-ink), var(--kind-ink)) left 78% / 100% 9px no-repeat; }
 .rays { width: 22px; height: 16px; margin: 0 0 6px; fill: none; stroke: var(--kind-ink); stroke-width: 3.1; stroke-linecap: round; flex: none; }
+.facts { display: grid; grid-template-columns: minmax(0, 1fr) 6.6em; gap: 10px 12px; align-items: center; margin-top: 10px; overflow: visible; }
+.facts-copy { min-width: 0; }
 .fact { display: flex; align-items: center; gap: 10px; margin: 8px 0 0; }
+.facts-copy .fact:first-child { margin-top: 0; }
 .fact svg { width: 22px; height: 22px; flex: none; color: var(--ink); }
 .fact span { font-size: 16px; line-height: 1.4; }
+.facts-actions { display: flex; flex-direction: column; gap: 10px; width: 6.6em; overflow: visible; }
+.action-chip { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 40px; padding: 6px 8px; border: 0; background: transparent; color: inherit; font-size: 13px; line-height: 1.2; text-align: center; text-decoration: none; white-space: nowrap; }
 .section-title { display: inline-flex; align-items: center; gap: 4px; margin: 16px 0 0; font-size: 22px; font-weight: 400; line-height: 1.3; background: linear-gradient(var(--kind-ink), var(--kind-ink)) left 78% / 4.4em 8px no-repeat; }
 .section-title :deep(.icon) { width: 14px; height: 14px; color: var(--kind-ink); }
 .intro { margin: 8px 0 0; font-size: 15px; line-height: 1.7; }
@@ -242,12 +247,14 @@ li p { margin: 4px 0 0; font-size: 14px; line-height: 1.55; color: #3e4e68; }
 .send { display: grid; place-items: center; width: 44px; height: 44px; flex: none; padding: 9px; border: 0; background: transparent; color: var(--ink); }
 .send :deep(.agent-icon) { width: 22px; height: 22px; }
 .send:disabled { opacity: .65; cursor: default; }
-.missing { margin: 28px 4px; color: var(--muted); font-size: 15px; line-height: 1.7; }
-.missing button { display: inline; margin-left: 6px; padding: 0; border: 0; background: transparent; color: #2f78c4; font: inherit; }
+.missing { margin: 4px 4px 0; color: var(--muted); font-size: 15px; line-height: 1.7; }
+.missing p { margin: 16px 0 0; }
+.missing p button { display: inline; margin-left: 6px; padding: 0; border: 0; background: transparent; color: #2f78c4; font: inherit; }
 @media (max-width: 359px) {
-  .detail-page h1 { font-size: 22px; }
   .event-title { font-size: 26px; }
-  .to-map { min-height: 36px; padding: 6px 8px; font-size: 13px; }
+  .facts { grid-template-columns: minmax(0, 1fr) 6.2em; gap: 8px; }
+  .facts-actions { width: 6.2em; gap: 8px; }
+  .action-chip { min-height: 36px; font-size: 12px; }
   .fact span { font-size: 14px; }
   .section-title { font-size: 20px; }
 }
