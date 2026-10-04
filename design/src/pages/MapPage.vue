@@ -116,7 +116,6 @@ watch(() => route.query.activity, applyActivityRoute);
       <CampusPlan v-else ref="scene" :focus-inset="drawerPeek" :focus-point="focusPoint" :selected="selected" :activities="visibleActivities" :starting-view="planView" @select="select" />
         <span v-if="mode === '3d'" class="campus-caption">北京大学 · 燕园</span>
         <div class="map-hint">{{ routedActivity ? `${routedActivity.title}${focusPoint ? ' · 地点示意' : ` · ${floor}F`}` : mode === '2d' ? selected ? '俯视建筑 · 在下方切换楼层查看活动' : '点建筑查看活动 · 拖动平移 · 双指缩放' : currentBuilding?.scenic ? '拖动环绕博雅塔 · 缩小看看未名湖' : selected ? '点楼层查看活动 · 拖动查看另一侧' : '点建筑，看看楼层里正在发生什么' }}</div>
-        <a class="map-attribution" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a>
       <div class="map-overlay">
       <div class="map-search-wrap">
         <label v-sketch class="map-search sketch sketch-white"><AppIcon name="pin" /><input v-model="search" type="search" placeholder="找建筑、教室或活动…" aria-label="搜索燕园建筑、教室或活动" autocomplete="off" /><span class="search-campus">燕园</span></label>
@@ -254,7 +253,6 @@ watch(() => route.query.activity, applyActivityRoute);
 .map-tools { display: grid; gap: 6px; }
 .map-tools button { width: 36px; height: 36px; padding: 0; font-size: 21px; background: transparent; }.map-tools .locate-button { font-size: 23px; }
 .map-hint { position: absolute; left: 15px; bottom: calc(var(--drawer-peek) + 24px); font-size: 10px; color: #526663; background: #f8f8efc4; padding: 4px 7px; border-radius: 6px; pointer-events: none; }
-.map-attribution { position: absolute; right: 64px; bottom: calc(var(--drawer-peek) + 4px); font-size: 8px; color: #677570; background: #f8f8efb3; padding: 2px; }
 h2 { font-size: 19px; line-height: 1.4; font-weight: 400; margin: 0; }
 .building-head { display: flex; align-items: center; gap: 10px; }
 .building-mark { display: grid; place-items: center; width: 52px; height: 52px; flex: none; }
