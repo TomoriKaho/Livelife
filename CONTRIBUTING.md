@@ -60,31 +60,45 @@
 
 > 后续通过 Github Action进行自动部署、构建时，会直接通过拉取 main 分支上的代码进行构建，因此 main 分支必须是相对稳定的版本。且正在进行的其他分支也需要时常与 main 同步，如果不稳定，其他人可能会拉取存在 bug 的代码到自己的工作分支上。
 
-开始新任务时，先用 `git status` 查看当前工作区。保存好正在进行的工作后，更新本地 `main`，再创建分支：
+优先从 Issue 页面创建分支，分支会关联到对应任务：
+
+1. 打开自己负责的 Issue，在右侧 **Development** 中点击 **Create a branch**；已有关联分支时，从该区域的设置菜单进入。
+2. 使用默认的 `编号-Issue名`，名称过长时可缩短为 `编号-简短任务名`，例如 `12-subscription-api`。
+3. 确认目标仓库为本项目，分支来源为 `main`，点击 **Create branch**。
+4. 按页面提示拉取分支并在本地切换。操作前用 `git status` 检查工作区，保存好正在进行的工作。
+
+例如，网页上已经创建 `12-subscription-api` 后，在本地执行：
+
+```bash
+git fetch origin
+git switch --track origin/12-subscription-api
+```
+
+如果本地已经有该分支，直接执行 `git switch 12-subscription-api`。具体界面操作见 [GitHub 分支创建教程](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/creating-a-branch-for-an-issue)。
+
+也可以在本地创建：保存当前工作后，更新本地 `main`，再创建分支：
 
 ```bash
 git switch main
 git pull --ff-only
-git switch -c feat/12-subscription-api
+git switch -c 12-subscription-api
 ```
 
-建议分支名称采用：
+基于 Issue 的分支名称采用：
 
 ```text
-类型/Issue编号-任务名称
+Issue编号-简短任务名
 ```
 
 例如：
 
 ```text
-feat/12-subscription-api
-fix/28-map-marker
-docs/30-deployment-guide
+12-subscription-api
+28-map-marker
+30-deployment-guide
 ```
 
-同一个任务的后续修改继续提交到原分支。
-
-> 在需求负责人创建具体issue后，可以直接创建分支，并将issue关联到对应的分支上。
+同一个任务的后续修改继续提交到原分支。本地创建的分支推送后，在 Issue 的 Development 区域关联对应分支。已有分支继续使用，不必为了新约定改名。分支名用于识别任务；commit 和 PR 标题另按下文的格式填写。
 
 ## 4. 开发与协作
 
@@ -105,16 +119,18 @@ docs/30-deployment-guide
 一次 commit 尽量表达一个明确的改动，提交信息采用：
 
 ```text
-(类型) 描述
+类型: (范围) 描述
 ```
 
 例如：
 
 ```text
-(feat) 新增兴趣订阅查询接口
-(fix) 修复地图标记点击异常
-(docs) 补充部署说明
+feat: (订阅) 新增兴趣订阅查询接口
+fix: (地图) 修复地图标记点击异常
+docs: (部署) 补充部署说明
 ```
+
+使用英文冒号和括号，冒号后及右括号后各留一个空格。范围填写模块或主题，如 `订阅`、`地图`、`部署`；描述使用中文。
 
 常用类型：
 
@@ -164,7 +180,7 @@ docs/30-deployment-guide
 PR 标题沿用 commit 格式，例如：
 
 ```text
-(feat) 实现兴趣订阅接口
+feat: (订阅) 实现兴趣订阅接口
 ```
 
 按照自动出现的模板填写：
