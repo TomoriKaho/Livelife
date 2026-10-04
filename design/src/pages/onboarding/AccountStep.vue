@@ -27,7 +27,7 @@ function submit() {
     <BalloonArt class="hero" />
     <div class="hero-title">
       <AppIcon class="title-spark" name="spark" />
-      <h1 id="onboarding-title" tabindex="-1">欢迎来到 PKULiveLife</h1>
+      <h1 id="onboarding-title" tabindex="-1">欢迎来到 LiveLife</h1>
       <AppIcon class="title-spark is-right" name="spark" />
       <svg class="title-underline" viewBox="0 0 140 16" aria-hidden="true"><path d="M6 10c16-6 30 4 46-2s28 4 42-3 28 3 40-4" /></svg>
     </div>

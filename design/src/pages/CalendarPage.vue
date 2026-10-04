@@ -11,7 +11,8 @@ export const pageMeta = {
   "accent": "mint",
   "nav": "calendar",
   "back": false,
-  "shell": "focus"
+  "heading": false,
+  "footer": false
 };
 </script>
 
@@ -19,7 +20,6 @@ export const pageMeta = {
 import { computed, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import AppIcon from '../components/AppIcon.vue';
-import LabShell from './calendar/lab/LabShell.vue';
 import CalendarIcon from './calendar/CalendarIcon.vue';
 import PencilSwatch from './calendar/PencilSwatch.vue';
 import {
@@ -115,7 +115,6 @@ function dayPencil(key) {
 </script>
 
 <template>
-  <LabShell>
   <section class="calendar-page" aria-labelledby="page-title">
     <div class="toolbar">
       <div class="title-block">
@@ -275,11 +274,10 @@ function dayPencil(key) {
     </div>
     <p v-else class="empty">这一天还没有安排活动</p>
   </section>
-  </LabShell>
 </template>
 
 <style scoped>
-.calendar-page { display: flex; flex-direction: column; min-height: 0; padding-bottom: 12px; }
+.calendar-page { display: flex; flex-direction: column; flex-shrink: 0; padding-bottom: 12px; }
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 2px 0 12px; }
 .title-block { display: flex; align-items: center; gap: 12px; min-width: 0; flex-wrap: wrap; }
 .calendar-page h1 { position: relative; margin: 0; padding-bottom: 5px; font-size: 26px; line-height: 1.15; letter-spacing: .3px; }

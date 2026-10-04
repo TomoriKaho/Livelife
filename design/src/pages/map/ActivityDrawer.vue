@@ -61,18 +61,25 @@ function step(direction) {
   if (state.value !== 'expanded') content.value.scrollTop = 0;
 }
 function toggle() { step(state.value === 'expanded' ? -1 : 1); }
+function chrome(shell) {
+  return {
+    nav: shell.querySelector('.bottom-nav'),
+    header: shell.querySelector('.lab-header, .app-header'),
+  };
+}
 function measure() {
-  const shell = root.value.closest('.phone-shell');
-  const navHeight = shell.querySelector('.bottom-nav').getBoundingClientRect().height;
-  const headerHeight = shell.querySelector('.app-header').getBoundingClientRect().height;
+  const shell = root.value?.closest('.phone-shell');
+  const { nav, header } = shell ? chrome(shell) : {};
+  if (!shell || !nav || !header) return;
+  const navHeight = nav.getBoundingClientRect().height;
   bottom.value = navHeight;
-  heights.value = drawerHeights(shell.getBoundingClientRect().height, headerHeight, navHeight);
+  heights.value = drawerHeights(shell.getBoundingClientRect().height, header.getBoundingClientRect().height, navHeight);
   emit('measure', heights.value.middle);
 }
 onMounted(() => {
   measure(); observer = new ResizeObserver(measure);
   const shell = root.value.closest('.phone-shell');
-  [shell, shell.querySelector('.bottom-nav'), shell.querySelector('.app-header')].forEach(element => observer.observe(element));
+  [shell, ...Object.values(chrome(shell))].filter(Boolean).forEach(element => observer.observe(element));
 });
 onBeforeUnmount(() => observer?.disconnect());
 </script>
