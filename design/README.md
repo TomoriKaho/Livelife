@@ -40,7 +40,7 @@ npm run preview:phone
 
 | 界面 | 独立页面文件 | 地址 |
 | --- | --- | --- |
-| D-01 授权与兴趣引导 | [OnboardingPage.vue](./src/pages/OnboardingPage.vue) | `#/onboarding` |
+| D-01 登录、授权与兴趣引导 | [OnboardingPage.vue](./src/pages/OnboardingPage.vue)（子组件在 `src/pages/onboarding/`） | `#/onboarding` |
 | D-02 地图主页 | [MapPage.vue](./src/pages/MapPage.vue) | `#/map` |
 | D-03 信息详情 | [DetailPage.vue](./src/pages/DetailPage.vue) | `#/detail` |
 | D-04 日历与活动列表 | [CalendarPage.vue](./src/pages/CalendarPage.vue) | `#/calendar` |

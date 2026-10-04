@@ -10,6 +10,7 @@ import BottomNav from './components/BottomNav.vue';
 const route = useRoute();
 const router = useRouter();
 const page = computed(() => route.meta);
+const focusShell = computed(() => page.value.shell === 'focus');
 const main = ref(null);
 const heading = ref(null);
 const toastVisible = ref(false);
@@ -38,13 +39,13 @@ onBeforeUnmount(() => clearTimeout(toastTimer));
 <template>
   <IconSprite />
   <div v-sketch class="phone-shell">
-    <AppHeader @notify="showNotification" />
-    <main id="main-content" ref="main" class="page-main" :class="{ 'immersive-main': page.immersive }">
-      <PageHeading v-if="!page.customHeading" ref="heading" :page="page" @back="goBack" />
+    <AppHeader v-if="!focusShell" @notify="showNotification" />
+    <main id="main-content" ref="main" class="page-main" :class="{ 'is-focus': focusShell, 'immersive-main': page.immersive }">
+      <PageHeading v-if="!focusShell && !page.customHeading" ref="heading" :page="page" @back="goBack" />
       <RouterView />
-      <PageFooter v-if="!page.immersive" />
+      <PageFooter v-if="!focusShell && !page.immersive" />
     </main>
-    <BottomNav :active="page.nav" />
+    <BottomNav v-if="!focusShell" :active="page.nav" />
   </div>
   <div id="toast" v-sketch v-show="toastVisible" class="toast sketch" role="status"><span>消息通知区域待设计</span></div>
 </template>

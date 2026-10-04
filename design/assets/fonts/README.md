@@ -11,3 +11,5 @@
 原霞鹜文楷轻便版文件作为历史备选保留，页面不再加载；其许可证见 `OFL.txt`，来源：https://github.com/lxgw/LxgwWenKai-Lite。
 
 站酷快乐体也作为历史备选保留，页面不再加载；其许可证见 `ZCOOLKuaiLe-OFL.txt`，来源：https://github.com/googlefonts/zcool-kuaile。
+
+`public/fonts/` 是引导页字体对比用的本地符号链接，指向本机字体库，不提交。缺少这些文件时，引导页回退到小赖字体。
