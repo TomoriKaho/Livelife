@@ -11,6 +11,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AgentIcon from './agent/AgentIcon.vue';
 import LiLiAvatar from './agent/LiLiAvatar.vue';
 import UserPlaneAvatar from './agent/UserPlaneAvatar.vue';
+import ElasticList from './agent/ElasticList.vue';
 
 const originals = [
   { id: 1, role: 'user', text: '哈喽哈喽LiLi，百讲人好多啊，现在有什么活动吗' },
@@ -32,6 +33,14 @@ const historyOpen = ref(false), drawer = ref(null), historyTrigger = ref(null), 
 const moreOpen = ref(false), imageInput = ref(null), fileInput = ref(null), composer = ref(null);
 const draft = ref(''), attachments = ref([]), editingId = ref(null), editText = ref(''), notice = ref('');
 const ready = computed(() => draft.value.trim() || attachments.value.length);
+const attachmentExamples = [
+  { id: 'example-image-1', name: '上传图片1.jpg', kind: 'image', example: true },
+  { id: 'example-image-2', name: '上传图片2.jpg', kind: 'image', example: true },
+  { id: 'example-file-1', name: '上传文件1.jpg', kind: 'file', example: true },
+  { id: 'example-file-2', name: '上传文件2.jpg', kind: 'file', example: true },
+];
+const displayedAttachments = computed(() => attachments.value.length ? attachments.value : attachmentExamples);
+const conversation = ref(null);
 let noticeTimer, previousFocus, inerted = [], attachmentId = 0;
 function notify(text) { clearTimeout(noticeTimer); notice.value = text; noticeTimer = setTimeout(() => { notice.value = ''; }, 2400); }
 const segments = text => text.split(/(\*\*[^*]+\*\*)/g).map(value => ({ text: value.startsWith('**') ? value.slice(2, -2) : value, bold: value.startsWith('**') }));
@@ -78,7 +87,7 @@ function keydown(event) {
 function releaseDrawer() { for (const [node, value] of inerted) node.inert = value; inerted = []; }
 watch(historyOpen, async open => {
   if (open) {
-    moreOpen.value = false; previousFocus = document.activeElement; await nextTick();
+    conversation.value?.stop(); moreOpen.value = false; previousFocus = document.activeElement; await nextTick();
     if (!mounted.value || !historyOpen.value || !drawer.value) return;
     inerted = [...document.querySelector('.phone-shell').children].filter(node => !node.classList.contains('history-overlay')).map(node => [node, node.inert]);
     for (const [node] of inerted) node.inert = true;
@@ -97,7 +106,7 @@ onBeforeUnmount(() => { mounted.value = false; clearTimeout(noticeTimer); releas
       <span class="heading-doodle" aria-hidden="true"><svg viewBox="0 0 44 34"><path d="m8 20 6-12 M21 16l2-12 M30 21l8-7" /></svg></span>
     </header>
 
-    <div class="conversation" role="region" aria-label="当前对话" tabindex="0">
+    <ElasticList ref="conversation" class="conversation" role="region" aria-label="当前对话">
       <p class="conversation-date">今天</p>
       <article v-for="message in messages" :key="message.id" class="message" :class="[`message-${message.role}`, { 'is-withdrawn': message.withdrawn }]" :aria-label="message.role === 'user' ? '你的消息' : 'LiLi 的消息'">
         <div class="message-avatar" aria-hidden="true"><LiLiAvatar v-if="message.role === 'agent'" /><UserPlaneAvatar v-else /></div>
@@ -115,10 +124,10 @@ onBeforeUnmount(() => { mounted.value = false; clearTimeout(noticeTimer); releas
           </div>
         </div>
       </article>
-    </div>
+    </ElasticList>
 
     <section class="composer-section" aria-label="消息输入区">
-      <div v-if="attachments.length" class="attachments" aria-label="已选择的附件"><div v-for="item in attachments" :key="item.id" v-sketch class="sketch attachment" :data-pencil="item.kind === 'image' ? 'pink' : 'mint'"><img v-if="item.preview" :src="item.preview" :alt="item.name" /><AgentIcon v-else name="file" /><span>{{ item.name }}</span><button type="button" :aria-label="`移除 ${item.name}`" @click="removeFile(item)"><AgentIcon name="close" /></button></div></div>
+      <div class="attachments" :aria-label="attachments.length ? '已选择的附件' : '附件样例'" tabindex="0"><div v-for="item in displayedAttachments" :key="item.id" v-sketch class="sketch attachment" :data-pencil="item.kind === 'image' ? 'pink' : 'mint'"><img v-if="item.preview" :src="item.preview" :alt="item.name" /><AgentIcon v-else :name="item.kind === 'image' ? 'image' : 'file'" /><span>{{ item.name }}</span><button v-if="!item.example" type="button" :aria-label="`移除 ${item.name}`" @click="removeFile(item)"><AgentIcon name="close" /></button></div></div>
       <div v-sketch class="sketch composer-box">
         <textarea ref="composer" v-model="draft" rows="1" placeholder="想聊点什么？" aria-label="输入给 LiLi 的消息" @input="resizeInput" @keydown.ctrl.enter.prevent="send" @keydown.meta.enter.prevent="send"></textarea>
         <div class="composer-tools">
@@ -131,7 +140,7 @@ onBeforeUnmount(() => { mounted.value = false; clearTimeout(noticeTimer); releas
 
     <Transition name="chat-toast"><p v-if="notice" v-sketch class="sketch chat-notice" data-pencil="yellow" role="status">{{ notice }}</p></Transition>
 
-    <Teleport v-if="mounted" to=".phone-shell"><Transition name="history-slide"><div v-if="historyOpen" class="history-overlay" @click.self="historyOpen = false"><aside id="lili-history" ref="drawer" v-sketch class="sketch history-drawer" data-pencil="mint" role="dialog" aria-modal="true" aria-labelledby="lili-history-title"><header><div><p>和 LiLi 的</p><h2 id="lili-history-title">小小对话簿</h2></div><button type="button" class="drawer-close" aria-label="关闭历史对话" @click="historyOpen = false"><AgentIcon name="close" /></button></header><div class="history-list"><template v-for="(item, index) in history" :key="index"><h3 v-if="item.label">{{ item.label }}</h3><button v-sketch class="sketch history-item" :data-pencil="item.current ? 'yellow' : undefined" type="button" :aria-current="item.current ? 'true' : undefined" @click="chooseHistory(item)"><AgentIcon name="chat" /><span><strong>{{ item.title }}</strong><small>{{ item.summary }}</small></span></button></template></div><footer><div class="drawer-avatar"><LiLiAvatar /></div><p>校园生活，慢慢聊。</p></footer></aside></div></Transition></Teleport>
+    <Teleport v-if="mounted" to=".phone-shell"><Transition name="history-slide"><div v-if="historyOpen" class="history-overlay" @click.self="historyOpen = false"><aside id="lili-history" ref="drawer" v-sketch class="sketch history-drawer" data-pencil="mint" role="dialog" aria-modal="true" aria-labelledby="lili-history-title"><header><div><p>和 LiLi 的</p><h2 id="lili-history-title">小小对话簿</h2></div><button type="button" class="drawer-close" aria-label="关闭历史对话" @click="historyOpen = false"><AgentIcon name="close" /></button></header><ElasticList class="history-list" role="region" aria-label="历史对话列表"><template v-for="(item, index) in history" :key="index"><h3 v-if="item.label">{{ item.label }}</h3><button v-sketch class="sketch history-item" :data-pencil="item.current ? 'yellow' : undefined" type="button" :aria-current="item.current ? 'true' : undefined" @click="chooseHistory(item)"><AgentIcon name="chat" /><span><strong>{{ item.title }}</strong><small>{{ item.summary }}</small></span></button></template></ElasticList><footer><div class="drawer-avatar"><LiLiAvatar /></div><p>校园生活，慢慢聊。</p></footer></aside></div></Transition></Teleport>
   </section>
 </template>
 
@@ -141,7 +150,10 @@ onBeforeUnmount(() => { mounted.value = false; clearTimeout(noticeTimer); releas
 .history-button { display: grid; place-items: center; width: 44px; height: 44px; padding: 8px; flex: none; background: transparent; }
 .heading-title { display: flex; align-items: center; flex: 1; min-width: 0; height: 44px; }.heading-title h1 { margin: 0; line-height: 1; font-size: 28px; display: flex; align-items: baseline; gap: 10px; }.heading-title h1 span { font-size: 13px; letter-spacing: 0; -webkit-text-stroke: 0; color: var(--muted); }
 .heading-doodle { width: 33px; color: #d5b729; }.heading-doodle svg { width: 100%; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
-.conversation { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; padding: 0 2px 18px; outline-offset: -3px; }
+.conversation { flex: 1; min-height: 0; padding: 0 2px; outline-offset: -3px; }
+.conversation :deep(.elastic-list-content) { padding-bottom: 18px; }
+.conversation,.attachments,.history-list,.edit-message,.composer-box>textarea { scrollbar-width: none; -ms-overflow-style: none; }
+.conversation::-webkit-scrollbar,.attachments::-webkit-scrollbar,.history-list::-webkit-scrollbar,.edit-message::-webkit-scrollbar,.composer-box>textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .conversation-date { text-align: center; color: var(--muted); font-size: 10px; margin: 0 0 12px; letter-spacing: 2px; }.message { display: flex; gap: 6px; margin-bottom: 10px; }.message:last-child { margin-bottom: 0; }.message-user { flex-direction: row-reverse; }
 .message-avatar { width: 43px; height: 47px; flex: none; margin-top: 3px; }.message-user .message-avatar { width: 43px; height: 47px; margin-top: 3px; }
 .message-content { max-width: calc(100% - 49px); min-width: 0; }.message-user .message-content { max-width: calc(100% - 49px); }
@@ -152,9 +164,9 @@ onBeforeUnmount(() => { mounted.value = false; clearTimeout(noticeTimer); releas
 .edit-message { display: block; width: 100%; resize: vertical; min-height: 60px; border: 0; background: transparent; font: inherit; font-size: 14px; line-height: 1.8; color: var(--ink); outline-offset: 2px; }.edit-actions { display: flex; gap: 15px; justify-content: flex-end; margin-top: 8px; }.edit-actions button { padding: 6px; background: transparent; border: 0; font-size: 12px; }.edit-actions button:last-child { color: #245888; }
 .composer-section { position: relative; flex: none; padding: 8px 0 11px; }.composer-box { display: flex; align-items: flex-end; padding: 9px 9px 9px 15px; gap: 6px; background: transparent; }.composer-box>textarea { width: 0; flex: 1; min-height: 44px; max-height: 100px; resize: none; border: 0; background: transparent; font: inherit; font-size: 14px; color: var(--ink); line-height: 24px; padding: 10px 0; outline: none; }.composer-box:focus-within { outline: 2px solid #456e9955; outline-offset: 1px; border-radius: 15px; }.composer-box>textarea::placeholder { color: var(--muted); }.composer-tools { display: flex; align-items: center; gap: 2px; }.composer-tool { display: grid; place-items: center; width: 44px; height: 44px; padding: 9px; background: transparent; }.send-button .agent-icon { width: 24px; height: 24px; }.send-button:disabled { opacity: .65; cursor: default; }
 .composer-more { position: relative; }.attachment-menu { position: absolute; right: -42px; bottom: 52px; width: 154px; padding: 10px; z-index: 4; background: transparent; backdrop-filter: blur(15px); border-radius: 15px; transform-origin: 70% 100%; }.attachment-menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 8px; min-height: 44px; background: transparent; border: 0; font-size: 13px; }.attachment-menu .agent-icon { width: 22px; height: 22px; }
-.attachments { display: flex; gap: 8px; overflow-x: auto; padding: 0 1px 8px; max-height: 65px; scrollbar-width: thin; }.attachment { display: flex; flex: none; align-items: center; gap: 6px; padding: 9px 8px 9px 11px; max-width: 210px; font-size: 11px; background: transparent; }.attachment>span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.attachment img { display: block; width: 30px; height: 30px; object-fit: cover; border-radius: 5px; }.attachment>.agent-icon { width: 24px; height: 24px; }.attachment button { display: grid; place-items: center; width: 28px; height: 28px; padding: 5px; flex: none; background: transparent; border: 0; }.attachment button .agent-icon { width: 16px; height: 16px; }
+.attachments { display: flex; flex-wrap: nowrap; gap: 8px; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; padding: 0 1px 2px; max-height: 65px; }.attachment { display: flex; flex: none; align-items: center; gap: 6px; padding: 9px 8px 9px 11px; max-width: 210px; font-size: 11px; background: transparent; }.attachment>span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.attachment img { display: block; width: 30px; height: 30px; object-fit: cover; border-radius: 5px; }.attachment>.agent-icon { width: 24px; height: 24px; }.attachment button { display: grid; place-items: center; width: 28px; height: 28px; padding: 5px; flex: none; background: transparent; border: 0; }.attachment button .agent-icon { width: 16px; height: 16px; }
 .chat-notice { position: absolute; z-index: 7; left: 50%; bottom: 90px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 34px); padding: 13px 18px; font-size: 12px; text-align: center; background: transparent; backdrop-filter: blur(12px); border-radius: 15px; }
-.history-overlay { position: absolute; inset: 0; z-index: 80; background: #20304b28; }.history-drawer { display: flex; flex-direction: column; width: 66.6667%; height: 100%; margin: 0; padding: calc(24px + env(safe-area-inset-top, 0px)) 15px 24px; background: transparent; backdrop-filter: blur(22px); border-radius: 15px; overflow: hidden; }.history-drawer header { display: flex; align-items: center; justify-content: space-between; gap: 3px; margin-bottom: 22px; }.history-drawer header p { font-size: 11px; margin: 0 0 6px; color: var(--muted); }.history-drawer h2 { margin: 0; font-size: 22px; font-weight: 400; white-space: nowrap; }.drawer-close { display: grid; place-items: center; flex: none; width: 38px; height: 44px; padding: 8px; background: transparent; border: 0; }.drawer-close .agent-icon { width: 22px; height: 22px; }.history-list { min-height: 0; overflow-y: auto; flex: 1; scrollbar-width: thin; }.history-list h3 { font-size: 11px; color: var(--muted); font-weight: 400; margin: 15px 8px 8px; }.history-list h3:first-child { margin-top: 0; }.history-item { display: flex; gap: 7px; align-items: flex-start; width: 100%; padding: 15px 10px; margin-bottom: 10px; background: transparent; text-align: left; }.history-item>.agent-icon { width: 19px; height: 19px; margin-top: 2px; }.history-item>span { min-width: 0; flex: 1; }.history-item strong { font-size: 13px; font-weight: 400; display: block; line-height: 1.6; }.history-item small { display: block; font-size: 10px; color: var(--muted); margin-top: 5px; line-height: 1.6; }.history-drawer footer { display: flex; align-items: center; gap: 7px; margin-top: 12px; flex: none; }.drawer-avatar { width: 48px; height: 52px; }.history-drawer footer p { font-size: 11px; margin: 0; color: var(--muted); }
+.history-overlay { position: absolute; inset: 0; z-index: 80; background: #20304b28; }.history-drawer { display: flex; flex-direction: column; width: 66.6667%; height: 100%; margin: 0; padding: calc(24px + env(safe-area-inset-top, 0px)) 15px 24px; background: transparent; backdrop-filter: blur(22px); border-radius: 15px; overflow: hidden; }.history-drawer header { display: flex; align-items: center; justify-content: space-between; gap: 3px; margin-bottom: 22px; }.history-drawer header p { font-size: 11px; margin: 0 0 6px; color: var(--muted); }.history-drawer h2 { margin: 0; font-size: 22px; font-weight: 400; white-space: nowrap; }.drawer-close { display: grid; place-items: center; flex: none; width: 38px; height: 44px; padding: 8px; background: transparent; border: 0; }.drawer-close .agent-icon { width: 22px; height: 22px; }.history-list { min-height: 0; flex: 1; }.history-list h3 { font-size: 11px; color: var(--muted); font-weight: 400; margin: 15px 8px 8px; }.history-list h3:first-child { margin-top: 0; }.history-item { display: flex; gap: 7px; align-items: flex-start; width: 100%; padding: 15px 10px; margin-bottom: 10px; background: transparent; text-align: left; }.history-item>.agent-icon { width: 19px; height: 19px; margin-top: 2px; }.history-item>span { min-width: 0; flex: 1; }.history-item strong { font-size: 13px; font-weight: 400; display: block; line-height: 1.6; }.history-item small { display: block; font-size: 10px; color: var(--muted); margin-top: 5px; line-height: 1.6; }.history-drawer footer { display: flex; align-items: center; gap: 7px; margin-top: 12px; flex: none; }.drawer-avatar { width: 48px; height: 52px; }.history-drawer footer p { font-size: 11px; margin: 0; color: var(--muted); }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .history-slide-enter-active,.history-slide-leave-active { transition: background-color .35s ease; }.history-slide-enter-active .history-drawer,.history-slide-leave-active .history-drawer { transition: transform .38s cubic-bezier(.22,1,.36,1); }.history-slide-enter-from,.history-slide-leave-to { background: transparent; }.history-slide-enter-from .history-drawer,.history-slide-leave-to .history-drawer { transform: translateX(-102%); }
 .attachment-pop-enter-active,.attachment-pop-leave-active { transition: transform .18s ease, opacity .18s ease; }.attachment-pop-enter-from,.attachment-pop-leave-to { opacity: 0; transform: translateY(6px) scale(.97); }.chat-toast-enter-active,.chat-toast-leave-active { transition: opacity .2s ease; }.chat-toast-enter-from,.chat-toast-leave-to { opacity: 0; }
