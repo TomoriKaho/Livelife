@@ -17,7 +17,8 @@ if (new Set(keys).size !== keys.length) throw new Error('页面的 pageMeta.key 
 export default createRouter({
   history: createWebHashHistory(),
   routes: [
-    { path: '/', redirect: '/map' },
+    { path: '/', redirect: '/onboarding' },
+    { path: '/login', redirect: '/onboarding' },
     ...pages.map(({ component, ...meta }) => ({ path: `/${meta.key}`, name: meta.key, component, meta })),
     { path: '/:pathMatch(.*)*', redirect: '/map' },
   ],

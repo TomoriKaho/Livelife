@@ -1,6 +1,10 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+const root = fileURLToPath(new URL('.', import.meta.url));
+const fontAllow = [root, '/Users/huangkefan/Library/Fonts'];
 
 export default defineConfig({
   plugins: [
@@ -21,6 +25,7 @@ export default defineConfig({
     },
   ],
   base: './',
-  server: { host: '127.0.0.1', port: 8765, strictPort: true },
-  preview: { host: '127.0.0.1', port: 8766, strictPort: true },
+  publicDir: fileURLToPath(new URL('./public', import.meta.url)),
+  server: { host: '127.0.0.1', port: 8765, strictPort: true, fs: { allow: fontAllow } },
+  preview: { host: '127.0.0.1', port: 8766, strictPort: true, fs: { allow: fontAllow } },
 });

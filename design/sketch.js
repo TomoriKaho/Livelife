@@ -146,8 +146,12 @@ export function createHandDrawnRenderer() {
     if (!record || width < 8 || height < 8) return;
     const color = element.dataset.pencil || '';
     const isBottomNav = element.classList.contains('bottom-nav');
+    const whiteCard = element.classList.contains('sketch-white') && !palettes[color];
+    const castColors = { yellow: '#ffdf32', blue: '#9ac8f2', mint: '#7ec9a8', pink: '#f4b2ab', lavender: '#c9b6f0' };
+    const castName = element.dataset.cast || color;
+    const cast = element.classList.contains('sketch-cast') ? (castColors[castName] || '#9ac8f2') : '';
     const active = isBottomNav ? element.querySelector('[aria-current="page"]') : null;
-    const current = `${width}:${height}:${color}:${active?.dataset.nav || ''}`;
+    const current = `${width}:${height}:${color}:${whiteCard ? 'white' : ''}:${cast}:${active?.dataset.nav || ''}`;
     if (record.current === current) return;
     record.current = current;
     const { svg, seed } = record;
@@ -171,6 +175,8 @@ export function createHandDrawnRenderer() {
     pigment.append(node('feComposite', { in: 'SourceGraphic', in2: 'paperCoverage', operator: 'in' }));
     defs.append(pigment);
     svg.append(defs);
+    // 白底裁在同一条勾线内，避免在轮廓外垫一个直角矩形。
+    if (whiteCard) svg.append(node('path', { d: fillPath, fill: '#fff' }));
     if (palettes[color]) {
       const fill = node('g', { 'clip-path': `url(#pencil-clip-${seed})` });
       // 选中按钮底面透明：从黄色导航笔触中让出蓝色按钮的区域，避免混色。
@@ -214,8 +220,8 @@ export function createHandDrawnRenderer() {
     const faint = element.classList.contains('page-outlet');
     const ink = faint ? '#7f91a3' : '#20304b';
     // 参考图中的黄蓝偏移笔迹，模拟彩铅在右下沿留下的轻描边。
-    const accent = element.classList.contains('art-paper') ? '#9ac8f2' : '#ffdf32';
-    const highlighted = element.matches('.brand, .art-paper') || (element.classList.contains('nav-item') && element.hasAttribute('aria-current'));
+    const accent = cast || (element.classList.contains('art-paper') ? '#9ac8f2' : '#ffdf32');
+    const highlighted = Boolean(cast) || element.matches('.brand, .art-paper') || (element.classList.contains('nav-item') && element.hasAttribute('aria-current'));
     if (highlighted) {
       svg.append(node('path', { d: pathFor(outline.slice(0, Math.ceil(outline.length * .58)), false, true), fill: 'none', stroke: accent, 'stroke-width': '3.6', opacity: '.72', transform: 'translate(2 3)', 'stroke-linecap': 'round' }));
     }
