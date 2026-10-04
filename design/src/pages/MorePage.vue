@@ -68,7 +68,7 @@ onBeforeUnmount(() => { clearTimeout(noticeTimer); password.value = ''; confirmP
         <div class="profile-copy"><h1 tabindex="-1">{{ profile.nickname }}</h1><p class="profile-identity">北京大学 · {{ profile.identity }}</p><p class="profile-bio">{{ profile.bio || '在燕园，遇见更多有趣的事。' }}</p></div>
         <button class="edit-profile" type="button" aria-label="编辑个人资料" @click="open('profile')"><MoreIcon name="edit" /></button>
       </section>
-      <section v-sketch class="interest-card sketch" aria-labelledby="home-interest-title">
+      <section v-sketch class="interest-card sketch sketch-white" aria-labelledby="home-interest-title">
         <header class="section-heading"><h2 id="home-interest-title">兴趣小档案</h2><button type="button" @click="open('interests')">调整 <MoreIcon name="chevron" /></button></header>
         <div v-if="pickedInterests.length" class="interest-tags" :class="{ muted: !prefs.personalized }"><span v-for="item in pickedInterests" :key="item.id" v-sketch class="interest-tag sketch pencil-fill" :data-pencil="item.pencil"><OnboardingIcon :name="item.icon" />{{ item.label }}</span></div>
         <p v-else class="empty-interests">还没圈定兴趣？点击“调整”，找到喜欢的事。</p>
