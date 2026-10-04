@@ -147,11 +147,12 @@ export function createHandDrawnRenderer() {
     const color = element.dataset.pencil || '';
     const isBottomNav = element.classList.contains('bottom-nav');
     const whiteCard = element.classList.contains('sketch-white') && !palettes[color];
+    const fillOnly = element.classList.contains('sketch-fill-only');
     const castColors = { yellow: '#ffdf32', blue: '#9ac8f2', mint: '#7ec9a8', pink: '#f4b2ab', lavender: '#c9b6f0' };
     const castName = element.dataset.cast || color;
     const cast = element.classList.contains('sketch-cast') ? (castColors[castName] || '#9ac8f2') : '';
     const active = isBottomNav ? element.querySelector('[aria-current="page"]') : null;
-    const current = `${width}:${height}:${color}:${whiteCard ? 'white' : ''}:${cast}:${active?.dataset.nav || ''}`;
+    const current = `${width}:${height}:${color}:${whiteCard ? 'white' : ''}:${fillOnly ? 'fill' : ''}:${cast}:${active?.dataset.nav || ''}`;
     if (record.current === current) return;
     record.current = current;
     const { svg, seed } = record;
@@ -219,6 +220,7 @@ export function createHandDrawnRenderer() {
     }
     const faint = element.classList.contains('page-outlet');
     const ink = faint ? '#7f91a3' : '#20304b';
+    if (fillOnly) return;
     // 参考图中的黄蓝偏移笔迹，模拟彩铅在右下沿留下的轻描边。
     const accent = cast || (element.classList.contains('art-paper') ? '#9ac8f2' : '#ffdf32');
     const highlighted = Boolean(cast) || element.matches('.brand, .art-paper') || (element.classList.contains('nav-item') && element.hasAttribute('aria-current'));
