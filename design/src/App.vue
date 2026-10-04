@@ -30,7 +30,8 @@ watch(() => route.fullPath, async () => {
   updateTitle();
   await nextTick();
   if (main.value) main.value.scrollTop = 0;
-  heading.value?.focusTitle();
+  if (heading.value) heading.value.focusTitle();
+  else document.getElementById('page-title')?.focus({ preventScroll: true });
 });
 onMounted(updateTitle);
 onBeforeUnmount(() => clearTimeout(toastTimer));
@@ -41,9 +42,9 @@ onBeforeUnmount(() => clearTimeout(toastTimer));
   <div v-sketch class="phone-shell">
     <AppHeader v-if="!focusShell" @notify="showNotification" />
     <main id="main-content" ref="main" class="page-main" :class="{ 'is-focus': focusShell, 'immersive-main': page.immersive }">
-      <PageHeading v-if="!focusShell && !page.customHeading" ref="heading" :page="page" @back="goBack" />
+      <PageHeading v-if="!focusShell && !page.customHeading && page.heading !== false" ref="heading" :page="page" @back="goBack" />
       <RouterView />
-      <PageFooter v-if="!focusShell && !page.immersive" />
+      <PageFooter v-if="!focusShell && !page.immersive && page.footer !== false" />
     </main>
     <BottomNav v-if="!focusShell" :active="page.nav" />
   </div>
