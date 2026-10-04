@@ -3,7 +3,9 @@ defineProps({ name: { type: String, required: true } });
 const paths = {
   menu: 'M5 8h22 M4 16h23 M5 24h22',
   plus: 'M16 6v20 M6 16h20',
-  close: 'm8 8 16 16 M24 8 8 24',
+  close: 'M8 7.5 Q15 16.4 24 24 M24.3 8 Q15.7 15.2 7.8 24',
+  expand: 'M5 12 Q5.2 8 5 5 Q9 4.7 12 5 M20 5 Q24 5.2 27 5 L27 12 M27 20 Q26.8 24 27 27 L20 27 M12 27 Q8 26.7 5 27 L5 20 M6 6 L12 12 M26 6 L20 12 M26 26 L20 20 M6 26 L12 20',
+  contract: 'M5 5 L12 12 M12 5 Q11.8 9 12 12 L5 12 M27 5 L20 12 M20 5 L20 12 Q24 11.8 27 12 M27 27 L20 20 M27 20 L20 20 L20 27 M5 27 L12 20 M5 20 Q8 20.2 12 20 L12 27',
   send: 'm16 3 11 25-11-6L5 28Z M16 22V10',
   copy: 'M12 11h14v17H12Z M21 7V4H5v18h3',
   edit: 'm7 21 15-16q2-2 5 1t1 4L13 26l-9 2Z M20 7l6 6 M7 21l6 5',

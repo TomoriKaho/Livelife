@@ -12,6 +12,8 @@ import AgentIcon from './agent/AgentIcon.vue';
 import LiLiAvatar from './agent/LiLiAvatar.vue';
 import UserPlaneAvatar from './agent/UserPlaneAvatar.vue';
 import ElasticList from './agent/ElasticList.vue';
+import ElasticTextarea from './agent/ElasticTextarea.vue';
+import { composerPlacement } from './agent/composer-layout.mjs';
 
 const originals = [
   { id: 1, role: 'user', text: '哈喽哈喽LiLi，百讲人好多啊，现在有什么活动吗' },
@@ -33,14 +35,47 @@ const historyOpen = ref(false), drawer = ref(null), historyTrigger = ref(null), 
 const moreOpen = ref(false), imageInput = ref(null), fileInput = ref(null), composer = ref(null);
 const draft = ref(''), attachments = ref([]), editingId = ref(null), editText = ref(''), notice = ref('');
 const ready = computed(() => draft.value.trim() || attachments.value.length);
-const attachmentExamples = [
+const showExamples = ref(true);
+const attachmentExamples = ref([
   { id: 'example-image-1', name: '上传图片1.jpg', kind: 'image', example: true },
   { id: 'example-image-2', name: '上传图片2.jpg', kind: 'image', example: true },
   { id: 'example-file-1', name: '上传文件1.jpg', kind: 'file', example: true },
   { id: 'example-file-2', name: '上传文件2.jpg', kind: 'file', example: true },
-];
-const displayedAttachments = computed(() => attachments.value.length ? attachments.value : attachmentExamples);
+]);
+const displayedAttachments = computed(() => showExamples.value ? attachmentExamples.value : attachments.value);
 const conversation = ref(null);
+const composerPanel = ref(null), expanded = ref(false), longDraft = ref(false);
+const panelBottom = ref(86), panelTop = ref(0), panelInset = ref(17), reservedHeight = ref(140);
+let layoutObserver, layoutFrame, restingViewportHeight = 0, inputFocused = false, keyboardWasOpen = false, compactPanelHeight = 140;
+function viewportHeight() { return window.visualViewport?.height || window.innerHeight; }
+function updateLayout() {
+  const shell = document.querySelector('.phone-shell'), nav = shell?.querySelector('.bottom-nav');
+  if (!shell || !composerPanel.value) return;
+  const rect = shell.getBoundingClientRect(), view = window.visualViewport;
+  if (!inputFocused && !keyboardWasOpen) restingViewportHeight = viewportHeight();
+  const navHeight = nav?.getBoundingClientRect().height || 0;
+  const placement = composerPlacement({
+    shellTop: rect.top, shellBottom: rect.bottom, navigationHeight: navHeight,
+    viewportTop: view?.offsetTop || 0, viewportHeight: viewportHeight(),
+    restingHeight: restingViewportHeight, focused: inputFocused, scale: view?.scale || 1, keyboardWasOpen,
+  });
+  keyboardWasOpen = placement.keyboardOpen;
+  panelBottom.value = placement.bottom; panelTop.value = placement.top;
+  panelInset.value = rect.width < 360 ? 10 : 17;
+  if (!expanded.value) compactPanelHeight = composerPanel.value.getBoundingClientRect().height;
+  reservedHeight.value = compactPanelHeight + Math.max(0, placement.bottom - navHeight);
+}
+function queueLayout() { cancelAnimationFrame(layoutFrame); layoutFrame = requestAnimationFrame(updateLayout); }
+function focusInput() {
+  if (!inputFocused && !keyboardWasOpen) restingViewportHeight = viewportHeight();
+  inputFocused = true; queueLayout();
+}
+function blurInput() { inputFocused = false; queueLayout(); }
+function toggleExpanded() {
+  expanded.value = !expanded.value; moreOpen.value = false;
+  // Focus synchronously inside the tap, so iOS retains its open keyboard.
+  composer.value?.focus(); nextTick(queueLayout);
+}
 let noticeTimer, previousFocus, inerted = [], attachmentId = 0;
 function notify(text) { clearTimeout(noticeTimer); notice.value = text; noticeTimer = setTimeout(() => { notice.value = ''; }, 2400); }
 const segments = text => text.split(/(\*\*[^*]+\*\*)/g).map(value => ({ text: value.startsWith('**') ? value.slice(2, -2) : value, bold: value.startsWith('**') }));
@@ -67,17 +102,21 @@ function pick(kind) { moreOpen.value = false; (kind === 'image' ? imageInput.val
 function addFiles(event, kind) {
   for (const file of event.target.files || []) {
     if (kind === 'image' && !file.type.startsWith('image/')) { notify('请选择图片文件'); continue; }
+    showExamples.value = false;
     attachments.value.push({ id: ++attachmentId, name: file.name, file, kind, preview: kind === 'image' ? URL.createObjectURL(file) : '' });
   }
   event.target.value = ''; nextTick(() => composer.value?.focus());
 }
-function removeFile(item) { if (item.preview) URL.revokeObjectURL(item.preview); attachments.value = attachments.value.filter(row => row.id !== item.id); }
-function resizeInput() { if (!composer.value) return; composer.value.style.height = 'auto'; composer.value.style.height = `${Math.min(100, composer.value.scrollHeight)}px`; }
+function removeFile(item) {
+  if (item.example) attachmentExamples.value = attachmentExamples.value.filter(row => row.id !== item.id);
+  else { if (item.preview) URL.revokeObjectURL(item.preview); attachments.value = attachments.value.filter(row => row.id !== item.id); }
+}
 function send() { if (ready.value) notify('发送功能将在后续开放'); }
 function chooseHistory(item) { historyOpen.value = false; if (!item.current) notify('这是一条历史对话示例'); }
 function outside(event) { if (!event.target.closest('.composer-more')) moreOpen.value = false; }
 function keydown(event) {
-  if (event.key === 'Escape') { historyOpen.value = false; moreOpen.value = false; editingId.value = null; }
+  if (event.isComposing) return;
+  if (event.key === 'Escape') { if (!historyOpen.value && expanded.value) toggleExpanded(); historyOpen.value = false; moreOpen.value = false; editingId.value = null; }
   if (!historyOpen.value || event.key !== 'Tab') return;
   const nodes = [...drawer.value.querySelectorAll('button,a,input,textarea')].filter(node => !node.disabled);
   const first = nodes[0], last = nodes.at(-1);
@@ -94,8 +133,23 @@ watch(historyOpen, async open => {
     drawer.value?.querySelector('button')?.focus({ preventScroll: true });
   } else { releaseDrawer(); if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true }); }
 });
-onMounted(() => { mounted.value = true; document.addEventListener('pointerdown', outside); document.addEventListener('keydown', keydown); });
-onBeforeUnmount(() => { mounted.value = false; clearTimeout(noticeTimer); releaseDrawer(); document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', keydown); for (const file of attachments.value) if (file.preview) URL.revokeObjectURL(file.preview); });
+onMounted(async () => {
+  restingViewportHeight = viewportHeight(); mounted.value = true;
+  document.addEventListener('pointerdown', outside); document.addEventListener('keydown', keydown);
+  window.addEventListener('resize', queueLayout); window.addEventListener('scroll', queueLayout, { passive: true });
+  window.visualViewport?.addEventListener('resize', queueLayout); window.visualViewport?.addEventListener('scroll', queueLayout);
+  await nextTick(); if (!mounted.value) return;
+  layoutObserver = new ResizeObserver(queueLayout);
+  for (const node of [composerPanel.value, document.querySelector('.phone-shell'), document.querySelector('.bottom-nav')]) if (node) layoutObserver.observe(node);
+  updateLayout();
+});
+onBeforeUnmount(() => {
+  mounted.value = false; clearTimeout(noticeTimer); cancelAnimationFrame(layoutFrame); layoutObserver?.disconnect(); releaseDrawer();
+  document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', keydown);
+  window.removeEventListener('resize', queueLayout); window.removeEventListener('scroll', queueLayout);
+  window.visualViewport?.removeEventListener('resize', queueLayout); window.visualViewport?.removeEventListener('scroll', queueLayout);
+  for (const file of attachments.value) if (file.preview) URL.revokeObjectURL(file.preview);
+});
 </script>
 
 <template>
@@ -103,7 +157,6 @@ onBeforeUnmount(() => { mounted.value = false; clearTimeout(noticeTimer); releas
     <header class="chat-heading">
       <button ref="historyTrigger" v-sketch class="sketch history-button" type="button" aria-label="打开历史对话" aria-controls="lili-history" :aria-expanded="historyOpen" @click="historyOpen = true"><AgentIcon name="menu" /></button>
       <div class="heading-title"><h1>LiLi<span>智能助手</span></h1></div>
-      <span class="heading-doodle" aria-hidden="true"><svg viewBox="0 0 44 34"><path d="m8 20 6-12 M21 16l2-12 M30 21l8-7" /></svg></span>
     </header>
 
     <ElasticList ref="conversation" class="conversation" role="region" aria-label="当前对话">
@@ -126,10 +179,13 @@ onBeforeUnmount(() => { mounted.value = false; clearTimeout(noticeTimer); releas
       </article>
     </ElasticList>
 
-    <section class="composer-section" aria-label="消息输入区">
-      <div class="attachments" :aria-label="attachments.length ? '已选择的附件' : '附件样例'" tabindex="0"><div v-for="item in displayedAttachments" :key="item.id" v-sketch class="sketch attachment" :data-pencil="item.kind === 'image' ? 'pink' : 'mint'"><img v-if="item.preview" :src="item.preview" :alt="item.name" /><AgentIcon v-else :name="item.kind === 'image' ? 'image' : 'file'" /><span>{{ item.name }}</span><button v-if="!item.example" type="button" :aria-label="`移除 ${item.name}`" @click="removeFile(item)"><AgentIcon name="close" /></button></div></div>
+    <div class="composer-reservation" :style="{ height: `${reservedHeight}px` }" aria-hidden="true"></div>
+    <Teleport v-if="mounted" to=".phone-shell">
+    <section ref="composerPanel" class="composer-section" :class="{ 'is-expanded': expanded }" :style="{ bottom: `${panelBottom}px`, top: expanded ? `${panelTop}px` : undefined, '--composer-inset': `${panelInset}px` }" aria-label="消息输入区">
+      <div v-if="displayedAttachments.length" class="attachments" :aria-label="showExamples ? '附件样例' : '已选择的附件'" tabindex="0"><div v-for="item in displayedAttachments" :key="item.id" v-sketch class="sketch attachment" :data-pencil="item.kind === 'image' ? 'pink' : 'mint'"><img v-if="item.preview" :src="item.preview" :alt="item.name" /><AgentIcon v-else :name="item.kind === 'image' ? 'image' : 'file'" /><span :title="item.name">{{ item.name }}</span><button type="button" :aria-label="`移除 ${item.name}`" @click="removeFile(item)"><AgentIcon name="close" /></button></div></div>
       <div v-sketch class="sketch composer-box">
-        <textarea ref="composer" v-model="draft" rows="1" placeholder="想聊点什么？" aria-label="输入给 LiLi 的消息" @input="resizeInput" @keydown.ctrl.enter.prevent="send" @keydown.meta.enter.prevent="send"></textarea>
+        <ElasticTextarea ref="composer" v-model="draft" :expanded="expanded" @overflow="longDraft = $event" @focus="focusInput" @blur="blurInput" @send="send" />
+        <button v-if="longDraft || expanded" class="composer-expand" type="button" :aria-label="expanded ? '取消全屏输入' : '全屏输入'" :title="expanded ? '取消全屏' : '全屏输入'" aria-controls="lili-draft-editor" :aria-expanded="expanded" @pointerdown.prevent @click="toggleExpanded"><AgentIcon :name="expanded ? 'contract' : 'expand'" /></button>
         <div class="composer-tools">
           <div class="composer-more"><button v-sketch class="sketch composer-tool" type="button" :data-pencil="moreOpen ? 'blue' : undefined" aria-label="添加图片或文件" aria-controls="lili-attachments-menu" :aria-expanded="moreOpen" @click="moreOpen = !moreOpen"><AgentIcon name="plus" /></button><Transition name="attachment-pop"><div v-if="moreOpen" id="lili-attachments-menu" v-sketch class="sketch attachment-menu" data-pencil="mint" role="group" aria-label="添加附件"><button type="button" @click="pick('image')"><AgentIcon name="image" /><span>上传图片</span></button><button type="button" @click="pick('file')"><AgentIcon name="file" /><span>上传文件</span></button></div></Transition></div>
           <button v-sketch class="sketch composer-tool send-button" data-pencil="yellow" type="button" :disabled="!ready" aria-label="发送消息（设计占位）" @click="send"><AgentIcon name="send" /></button>
@@ -137,6 +193,7 @@ onBeforeUnmount(() => { mounted.value = false; clearTimeout(noticeTimer); releas
       </div>
       <input ref="imageInput" class="sr-only" type="file" accept="image/*" multiple tabindex="-1" aria-label="选择图片" @change="addFiles($event, 'image')" /><input ref="fileInput" class="sr-only" type="file" multiple tabindex="-1" aria-label="选择文件" @change="addFiles($event, 'file')" />
     </section>
+    </Teleport>
 
     <Transition name="chat-toast"><p v-if="notice" v-sketch class="sketch chat-notice" data-pencil="yellow" role="status">{{ notice }}</p></Transition>
 
@@ -149,11 +206,10 @@ onBeforeUnmount(() => { mounted.value = false; clearTimeout(noticeTimer); releas
 .chat-heading { display: flex; flex: none; align-items: center; gap: 12px; padding: 2px 0 6px; }
 .history-button { display: grid; place-items: center; width: 44px; height: 44px; padding: 8px; flex: none; background: transparent; }
 .heading-title { display: flex; align-items: center; flex: 1; min-width: 0; height: 44px; }.heading-title h1 { margin: 0; line-height: 1; font-size: 28px; display: flex; align-items: baseline; gap: 10px; }.heading-title h1 span { font-size: 13px; letter-spacing: 0; -webkit-text-stroke: 0; color: var(--muted); }
-.heading-doodle { width: 33px; color: #d5b729; }.heading-doodle svg { width: 100%; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
 .conversation { flex: 1; min-height: 0; padding: 0 2px; outline-offset: -3px; }
 .conversation :deep(.elastic-list-content) { padding-bottom: 18px; }
-.conversation,.attachments,.history-list,.edit-message,.composer-box>textarea { scrollbar-width: none; -ms-overflow-style: none; }
-.conversation::-webkit-scrollbar,.attachments::-webkit-scrollbar,.history-list::-webkit-scrollbar,.edit-message::-webkit-scrollbar,.composer-box>textarea::-webkit-scrollbar { display: none; width: 0; height: 0; }
+.conversation,.attachments,.history-list,.edit-message { scrollbar-width: none; -ms-overflow-style: none; }
+.conversation::-webkit-scrollbar,.attachments::-webkit-scrollbar,.history-list::-webkit-scrollbar,.edit-message::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .conversation-date { text-align: center; color: var(--muted); font-size: 10px; margin: 0 0 12px; letter-spacing: 2px; }.message { display: flex; gap: 6px; margin-bottom: 10px; }.message:last-child { margin-bottom: 0; }.message-user { flex-direction: row-reverse; }
 .message-avatar { width: 43px; height: 47px; flex: none; margin-top: 3px; }.message-user .message-avatar { width: 43px; height: 47px; margin-top: 3px; }
 .message-content { max-width: calc(100% - 49px); min-width: 0; }.message-user .message-content { max-width: calc(100% - 49px); }
@@ -162,16 +218,28 @@ onBeforeUnmount(() => { mounted.value = false; clearTimeout(noticeTimer); releas
 .thinking-message { display: flex; align-items: center; gap: 8px; min-height: 24px; font-size: 13px; white-space: nowrap; }.thinking-orbit { position: relative; display: block; width: 22px; height: 22px; flex: none; }.thinking-orbit i { position: absolute; width: 5px; height: 5px; background: var(--ink); border-radius: 45% 55% 50% 48%; opacity: .6; }.thinking-orbit i:nth-child(1) { left: 8px; top: 1px; }.thinking-orbit i:nth-child(2) { left: 1px; top: 13px; }.thinking-orbit i:nth-child(3) { right: 1px; top: 13px; }.thinking-dots { display: inline-flex; margin-left: 2px; }.thinking-dots i { font-style: normal; margin: 0 1px; }
 .withdrawn-message { font-size: 11px; color: var(--muted); margin: 14px 8px; }.is-withdrawn .message-avatar { opacity: .45; }
 .edit-message { display: block; width: 100%; resize: vertical; min-height: 60px; border: 0; background: transparent; font: inherit; font-size: 14px; line-height: 1.8; color: var(--ink); outline-offset: 2px; }.edit-actions { display: flex; gap: 15px; justify-content: flex-end; margin-top: 8px; }.edit-actions button { padding: 6px; background: transparent; border: 0; font-size: 12px; }.edit-actions button:last-child { color: #245888; }
-.composer-section { position: relative; flex: none; padding: 8px 0 11px; }.composer-box { display: flex; align-items: flex-end; padding: 9px 9px 9px 15px; gap: 6px; background: transparent; }.composer-box>textarea { width: 0; flex: 1; min-height: 44px; max-height: 100px; resize: none; border: 0; background: transparent; font: inherit; font-size: 14px; color: var(--ink); line-height: 24px; padding: 10px 0; outline: none; }.composer-box:focus-within { outline: 2px solid #456e9955; outline-offset: 1px; border-radius: 15px; }.composer-box>textarea::placeholder { color: var(--muted); }.composer-tools { display: flex; align-items: center; gap: 2px; }.composer-tool { display: grid; place-items: center; width: 44px; height: 44px; padding: 9px; background: transparent; }.send-button .agent-icon { width: 24px; height: 24px; }.send-button:disabled { opacity: .65; cursor: default; }
+.composer-reservation { flex: none; max-height: 100%; }
+.composer-section { position: absolute; z-index: 60; left: 0; right: 0; display: flex; flex-direction: column; padding: 8px var(--composer-inset, 17px) 11px; background: #f8f4ea; }
+.composer-box { position: relative; display: flex; align-items: flex-end; padding: 9px 9px 9px 15px; gap: 6px; background: transparent; }
+.composer-box:focus-within { outline: 2px solid #456e9955; outline-offset: 1px; border-radius: 15px; }
+.composer-tools { display: flex; flex: none; align-items: center; gap: 2px; }
+.composer-tool { display: grid; place-items: center; width: 44px; height: 44px; padding: 9px; background: transparent; }
+.send-button .agent-icon { width: 24px; height: 24px; }.send-button:disabled { opacity: .65; cursor: default; }
+.composer-expand { position: absolute; top: 8px; right: 10px; display: grid; place-items: center; width: 44px; height: 44px; padding: 11px; border: 0; background: transparent; color: var(--ink); }
+.composer-expand .agent-icon { width: 22px; height: 22px; }
+.composer-section.is-expanded { padding-top: calc(10px + env(safe-area-inset-top, 0px)); }
+.is-expanded .attachments { display: none; }
+.is-expanded .composer-box { flex: 1; min-height: 0; flex-direction: column; align-items: stretch; }
+.is-expanded .composer-tools { align-self: flex-end; }
 .composer-more { position: relative; }.attachment-menu { position: absolute; right: -42px; bottom: 52px; width: 154px; padding: 10px; z-index: 4; background: transparent; backdrop-filter: blur(15px); border-radius: 15px; transform-origin: 70% 100%; }.attachment-menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 8px; min-height: 44px; background: transparent; border: 0; font-size: 13px; }.attachment-menu .agent-icon { width: 22px; height: 22px; }
 .attachments { display: flex; flex-wrap: nowrap; gap: 8px; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; padding: 0 1px 2px; max-height: 65px; }.attachment { display: flex; flex: none; align-items: center; gap: 6px; padding: 9px 8px 9px 11px; max-width: 210px; font-size: 11px; background: transparent; }.attachment>span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.attachment img { display: block; width: 30px; height: 30px; object-fit: cover; border-radius: 5px; }.attachment>.agent-icon { width: 24px; height: 24px; }.attachment button { display: grid; place-items: center; width: 28px; height: 28px; padding: 5px; flex: none; background: transparent; border: 0; }.attachment button .agent-icon { width: 16px; height: 16px; }
-.chat-notice { position: absolute; z-index: 7; left: 50%; bottom: 90px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 34px); padding: 13px 18px; font-size: 12px; text-align: center; background: transparent; backdrop-filter: blur(12px); border-radius: 15px; }
+.chat-notice { position: absolute; z-index: 70; left: 50%; bottom: 90px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 34px); padding: 13px 18px; font-size: 12px; text-align: center; background: transparent; backdrop-filter: blur(12px); border-radius: 15px; }
 .history-overlay { position: absolute; inset: 0; z-index: 80; background: #20304b28; }.history-drawer { display: flex; flex-direction: column; width: 66.6667%; height: 100%; margin: 0; padding: calc(24px + env(safe-area-inset-top, 0px)) 15px 24px; background: transparent; backdrop-filter: blur(22px); border-radius: 15px; overflow: hidden; }.history-drawer header { display: flex; align-items: center; justify-content: space-between; gap: 3px; margin-bottom: 22px; }.history-drawer header p { font-size: 11px; margin: 0 0 6px; color: var(--muted); }.history-drawer h2 { margin: 0; font-size: 22px; font-weight: 400; white-space: nowrap; }.drawer-close { display: grid; place-items: center; flex: none; width: 38px; height: 44px; padding: 8px; background: transparent; border: 0; }.drawer-close .agent-icon { width: 22px; height: 22px; }.history-list { min-height: 0; flex: 1; }.history-list h3 { font-size: 11px; color: var(--muted); font-weight: 400; margin: 15px 8px 8px; }.history-list h3:first-child { margin-top: 0; }.history-item { display: flex; gap: 7px; align-items: flex-start; width: 100%; padding: 15px 10px; margin-bottom: 10px; background: transparent; text-align: left; }.history-item>.agent-icon { width: 19px; height: 19px; margin-top: 2px; }.history-item>span { min-width: 0; flex: 1; }.history-item strong { font-size: 13px; font-weight: 400; display: block; line-height: 1.6; }.history-item small { display: block; font-size: 10px; color: var(--muted); margin-top: 5px; line-height: 1.6; }.history-drawer footer { display: flex; align-items: center; gap: 7px; margin-top: 12px; flex: none; }.drawer-avatar { width: 48px; height: 52px; }.history-drawer footer p { font-size: 11px; margin: 0; color: var(--muted); }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .history-slide-enter-active,.history-slide-leave-active { transition: background-color .35s ease; }.history-slide-enter-active .history-drawer,.history-slide-leave-active .history-drawer { transition: transform .38s cubic-bezier(.22,1,.36,1); }.history-slide-enter-from,.history-slide-leave-to { background: transparent; }.history-slide-enter-from .history-drawer,.history-slide-leave-to .history-drawer { transform: translateX(-102%); }
 .attachment-pop-enter-active,.attachment-pop-leave-active { transition: transform .18s ease, opacity .18s ease; }.attachment-pop-enter-from,.attachment-pop-leave-to { opacity: 0; transform: translateY(6px) scale(.97); }.chat-toast-enter-active,.chat-toast-leave-active { transition: opacity .2s ease; }.chat-toast-enter-from,.chat-toast-leave-to { opacity: 0; }
 @media(prefers-reduced-motion:no-preference) { .thinking-orbit { animation: lili-think 2.8s linear infinite; }.thinking-dots i { animation: lili-dot 1.4s ease-in-out infinite; }.thinking-dots i:nth-child(2) { animation-delay: .18s; }.thinking-dots i:nth-child(3) { animation-delay: .36s; } }
 @keyframes lili-think { to { transform: rotate(360deg); } }@keyframes lili-dot { 0%,70%,100% { opacity: .3; transform: translateY(0); }35% { opacity: 1; transform: translateY(-2px); } }
-@media(max-width:359px) { .agent-page { padding: 0 10px; }.chat-heading { gap: 8px; }.heading-title h1 { font-size: 25px; }.heading-doodle { width: 25px; }.message-avatar { width: 36px; height: 40px; }.message-user .message-avatar { width: 36px; height: 40px; }.message-content,.message-user .message-content { max-width: calc(100% - 41px); }.message-bubble { padding: 12px 13px; }.message-text { font-size: 13px; }.message-actions button { padding-left: 5px; padding-right: 5px; }.message-actions .rating-action { min-width: 29px; }.composer-box { padding-left: 12px; gap: 3px; }.composer-tools { gap: 0; }.history-drawer { padding-left: 10px; padding-right: 10px; }.history-drawer h2 { font-size: 19px; }.history-item { padding-left: 8px; padding-right: 8px; }.history-item strong { font-size: 12px; } }
+@media(max-width:359px) { .agent-page { padding: 0 10px; }.chat-heading { gap: 8px; }.heading-title h1 { font-size: 25px; }.message-avatar { width: 36px; height: 40px; }.message-user .message-avatar { width: 36px; height: 40px; }.message-content,.message-user .message-content { max-width: calc(100% - 41px); }.message-bubble { padding: 12px 13px; }.message-text { font-size: 13px; }.message-actions button { padding-left: 5px; padding-right: 5px; }.message-actions .rating-action { min-width: 29px; }.composer-box { padding-left: 12px; gap: 3px; }.composer-tools { gap: 0; }.history-drawer { padding-left: 10px; padding-right: 10px; }.history-drawer h2 { font-size: 19px; }.history-item { padding-left: 8px; padding-right: 8px; }.history-item strong { font-size: 12px; } }
 @media(prefers-reduced-motion:reduce) { .history-slide-enter-active,.history-slide-leave-active,.history-slide-enter-active .history-drawer,.history-slide-leave-active .history-drawer,.attachment-pop-enter-active,.attachment-pop-leave-active,.chat-toast-enter-active,.chat-toast-leave-active { transition: none; } }
 </style>
