@@ -25,7 +25,7 @@ import PencilSwatch from './calendar/PencilSwatch.vue';
 import {
   TODAY,
   HOURS,
-  legend,
+  filters,
   addDays,
   categoryOf,
   chipAt,
@@ -47,20 +47,21 @@ const views = [
 ];
 
 const view = ref('month');
+const category = ref('all');
 const selectedKey = ref(TODAY);
 const monthCursor = ref(parseKey(TODAY));
 const weekStart = ref(parseKey(TODAY));
 const saved = ref(new Set());
 
 const selectedDate = computed(() => parseKey(selectedKey.value));
-const selectedEvents = computed(() => eventsOn(selectedKey.value));
+const selectedEvents = computed(() => eventsOn(selectedKey.value, category.value));
 const isTodaySelected = computed(() => selectedKey.value === TODAY);
 const weekDays = computed(() => daysFrom(weekStart.value));
 const weekKeys = computed(() => weekDays.value.map(toKey));
 const weekSlots = computed(() => HOURS.map((hour) => ({
   hour,
   cells: weekKeys.value.map((key) => {
-    const event = chipAt(key, hour);
+    const event = chipAt(key, hour, category.value);
     return event ? { key, event, category: categoryOf(event) } : { key, event: null };
   }),
 })));
@@ -104,11 +105,11 @@ function toggleSave(id) {
 }
 
 function marks(key) {
-  return marksOn(key);
+  return marksOn(key, category.value);
 }
 
 function dayPencil(key) {
-  if (key === TODAY) return 'pink';
+  if (key === TODAY) return 'yellow';
   if (key === selectedKey.value) return 'blue';
   return undefined;
 }
@@ -213,9 +214,10 @@ function dayPencil(key) {
               <button
                 v-if="cell.event"
                 v-sketch
-                class="chip sketch pencil-fill sketch-fill-only"
+                class="chip sketch pencil-fill sketch-fill-only sketch-cast"
                 type="button"
                 :data-pencil="cell.category.pencil"
+                :data-cast="cell.category.pencil"
                 :aria-label="cell.event.title"
                 @click="selectDay(cell.key)"
               >{{ cell.event.chip }}</button>
@@ -224,11 +226,23 @@ function dayPencil(key) {
         </div>
       </div>
 
-      <ul class="legend">
-        <li v-for="item in legend" :key="item.id" v-sketch class="legend-pill sketch sketch-white">
-          <PencilSwatch :pencil="item.pencil" />{{ item.label }}
-        </li>
-      </ul>
+      <div class="filters" role="tablist" aria-label="活动分类">
+        <button
+          v-for="item in filters"
+          :key="`${item.id}-${category === item.id}`"
+          v-sketch
+          class="filter-tab sketch sketch-cast"
+          :class="category === item.id ? 'pencil-fill' : 'sketch-white'"
+          :data-pencil="category === item.id ? item.pencil : undefined"
+          :data-cast="item.pencil"
+          type="button"
+          role="tab"
+          :aria-selected="category === item.id"
+          @click="category = item.id"
+        >
+          {{ item.label }}
+        </button>
+      </div>
     </article>
 
     <div class="agenda-head">
@@ -237,10 +251,10 @@ function dayPencil(key) {
     </div>
 
     <div v-if="selectedEvents.length" class="agenda">
-      <article v-for="item in selectedEvents" :key="item.id" v-sketch class="event-card sketch sketch-white">
+      <article v-for="item in selectedEvents" :key="item.id" v-sketch class="event-card sketch sketch-white sketch-cast" :data-cast="categoryOf(item).pencil">
         <span class="accent" :data-accent="categoryOf(item).pencil" aria-hidden="true"></span>
         <RouterLink class="event-link" :to="{ path: '/detail', query: { id: item.id } }">
-          <span v-sketch class="badge sketch pencil-fill" :data-pencil="categoryOf(item).pencil">
+          <span v-sketch class="badge sketch pencil-fill sketch-cast" :data-pencil="categoryOf(item).pencil" :data-cast="categoryOf(item).pencil">
             <CalendarIcon :name="categoryOf(item).icon" />
           </span>
           <div class="event-copy">
@@ -272,7 +286,7 @@ function dayPencil(key) {
         </button>
       </article>
     </div>
-    <p v-else class="empty">这一天还没有安排活动</p>
+    <p v-else class="empty">{{ category === 'all' ? '这一天还没有安排活动' : '这一天没有这类活动' }}</p>
   </section>
 </template>
 
@@ -297,11 +311,10 @@ function dayPencil(key) {
 .month-head { margin: 2px 0 2px; color: var(--muted); font-size: 12px; text-align: center; }
 .month-day { min-height: 54px; padding: 3px 0 4px; border: 0; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 2px; color: inherit; font: inherit; }
 .month-day.is-out { color: #b0b8c4; }
-.month-day.is-today .day-num { color: #fff; }
-.day-num { width: 28px; height: 28px; display: grid; place-items: center; font-size: 14px; line-height: 1; background: transparent; }
+.day-num { width: 28px; height: 28px; display: grid; place-items: center; font-size: 14px; line-height: 1; background: transparent; color: var(--ink); }
 .dots { display: flex; justify-content: center; gap: 2px; min-height: 10px; }
 .dots :deep(.swatch) { width: 8px; height: 8px; }
-.today-tag { font-size: 9px; line-height: 1; color: #dc8289; }
+.today-tag { font-size: 9px; line-height: 1; color: #c9a227; }
 .week-head, .week-row { display: grid; grid-template-columns: 36px repeat(7, minmax(0, 1fr)); gap: 2px; }
 .week-day { min-height: 44px; padding: 1px 0 2px; border: 0; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 1px; color: inherit; font: inherit; }
 .week-label { font-size: 11px; color: var(--muted); line-height: 1.2; }
@@ -310,9 +323,8 @@ function dayPencil(key) {
 .time-gutter { display: grid; place-items: center start; padding-left: 1px; color: var(--muted); font-size: 10px; letter-spacing: 0; }
 .week-cell { min-width: 0; padding: 1px; display: flex; align-items: center; }
 .chip { width: 100%; min-height: 22px; padding: 2px 2px; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 10px; line-height: 1.15; letter-spacing: 0; overflow: hidden; }
-.legend { display: flex; gap: 8px; margin: 10px 2px 0; padding: 0; list-style: none; }
-.legend-pill { flex: 1; min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 8px; background: transparent; color: var(--ink); font-size: 13px; }
-.legend-pill :deep(.swatch) { width: 14px; height: 14px; }
+.filters { display: flex; gap: 6px; margin: 10px 2px 0; }
+.filter-tab { flex: 1; min-width: 0; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; padding: 6px 6px; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 13px; line-height: 1.2; white-space: nowrap; }
 .agenda-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 14px 0 10px; }
 .day-pill { margin: 0; padding: 6px 12px; background: transparent; font-size: 15px; font-weight: 400; line-height: 1.2; }
 .agenda-head p { margin: 0; color: var(--muted); font-size: 14px; display: inline-flex; align-items: center; gap: 2px; }
@@ -323,6 +335,8 @@ function dayPencil(key) {
 .accent[data-accent='pink'] { background: #e99796; }
 .accent[data-accent='blue'] { background: #5ea7e5; }
 .accent[data-accent='yellow'] { background: #f0b24a; }
+.accent[data-accent='lavender'] { background: #ab94de; }
+.accent[data-accent='mint'] { background: #7ec9a8; }
 .event-link { flex: 1; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: center; padding: 10px 40px 10px 8px; color: inherit; }
 .badge { width: 40px; height: 40px; display: grid; place-items: center; background: transparent; color: var(--ink); }
 .event-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px; min-width: 0; }
@@ -330,6 +344,8 @@ function dayPencil(key) {
 .event-kind[data-accent='pink'] { color: #d56d68; }
 .event-kind[data-accent='blue'] { color: #3d86c8; }
 .event-kind[data-accent='yellow'] { color: #d89a22; }
+.event-kind[data-accent='lavender'] { color: #7d64b8; }
+.event-kind[data-accent='mint'] { color: #2f9a72; }
 .event-copy h3 { margin: 0; font-size: 16px; font-weight: 400; line-height: 1.3; min-width: 0; overflow-wrap: break-word; }
 .event-meta { display: flex; flex-wrap: wrap; gap: 6px 12px; margin: 4px 0 0; color: var(--muted); font-size: 12px; line-height: 1.35; }
 .event-meta span { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
@@ -347,8 +363,8 @@ function dayPencil(key) {
   .month-day { min-height: 48px; }
   .week-head, .week-row { grid-template-columns: 30px repeat(7, minmax(0, 1fr)); }
   .chip { font-size: 9px; }
-  .legend { gap: 4px; }
-  .legend-pill { font-size: 12px; padding-left: 4px; padding-right: 4px; }
+  .filters { gap: 4px; }
+  .filter-tab { font-size: 12px; padding: 6px 4px; }
   .event-title { flex-wrap: wrap; gap: 2px 8px; }
   .event-link { padding: 9px 36px 9px 6px; gap: 6px; }
 }
