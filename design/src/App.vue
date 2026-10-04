@@ -40,8 +40,8 @@ onBeforeUnmount(() => clearTimeout(toastTimer));
 <template>
   <IconSprite />
   <div v-sketch class="phone-shell">
-    <AppHeader v-if="!focusShell" @notify="showNotification" />
-    <main id="main-content" ref="main" class="page-main" :class="{ 'is-focus': focusShell, 'immersive-main': page.immersive }">
+    <AppHeader v-if="!focusShell" :class="{ 'map-header': page.key === 'map' }" @notify="showNotification" />
+    <main id="main-content" ref="main" class="page-main" :class="{ 'is-focus': focusShell, 'immersive-main': page.immersive, 'map-main': page.key === 'map' }">
       <PageHeading v-if="!focusShell && !page.customHeading && page.heading !== false" ref="heading" :page="page" @back="goBack" />
       <RouterView />
       <PageFooter v-if="!focusShell && !page.immersive && page.footer !== false" />

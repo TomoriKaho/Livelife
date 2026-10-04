@@ -109,8 +109,7 @@ watch(() => route.query.activity, applyActivityRoute);
 </script>
 
 <template>
-  <section class="map-page" aria-label="燕园活动探索">
-    <h1 id="page-title" class="map-page-title" tabindex="-1">活动地图</h1>
+  <section id="page-title" class="map-page" aria-label="燕园活动探索" tabindex="-1">
     <div class="map-rule" aria-hidden="true"></div>
     <div class="map-stage" :class="{ 'building-focus': selected, 'plan-mode': mode === '2d' }" :style="{ '--drawer-peek': `${drawerPeek}px` }">
       <CampusScene v-if="mode === '3d'" ref="scene" :focus-inset="drawerPeek" :focus-point="focusPoint" :selected="selected" :floor="floor" :activities="visibleActivities" @select="select" @floor="floor = $event" />
@@ -233,8 +232,7 @@ watch(() => route.query.activity, applyActivityRoute);
 </template>
 
 <style scoped>
-.map-page { position: relative; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; margin-top: -6px; }
-.map-page-title { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.map-page { position: relative; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; outline: none; }
 .map-rule { height: 1.5px; flex: 0 0 auto; background: #20304b; }
 .map-overlay { position: absolute; top: 8px; left: 0; right: 0; z-index: 8; pointer-events: none; }
 .map-search-wrap { position: relative; z-index: 2; margin: 0 17px; pointer-events: auto; }
