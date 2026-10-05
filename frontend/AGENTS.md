@@ -2,7 +2,10 @@
 
 遵循根目录 AGENTS.md，并阅读 docs/architecture.md、docs/engineering.md 和 docs/testing.md。
 
-- uni-app 是候选方案，开始实现前确认选型、版本、包管理器和目标平台。
+- 已确定 Vue 3 + TypeScript + Vite + Vue Router、Canvas 2D + Three.js 和 Capacitor；使用 npm 和锁文件，具体版本由初始化任务验证后固定。首阶段网页演示并验证最小 Android 包，iOS 后续，不采用 uni-app。
+- demo 阶段以 design 的明确提交为迁移来源，保留页面专属组件、哈希路由、pageMeta 和手绘效果；新增代码使用 TypeScript，既有 JS/MJS 分批迁移。目标目录见 README，不提前创建无用途的工程。
+- 资源迁移保留字体和地图许可证及来源，更新导入与构建路径，移除个人机器绝对路径；公众分发地图保留可见 OSM 署名。
+- 首阶段仅 GET /test/hello 真实联调，其他业务使用明确标注的前端样例；接口契约见 docs/architecture.md。Web/原生差异通过 platform/ 适配，Android 地址必须从手机可访问。
 - 按接口契约开发；后端未完成时使用明确标识的 Mock，不将模拟结果宣称为真实联调。
 - 后端地址通过环境配置提供，不在页面中写死正式域名或私密凭证。
 - 处理加载、空数据、错误、权限拒绝和重复操作状态。

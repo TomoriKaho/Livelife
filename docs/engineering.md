@@ -1,25 +1,45 @@
 # 工程规范
 
-## 选型状态
+## 技术栈与实施阶段
 
-（下面的技术栈需要后续选型 Issue 和 PR 确认，仅作参考）。
+本次按 [Issue #19](https://github.com/TomoriKaho/Livelife/issues/19) 记录已确认技术路线，正式工程尚未初始化。选型、实现和验证状态分别记录，不将待引入组件描述为已运行服务。
 
-| 层次       | 候选方案                                        | 决策考虑                                                         |
-| ---------- | ----------------------------------------------- | ---------------------------------------------------------------- |
-| 移动客户端 | uni-app + Vue 3 + TypeScript；或 Flutter + Dart | Vue 基础及小程序需求优先考虑 uni-app；APP 体验优先可考虑 Flutter |
-| 后端 API   | Python + FastAPI                                | 便于整合采集、检索和 AI                                          |
-| 数据库     | PostgreSQL                                      | 用户、订阅、信息、地点与推送记录                                 |
-| 检索       | 全文检索，必要时增加 pgvector                   | 先验证检索质量，避免过早复杂化                                   |
-| 后台任务   | 独立 worker；必要时 Redis + Celery              | 定时采集、去重、推荐和提醒                                       |
-| 部署       | Docker Compose                                  | 课程阶段集中部署，兼顾开源自部署                                 |
+| 层次 | 确定方案 | 实施阶段与用途 |
+| --- | --- | --- |
+| 客户端 | Vue 3 + TypeScript + Vite + Vue Router | 首阶段网页与移动布局；npm 管理依赖并提交 package-lock.json |
+| 地图 | Canvas 2D + Three.js | 首阶段复用离线校园地图；2D 作为低性能设备的可选入口 |
+| APP | Capacitor | 同一前端支持 Android/iOS；首阶段最小 Android 包，iOS 后续 |
+| API | Python + FastAPI + Pydantic | 首阶段 hello 接口及请求、响应校验 |
+| 数据库 | PostgreSQL + SQLAlchemy + Alembic | 业务持久化阶段引入；首阶段不启动数据库 |
+| 后台任务 | 独立 Python worker | 后续采集与推荐；不依赖手机后台运行 |
+| 部署 | Docker Compose | 后续容器部署与开源自部署；首阶段本地启动 |
 
-uni-app 可以生成 APP 并接入系统能力，普通 Vue 页面主要使用 WebView，nvue 提供原生渲染。推送还需配置平台凭证和 Android 厂商通道，不是编译后自动可用。Flutter 支持多平台及原生代码互操作，小程序通常需另外实现。第一版优先二维地图和活动标记，3D 地图另做选型验证。
+检索先基于真实中文校园内容验证分词与召回；pgvector、Redis + Celery、LLM 服务、登录及推送供应商待专项确认。本次不新增状态管理库、地图在线 SDK 或微服务体系。
 
-参考：[uni-app 渲染](https://uniapp.dcloud.net.cn/tutorial/nvue-outline)、[uni-push](https://uniapp.dcloud.io/unipush)、[Flutter 平台支持](https://docs.flutter.dev/platform-integration)。
+### 客户端选择依据
+
+最终目标为 APP，网页是开发和演示入口。design 原型采用标准 Vue 页面、Vue Router、DOM/SVG 手绘效果、Canvas 2D 和 Three.js。Vue + Capacitor 可继续沿用 Web 实现，再通过原生插件接入系统能力；uni-app 和 Flutter 不作为本次实施路线，小程序需求如进入范围需另行评估。
+
+Capacitor 页面在原生容器的 WebView 中运行，复用代码不代表已经验证原生体验。地图性能、键盘、安全区、返回键、定位和通知必须在对应设备验证。国内 Android 厂商推送通道另行调研，不能把生成安装包当成推送已经可用。
+
+参考：[Capacitor 介绍](https://capacitorjs.com/docs)、[构建流程](https://capacitorjs.com/docs/basics/workflow)、[FastAPI 特性](https://fastapi.tiangolo.com/features/)。
+
+## 原型迁移与目录职责
+
+完整目标目录见 [README](../README.md#目标目录结构)，它是后续创建计划。本次不合并 design、不迁移源码、不创建工程目录。
+
+- 后续客户端初始化从 design 分支选择明确提交作为迁移基线，在 PR 记录 SHA 和来源。迁入 frontend/ 后以正式客户端为业务实现入口，设计参考不长期维护另一套业务代码。
+- pages/ 保留现有页面及地图、Agent 等页面专属子目录；components/ 仅放跨页面公共组件。保留哈希路由、pageMeta 元数据和手绘插件，不为了目录统一拆散专属组件。
+- 新增接口、平台适配及业务代码使用 TypeScript，既有 JS/MJS 逐批迁移；初始化时支持过渡期混合文件并提供真实检查命令，不强制首阶段重写所有原型。
+- api/ 集中请求、API 地址配置及错误处理；types/ 定义接口类型；data/ 放明确标注的演示数据；platform/ 封装 Web/原生能力差异，避免页面散布平台分支。
+- 原型 assets/ 地图与字体、src/pictures/ 图片迁入 src/assets/，保留来源与许可证；sketch.js 及其 Vue 指令统一纳入 plugins/。同步更新相对导入、构建许可证输出、地图处理脚本与测试路径，移除个人机器字体路径等绝对路径依赖。
+- scripts/ 放资源处理和校验；tests/ 放测试并保留原型中有价值的行为用例。android/、ios/ 放 Capacitor 原生工程，按阶段生成并维护配置；产物及签名凭证不提交。
+- 后端为模块化单体：api/ 管理路由，schemas/ 管理 Pydantic 数据结构，core/ 管理配置；services/ 后续承载业务逻辑，db/ 管理数据库连接与模型，migrations/ 保存 Alembic 迁移。workers/ 后续提供独立进程入口，可复用服务与数据访问逻辑，不作为独立微服务。
+- deploy/ 后续集中容器与部署配置；.github/ 保留模板并在自动化任务中增加工作流。目录按实际需要创建，不提前生成空工程。
 
 ## 目录与启动命令
 
-根目录保留 README、贡献指南和 Agent 入口；docs/ 放正式文档；frontend/ 放客户端；backend/ 放服务端；.github/ 放协作模板及未来工作流。
+正式工程尚未初始化，当前不提供可运行的安装、启动、构建或测试命令。design 原型自身的命令仅适用于其分支和目录，不能作为 frontend/ 的启动入口。前端确定使用 npm 和锁文件；运行时、依赖精确版本及检查工具由初始化任务验证兼容性后固定。
 
 后续初始化工程的负责人必须在本节补充：
 
@@ -27,9 +47,11 @@ uni-app 可以生成 APP 并接入系统能力，普通 Vue 页面主要使用 W
 2. 从克隆仓库到启动前后端的完整命令及工作目录。
 3. `.env.example`、各变量含义、必填项和获取方式；示例不得包含敏感信息。
 4. `.gitignore`信息，在固定好技术栈后添加，后续尽量在子目录新增，避免根目录的更改
-5. 数据库启动、迁移、测试数据初始化及清理方法。
+5. 首阶段说明前端样例数据及无数据库边界；持久化阶段补充数据库启动、迁移、测试数据初始化及清理方法。
 6. 格式、类型、单元测试、集成测试和构建命令。
-7. 默认地址、端口、健康检查、常见启动故障。
+7. 默认地址、端口、健康检查、常见启动故障；Android 访问开发后端的网络及配置方式。
+
+首阶段客户端与后端分别初始化，再完成 hello 联调。API 地址统一配置，网页使用适当开发代理或跨域设置，Android 使用手机可访问的后端地址。具体变量名称、端口和网络配置由实现 PR 写明；本次不填入虚构命令或已配置地址。APP 构建与分发流程见 [部署说明](deployment.md#capacitor-构建与首阶段验证包)。
 
 ## 编码约定
 
