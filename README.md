@@ -86,7 +86,7 @@ Livelife/
 | [架构说明](docs/architecture.md)（待完善） | 模块边界、数据流和接口协作                       |
 | [Agent 要求](AGENTS.md)（待完善）          | AI 工作入口；前后端另有目录级要求                |
 
-图文操作教程：[GitHub 协作操作指南](docs/github-guide.html)。
+图文操作教程：[GitHub 协作操作指南](https://tomorikaho.github.io/Livelife/contributing/)，由 github-pages 分支发布和维护。
 
 ## 交付路径
 
