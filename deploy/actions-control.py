@@ -218,6 +218,8 @@ class Controller:
         result = self.rpc({"op": "bind", "owner": key, "target": target,
                            "frontend_sha": pr["head"]["sha"], "generation": self.generation})
         self.summary(result)
+        if result["status"] != "ready":
+            return  # A newer binding/close won; don't advertise this request.
         self.github.comment(number, f"后端绑定已更新。\n\n"
             f"- API 地址：`{result['api_base_url']}`\n"
             f"- 后端 SHA：`{result['backend_sha']}`\n"

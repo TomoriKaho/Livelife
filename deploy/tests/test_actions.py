@@ -95,6 +95,12 @@ class ActionsTests(unittest.TestCase):
         self.controller.manual({"operation": "bind", "frontend_pr": "41", "backend_target": "pr-40"})
         self.assertEqual(self.requests[-1]["op"], "bind")
         self.assertEqual(self.requests[-1]["target"], "be-" + A)
+        # A late manual run must not report a successful replacement or index
+        # missing URL fields after the registry rejects its generation.
+        self.controller.rpc = lambda request: {"status": "superseded"}
+        self.controller.manual({"operation": "bind", "frontend_pr": "41", "backend_target": "staging"})
+        self.assertEqual(len(self.controller.github.comments), 1)
+        self.assertEqual(self.results[-1]["status"], "superseded")
 
     def test_undeployed_latest_sha_keeps_previous_binding(self):
         self.controller.pr = lambda number: {"state": "open", "head": {"repo": {"full_name": REPO}, "sha": B}}
