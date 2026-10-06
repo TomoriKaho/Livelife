@@ -2,7 +2,7 @@
 
 ## 当前实施状态
 
-frontend/ 已提供本地网页工程，运行 `npm run build` 后可用 `npm run preview` 查看构建产物；安装、端口及环境变量配置见 [工程规范](engineering.md#目录与启动命令)。远程网页预览与 APP 构建分别由 #27、#28 接入。
+frontend/ 已提供本地网页工程，运行 `npm run build` 后可用 `npm run preview` 查看构建产物；安装、端口及环境变量配置见 [工程规范](engineering.md#目录与启动命令)。backend/ 已提供本地 hello 服务，启动和检查步骤见工程规范；本分支尚无业务后端、Docker 配置、部署凭证、APP 构建配置或可执行工作流，没有已验证的远程服务地址。本地构建预览不代表正式工程已部署。
 
 #29 增加了后端环境管理工具、服务器初始化脚本与 Actions 工作流。课程机直接运行 Python 后端，不使用 Docker；公网机提供 HTTPS API，经 SSH 隧道访问课程机。跨 PR 联调固定后端提交版本。
 

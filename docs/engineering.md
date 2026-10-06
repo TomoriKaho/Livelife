@@ -2,14 +2,14 @@
 
 ## 技术栈与实施阶段
 
-技术路线由 [Issue #19](https://github.com/TomoriKaho/Livelife/issues/19) 确认，frontend/ 已初始化网页客户端；本分支业务后端及原生工程仍待实现。选型、实现和验证状态分别记录，不将待引入组件描述为已运行服务。
+技术路线由 [Issue #19](https://github.com/TomoriKaho/Livelife/issues/19) 确认，frontend/ 已初始化网页客户端，backend/ 已实现本地 hello 接口；业务后端及原生工程仍待实现。选型、实现和验证状态分别记录，不将待引入组件描述为已运行服务。
 
 | 层次 | 确定方案 | 实施阶段与用途 |
 | --- | --- | --- |
 | 客户端 | Vue 3 + TypeScript + Vite + Vue Router | 首阶段网页与移动布局；npm 管理依赖并提交 package-lock.json |
 | 地图 | Canvas 2D + Three.js | 首阶段复用离线校园地图；2D 作为低性能设备的可选入口 |
 | APP | Capacitor | 同一前端支持 Android/iOS；首阶段最小 Android 包，iOS 后续 |
-| API | Python + FastAPI + Pydantic | 首阶段 hello 接口及请求、响应校验 |
+| API | Python + FastAPI + Pydantic | 已实现本地 hello 接口及响应校验；业务接口后续引入 |
 | 数据库 | PostgreSQL + SQLAlchemy + Alembic | 业务持久化阶段引入；首阶段不启动数据库 |
 | 后台任务 | 独立 Python worker | 后续采集与推荐；不依赖手机后台运行 |
 | 部署 | Python venv + Supervisor；Nginx + SSH 隧道 | 课程机普通用户直接运行后端，公网机提供 HTTPS；#29 实施 |
@@ -26,7 +26,7 @@ Capacitor 页面在原生容器的 WebView 中运行，复用代码不代表已�
 
 ## 原型迁移与目录职责
 
-完整目标目录见 [README](../README.md#目标目录结构)。客户端迁移基线为 design 分支 `4d95af0`，迁入 frontend/ 后以该目录作为网页实现入口；后端、原生工程及数据库部分仍是后续计划。
+完整目标目录见 [README](../README.md#目标目录结构)。客户端迁移基线为 design 分支 `4d95af0`，迁入 frontend/ 后以该目录作为网页实现入口；backend/ 已提供 FastAPI 服务入口、hello 路由、响应模型和测试；业务模块、原生工程及数据库部分仍是后续计划。
 
 - 客户端已按上述基线迁移页面、地图和手绘插件；后续变更继续在 frontend/ 维护，设计参考不长期维护另一套业务代码。
 - pages/ 保留现有页面及地图、Agent 等页面专属子目录；components/ 仅放跨页面公共组件。保留哈希路由、pageMeta 元数据和手绘插件，不为了目录统一拆散专属组件。
@@ -56,6 +56,42 @@ npm run dev
 
 首次配置时复制环境变量样例；已有 `.env` 时保留自己的配置。开发入口为 `http://127.0.0.1:8765/`，哈希路由默认进入引导页。点击“登录并进入”进入样例地图，无需真实账号。`vite.config.ts` 使用严格端口，8765 被占用时启动失败；可停止自己的旧预览，或执行 `npm run dev -- --port 8775` 指定空闲端口。
 
+### 后端安装、启动与检查
+
+后端使用 Python 3.12（`>=3.12,<3.13`）和 uv 管理依赖，精确依赖版本由 `backend/uv.lock` 锁定。先按 [uv 官方安装说明](https://docs.astral.sh/uv/getting-started/installation/) 安装 uv；macOS 已有 Homebrew 时可执行 `brew install uv`。本次本地验证使用 uv `0.10.9` 和 Python `3.12.13`，仓库固定 Python 3.12 系列而非唯一补丁版本。
+
+从仓库根目录，在独立终端执行：
+
+```bash
+uv --version
+cd backend
+uv python install 3.12
+uv sync --locked
+uv run python --version
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+`uv sync --locked` 创建 `backend/.venv` 并安装锁定的运行及开发依赖；无需手动激活虚拟环境。已有可用 Python 3.12 时可跳过 `uv python install 3.12`。安装依赖或下载 Python 需要访问对应下载源。当前 hello 服务无需数据库、凭证或后端 `.env` 配置。
+
+服务监听 `http://127.0.0.1:8000`；8000 被占用时先检查占用者，或使用其他空闲端口并同步前端 `VITE_API_BASE_URL`。启动后保持此终端运行，按 Ctrl+C 停止。在另一个终端验证：
+
+```bash
+curl -i http://127.0.0.1:8000/test/hello
+```
+
+预期为 HTTP 200、`Content-Type: application/json` 和 `{"message":"hello world"}`。`curl` 成功只验证接口；浏览器联调还需符合下节 CORS 配置。
+
+以下检查均在 backend/ 执行：
+
+```bash
+uv run pytest
+uv run ruff check .
+uv run ruff format --check .
+uv lock --check
+```
+
+测试覆盖 hello 响应、允许及拒绝的 CORS 来源、未知路径和不支持的方法。
+
 ### API 地址与联调
 
 | 变量 | 示例/默认值 | 用途 |
@@ -66,7 +102,7 @@ Vite 在开发启动或构建时读取环境变量；修改 `.env` 后重启开�
 
 “我的 → 帮助与反馈 → 接口连通性测试”显示当前后端地址。点击“测试连接”发起 `GET /test/hello`，加载期间禁用重复点击；只有 HTTP 200 且 JSON `message` 为字符串 `hello world` 才显示成功。网络不可达、非 200、无效 JSON、字段不符或 10 秒超时均显示原因，允许重试。
 
-当前 Vite 未配置 API 代理，网页直接请求配置的基地址。后端须允许实际网页 Origin，例如 `http://127.0.0.1:8765` 或构建预览的 `http://127.0.0.1:8766`；协议、主机或端口不同都属于不同 Origin。页面不可达时先检查前端端口；页面可访问但连接失败时检查后端是否启动、地址及后端 CORS 配置。本分支没有后端启动命令，真实实现由 #24、联调由 #25 推进。
+当前 Vite 未配置 API 代理，网页直接请求配置的基地址。后端须允许实际网页 Origin，例如 `http://127.0.0.1:8765` 或构建预览的 `http://127.0.0.1:8766`；协议、主机或端口不同都属于不同 Origin。页面不可达时先检查前端端口；页面可访问但连接失败时检查后端是否启动、地址及后端 CORS 配置。后端启动方法见上节；默认允许 localhost 或 127.0.0.1 的 5173、8765、8766 端口。自定义网页端口需同步修改 `backend/app/main.py` 中的明确来源白名单，手机局域网和 Android/Capacitor 来源尚未配置。
 
 ### 构建、预览与检查
 
