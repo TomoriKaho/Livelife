@@ -188,6 +188,17 @@ sudo systemctl status livelife-gateway.service --no-pager
 
 第二把私钥和 Basic 密码不进入 GitHub。检查/打包 job 无部署秘密；控制程序从 main checkout，只解析限定的 artifact 文件，不执行其中的脚本。fork 不部署；课程机仅持测试权限，不接正式数据库/凭证。venv 是依赖隔离，不能当成安全沙箱。
 
+控制工作流的 GitHub token 权限由 `.github/workflows/backend-control.yml` 明确声明：
+
+```yaml
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+```
+
+前两项用于读取 main 控制代码和构建产物；`pull-requests: write` 用于创建或更新 PR 的预览、绑定与关闭说明。评论虽然调用 `/issues/{PR编号}/comments`，目标仍是 PR，不能只授予 `issues: write` 并保留 PR 只读。此流程不需要普通 Issue 写权限、代码写权限或个人访问令牌。仓库的全局 Workflow permissions 可保持只读，工作流按需声明上述权限；自动创建或批准 PR 的开关不需要开启。
+
 enabled 未设置时控制 job 跳过，CI 仍检查基础设施。工作流进入 main 前无法验证完整 workflow_run 链路；进入 main 后验证 Runner → 公网机 → 课程机的真实连接。
 
 ## 后端接入要求与 #27 控制接口
@@ -241,6 +252,17 @@ JSON
 - 清理失败：数据库保留待清理占用，网络恢复后 collect；不直接删数据库或按端口杀未知进程。
 - 证书失败：`journalctl -u livelife-renew-ip.service`，修复 443/ACME 条件后手动 renew。
 - 业务回滚：重新部署确认的旧 SHA。后续数据库引入时另行确认隔离、迁移和恢复策略。
+
+### PR 评论返回 403 时如何处理
+
+1. 打开失败的 **Backend environments** 运行，查看失败步骤。如果 traceback 位于 `GitHub.comment` 的 POST/PATCH 并显示 `HTTP Error 403`，被拒绝的是 GitHub 评论接口；这不能说明腾讯云拦截了 SSH。若失败的是 SSH 超时或公钥认证，则按隧道、网络或密钥问题排查。
+2. 展开 **Set up job → GITHUB_TOKEN Permissions**，确认实际权限包含 `PullRequests: write`。在上述控制工作流中声明权限，通过 PR 合入 main；不要仅为评论把仓库所有工作流改成写权限或公开部署私钥。
+3. 权限修复合并后，使用新事件验证。合并修复 PR 产生的 closed 事件应成功释放它的引用并创建或更新关闭说明；也可在后续打开的同仓库 PR 上验证预览/绑定说明。直接 Re-run 原来的失败任务仍使用原事件提交的工作流权限，不能用它验证新的 YAML 权限。
+4. 检查新运行的真实权限、评论及 Actions 结果。若仍为 403，核对目标 PR 是否锁定、实际 token 权限与仓库/组织策略，保留运行链接；不把用户个人 token 的成功当成 `GITHUB_TOKEN` 已修复。
+
+2026-10-07，PR #34 合并后的 [main 部署运行](https://github.com/TomoriKaho/Livelife/actions/runs/37503098101) 成功；[PR 关闭处理运行](https://github.com/TomoriKaho/Livelife/actions/runs/37503032614) 连续三次在写 GitHub 评论时返回 403。该运行已完成两条 release RPC，再在评论 POST 失败，后续 collect 未执行；定期核对与回收仍按现有规则补偿。本次权限修复的线上评论结果以合入后的新运行为准，不能把本地检查记为线上通过。
+
+参考：[GitHub 工作流权限](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#permissions)、[PR/Issue 评论接口](https://docs.github.com/en/rest/issues/comments#create-an-issue-comment)、[重跑工作流](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs)。
 
 2026-10-07 实测记录：
 
