@@ -12,7 +12,7 @@
 | API | Python + FastAPI + Pydantic | 已实现本地 hello 接口及响应校验；业务接口后续引入 |
 | 数据库 | PostgreSQL + SQLAlchemy + Alembic | 业务持久化阶段引入；首阶段不启动数据库 |
 | 后台任务 | 独立 Python worker | 后续采集与推荐；不依赖手机后台运行 |
-| 部署 | Docker Compose | 后续容器部署与开源自部署；首阶段本地启动 |
+| 部署 | Python venv + Supervisor；Nginx + SSH 隧道 | 课程机普通用户直接运行后端，公网机提供 HTTPS；#29 实施 |
 
 检索先基于真实中文校园内容验证分词与召回；pgvector、Redis + Celery、LLM 服务、登录及推送供应商待专项确认。本次不新增状态管理库、地图在线 SDK 或微服务体系。
 
@@ -35,7 +35,7 @@ Capacitor 页面在原生容器的 WebView 中运行，复用代码不代表已�
 - 原型 assets/ 地图与字体、src/pictures/ 图片迁入 src/assets/，保留来源与许可证；sketch.js 及其 Vue 指令统一纳入 plugins/。同步更新相对导入、构建许可证输出、地图处理脚本与测试路径，移除个人机器字体路径等绝对路径依赖。
 - scripts/ 放资源处理和校验；tests/ 放测试并保留原型中有价值的行为用例。android/、ios/ 放 Capacitor 原生工程，按阶段生成并维护配置；产物及签名凭证不提交。
 - 后端为模块化单体：api/ 管理路由，schemas/ 管理 Pydantic 数据结构，core/ 管理配置；services/ 后续承载业务逻辑，db/ 管理数据库连接与模型，migrations/ 保存 Alembic 迁移。workers/ 后续提供独立进程入口，可复用服务与数据访问逻辑，不作为独立微服务。
-- deploy/ 后续集中容器与部署配置；.github/ 保留模板并在自动化任务中增加工作流。目录按实际需要创建，不提前生成空工程。
+- deploy/ 集中后端环境注册表、直接运行后端与 SSH 隧道的控制工具、项目网关和初始化脚本；.github/ 保留模板及 Actions 工作流。目录按实际需要创建。
 
 ## 目录与启动命令
 
@@ -139,6 +139,19 @@ npm run map:prepare
 活动、账户、兴趣、Agent 对话和定位为前端样例，无数据库、登录、模型或上传服务；只有 hello 测试区发送真实请求。请求成功需另行启动兼容后端，模拟响应验证不能代替真实联调。
 
 需要手机浏览器预览时，先构建，再执行 `npm run preview:phone`，通过电脑在局域网中的实际 IP 和 8766 端口访问；网络及防火墙需要允许手机连接。hello 后端地址必须设置为手机可访问的地址，手机的 localhost 不指向电脑。手机网页不代表 Android/iOS 安装包已经验证。当前没有 Capacitor 原生工程或 APK 命令，后续安排见 [部署说明](deployment.md#capacitor-构建与首阶段验证包)。
+
+### 后端部署工具检查
+
+业务工程启动命令仍待初始化；#29 的基础设施检查可以独立运行：
+
+```bash
+python3 -m venv deploy/.venv
+deploy/.venv/bin/python -m pip install supervisor==4.3.0 ruff==0.11.13
+deploy/.venv/bin/python -m unittest discover -s deploy/tests -v
+deploy/.venv/bin/ruff check deploy
+```
+
+Python 3.12，控制工具使用标准库和固定版本 Supervisor；详见 [部署教程](deployment.md)。
 
 ## 编码约定
 

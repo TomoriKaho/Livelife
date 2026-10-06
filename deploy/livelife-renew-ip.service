@@ -1,0 +1,6 @@
+[Unit]
+Description=Renew Livelife short-lived IP certificate
+[Service]
+Type=oneshot
+ExecStart=/opt/livelife/control/renew-ip.sh renew
+TimeoutStartSec=180

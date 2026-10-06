@@ -12,7 +12,7 @@
 
 ## 技术路线与当前状态
 
-[Issue #19](https://github.com/TomoriKaho/Livelife/issues/19) 的技术路线已确认：客户端采用 Vue 3 + TypeScript + Vite + Vue Router，地图采用 Canvas 2D + Three.js，APP 采用 Capacitor；后端采用 Python + FastAPI + Pydantic。后续持久化采用 PostgreSQL + SQLAlchemy + Alembic，采集与推荐使用独立 Python worker，部署采用 Docker Compose。具体实施阶段与待专项选型事项见 [工程规范](docs/engineering.md#技术栈与实施阶段)。
+[Issue #19](https://github.com/TomoriKaho/Livelife/issues/19) 的技术路线已确认：客户端采用 Vue 3 + TypeScript + Vite + Vue Router，地图采用 Canvas 2D + Three.js，APP 采用 Capacitor；后端采用 Python + FastAPI + Pydantic。后续持久化采用 PostgreSQL + SQLAlchemy + Alembic，采集与推荐使用独立 Python worker，课程机后端采用 Python 虚拟环境和 Supervisor 直接运行，公网 API 采用 Nginx + SSH 隧道。具体实施阶段与待专项选型事项见 [工程规范](docs/engineering.md#技术栈与实施阶段)。
 
 最终交付目标是 Android/iOS APP，网页用于开发和演示；首阶段同时安排最小 Android 验证包，iOS 后续验证，小程序不纳入当前范围。
 
@@ -68,7 +68,7 @@ Livelife/
 │   ├── migrations/         # 后续 Alembic 迁移
 │   └── tests/
 ├── docs/
-├── deploy/                 # 后续容器与部署配置
+├── deploy/                 # 后端环境管理与服务器部署工具
 └── .github/
 ```
 
@@ -82,7 +82,7 @@ Livelife/
 | [协作流程](docs/workflow.md)（必读）       | 整体协作流程                                     |
 | [AI 辅助开发指南](docs/ai-development.md)（待完善） | AI 使用教程、人机分工、评审与执行边界             |
 | [测试说明](docs/testing.md)（待完善）      | 本地自测、合并前预览、测试服联调、验收和缺陷报告 |
-| [部署说明](docs/deployment.md)（待完善）   | 分支与环境映射、Actions 配置步骤、发布和回滚     |
+| [部署说明](docs/deployment.md)   | 分支与环境映射、Actions 配置教程、实际验证与发布回滚     |
 | [工程规范](docs/engineering.md)（待完善）  | 技术选型状态、目录、编码和提交规范               |
 | [架构说明](docs/architecture.md)（待完善） | 模块边界、数据流和接口协作                       |
 | [Agent 要求](AGENTS.md)（待完善）          | AI 工作入口；前后端另有目录级要求                |

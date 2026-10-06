@@ -1,0 +1,3 @@
+target-version = "py312"
+[lint.per-file-ignores]
+"tests/*.py" = ["E402"]
