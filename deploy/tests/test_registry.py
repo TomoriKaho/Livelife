@@ -5,6 +5,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import tempfile
 import threading
 import unittest
+import sqlite3
 
 from livelife.registry import Registry
 
@@ -63,6 +64,19 @@ class RegistryTests(unittest.TestCase):
         self.deploy("pr:41", C)
         self.assertEqual(set(self.runtime.running.values()), {18000, 18001, 18002})
         self.assertEqual(self.runtime.routes["/api/staging/"]["sha"], A)
+
+    def test_startup_intent_is_committed_before_external_start(self):
+        original = self.runtime.ensure
+        def ensure(ident, commit, port, bundle):
+            # A separate connection sees only committed records. The candidate
+            # must be reserved but must not appear as an active instance yet.
+            with sqlite3.connect(self.registry.root / "registry.sqlite3") as db:
+                self.assertEqual(db.execute("SELECT id, port FROM retirements").fetchall(), [(ident, port)])
+                self.assertEqual(db.execute("SELECT id FROM instances").fetchall(), [])
+            original(ident, commit, port, bundle)
+        self.runtime.ensure = ensure
+        self.deploy("main", A)
+        self.assertEqual(self.registry.snapshot()["retirements"], [])
 
     def test_cross_pr_binding_pins_old_sha_while_pr_moves(self):
         self.deploy("pr:40", A)

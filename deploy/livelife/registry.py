@@ -112,6 +112,11 @@ class Registry:
                              if p not in used and self.runtime.port_available(p)), None)
                 if port is None:
                     raise RuntimeError("backend port pool exhausted; release unused previews first")
+                # Durable startup intent, committed BEFORE any external process
+                # can start. A killed controller leaves an identifiable cleanup
+                # reservation; the file lock stays held across this commit.
+                db.execute("INSERT INTO retirements VALUES (?, ?)", (ident, port))
+                db.commit()
             else:
                 port = row["port"]
             try:
@@ -120,6 +125,10 @@ class Registry:
                 if created:
                     db.execute("INSERT INTO instances VALUES (?, ?, ?, ?, NULL)",
                                (ident, commit, port, self.clock()))
+                    # Promotion and removal of the intent share the same final
+                    # transaction as references. A crash before commit leaves
+                    # the old references and the durable reservation intact.
+                    db.execute("DELETE FROM retirements WHERE id=?", (ident,))
                 expires = self.clock() + self.lease if key.startswith("branch:") else None
                 db.execute("INSERT OR REPLACE INTO refs VALUES (?, ?, ?, NULL, ?)",
                            (key, ident, ident, expires))
@@ -127,14 +136,15 @@ class Registry:
                 self.mark_unused(db)
                 self.publish(db, previous)
             except Exception:
+                db.rollback()
                 if created:
                     try:
                         self.runtime.remove(ident, port)
                     except Exception:
-                        # Even a failed candidate may have started remotely.
-                        # Roll back its publication, persist a cleanup reservation.
-                        db.rollback()
-                        db.execute("INSERT OR IGNORE INTO retirements VALUES (?, ?)", (ident, port))
+                        # The precommitted intent reserves this port for retry.
+                        pass
+                    else:
+                        db.execute("DELETE FROM retirements WHERE id=?", (ident,))
                         db.commit()
                 raise
             return self.describe(db, key)
