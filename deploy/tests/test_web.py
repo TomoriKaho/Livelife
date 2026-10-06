@@ -127,6 +127,8 @@ class WebTests(unittest.TestCase):
         owners = {r['owner'] for r in self.registry.snapshot()['refs']}
         self.assertIn('frontend:40', owners)
         self.assertNotIn('frontend:' + ENV, owners)
+        self.assertEqual(self.registry.bind('frontend:40', 'staging', 14)['status'], 'superseded')
+        self.assertEqual(self.registry.web.lookup(ENV)['backend_sha'], B)
 
     def test_old_backend_completion_cannot_replace_a_newer_source(self):
         self.publish(commit=B, generation=20)

@@ -264,8 +264,12 @@ class WebRegistry:
                 branch_key, pr_key = 'frontend:' + key, 'frontend:' + str(pr)
                 branch_selection = db.execute('SELECT * FROM refs WHERE owner=?', (branch_key,)).fetchone()
                 if branch_selection:
-                    db.execute('INSERT OR IGNORE INTO refs VALUES (?, ?, ?, ?, NULL)',
-                               (pr_key, branch_selection['instance'], branch_selection['target'], branch_selection['frontend_sha']))
+                    branch_order = db.execute('SELECT generation FROM generations WHERE owner=?', (branch_key,)).fetchone()
+                    pr_order = db.execute('SELECT generation FROM generations WHERE owner=?', (pr_key,)).fetchone()
+                    if branch_order and (pr_order is None or branch_order[0] > pr_order[0]):
+                        db.execute('INSERT OR REPLACE INTO refs VALUES (?, ?, ?, ?, NULL)',
+                                   (pr_key, branch_selection['instance'], branch_selection['target'], branch_selection['frontend_sha']))
+                        self.registry.stamp(db, pr_key, branch_order[0])
                     db.execute('DELETE FROM refs WHERE owner=?', (branch_key,))
             if manifest:
                 env['rolled_back'] = False
