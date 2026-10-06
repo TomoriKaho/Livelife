@@ -18,6 +18,7 @@ import ProfileAvatar from './more/ProfileAvatar.vue';
 import MoreIcon from './more/MoreIcon.vue';
 import PreferenceSwitch from './more/PreferenceSwitch.vue';
 import InterestPreferences from './more/InterestPreferences.vue';
+import HelloConnectionTest from './more/HelloConnectionTest.vue';
 import { initialProfile, initialInterests, menuItems, titles } from './more/demo.js';
 
 const router = useRouter(), route = useRoute(), root = ref(null), pane = ref(route.query.pane === 'favorites' ? 'favorites' : 'home');
@@ -130,6 +131,7 @@ onBeforeUnmount(() => { clearTimeout(noticeTimer); password.value = ''; confirmP
         <details class="help-question"><summary>想换一换推荐的活动？</summary><p>从兴趣小档案调整标签，也可以在兴趣小档案的最后选择“多些新发现”。</p></details>
         <details class="help-question"><summary>在哪里看近期活动？</summary><p>活动日历按日期整理校园活动；活动地图可以查看地点、建筑与楼层。</p></details>
         <div class="help-links"><button v-sketch class="sketch" data-pencil="blue" type="button" @click="router.push('/calendar')">去看活动日历</button><button v-sketch class="sketch" data-pencil="mint" type="button" @click="router.push('/agent')">和 LiLi 聊聊</button></div>
+        <HelloConnectionTest />
         <h2 class="field-heading spaced-heading">想对我们说</h2>
         <label class="form-field"><span class="sr-only">反馈内容</span><div v-sketch class="field-outline sketch"><textarea v-model="feedback" rows="4" maxlength="500" aria-label="反馈内容" placeholder="遇到了什么问题，或有什么新想法？"></textarea></div></label>
         <button v-sketch class="primary-button sketch" data-pencil="yellow" type="button" :disabled="!feedback.trim()" @click="sendFeedback">提交反馈</button>

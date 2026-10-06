@@ -59,6 +59,7 @@ function focusItem(event) {
   if (correction) scroll.scrollTo(0, Math.max(scroll.maxScrollY, Math.min(0, scroll.y + correction)), 0);
 }
 function nativeScroll() {
+  if (!viewport.value) return;
   // Focus navigation may scroll an overflow:hidden wrapper; keep a single scroll position.
   const delta = viewport.value.scrollTop;
   if (!delta || !scroll) return;
