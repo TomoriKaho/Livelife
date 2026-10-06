@@ -11,6 +11,7 @@ import sqlite3
 import time
 
 from .common import instance, owner, sha
+from .web import WebRegistry
 
 
 class Registry:
@@ -38,6 +39,8 @@ class Registry:
                 CREATE TABLE IF NOT EXISTS retirements (
                     id TEXT PRIMARY KEY, port INTEGER UNIQUE);
             """)
+            WebRegistry.initialize(db)
+        self.web = WebRegistry(self)
 
     @contextmanager
     def locked(self):
@@ -74,6 +77,7 @@ class Registry:
                 result["/api/staging/"] = dict(row)
             elif row["owner"].startswith("pr:"):
                 result[f"/api/pr-{row['owner'].split(':')[1]}/"] = dict(row)
+        result.update(self.web.routes(db))
         return result
 
     def publish(self, db, previous):
@@ -94,7 +98,7 @@ class Registry:
 
     def deploy(self, key, commit, generation, bundle):
         owner(key)
-        if key.startswith("frontend:"):
+        if key.startswith(("frontend:", "web:")):
             raise ValueError("frontend owners use bind")
         sha(commit)
         ident = f"be-{commit}"
@@ -178,8 +182,9 @@ class Registry:
                 if row is None:
                     raise ValueError("target version has been released; deploy it before binding")
                 self.runtime.health(row["port"])
-            db.execute("INSERT OR REPLACE INTO refs VALUES (?, ?, ?, ?, NULL)",
-                       (key, ident, target, frontend_sha))
+            expires = self.clock() + self.lease if key.startswith('frontend:branch-') else None
+            db.execute("INSERT OR REPLACE INTO refs VALUES (?, ?, ?, ?, ?)",
+                       (key, ident, target, frontend_sha, expires))
             self.stamp(db, key, generation)
             self.mark_unused(db)
             return self.describe(db, key)
@@ -201,6 +206,7 @@ class Registry:
     def collect(self):
         with self.locked() as db:
             previous = self.routes(db)
+            self.web.collect(db)
             db.execute("DELETE FROM refs WHERE expires IS NOT NULL AND expires<=?", (self.clock(),))
             self.mark_unused(db)
             rows = db.execute("SELECT * FROM instances WHERE unreferenced IS NOT NULL AND unreferenced<=?",
@@ -238,7 +244,7 @@ class Registry:
 
     def snapshot(self):
         with self.locked() as db:
-            return {"instances": [dict(r) for r in db.execute("SELECT * FROM instances")],
+            return {**self.web.snapshot(db), "instances": [dict(r) for r in db.execute("SELECT * FROM instances")],
                     "refs": [dict(r) for r in db.execute("SELECT * FROM refs")],
                     "retirements": [dict(r) for r in db.execute("SELECT * FROM retirements")]}
 
@@ -250,7 +256,7 @@ class Registry:
                     self.runtime.ensure(row["id"], row["sha"], row["port"], None)
                 except Exception as error:
                     failures.append({"instance": row["id"], "error": str(error)})
-            self.runtime.publish(self.routes(db))
+            self.web.recover(db)
         if failures:
             raise RuntimeError(f"unhealthy backend instances: {failures}")
         return {"status": "recovered"}

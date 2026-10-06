@@ -42,6 +42,13 @@ export default defineConfig({
     },
   ],
   base: './',
+  experimental: {
+    renderBuiltUrl(filename) {
+      if (process.env.VITE_WEB_PREVIEW === 'true' && /\.(ttf|woff2?|png|jpe?g|webp)$/.test(filename)) {
+        return '/__livelife/web-assets/' + filename;
+      }
+    },
+  },
   publicDir: fileURLToPath(new URL('./public', import.meta.url)),
   server: {
     host: '127.0.0.1',

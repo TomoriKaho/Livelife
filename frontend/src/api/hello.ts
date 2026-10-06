@@ -4,6 +4,7 @@
  */
 import type { HelloResponse } from '../types';
 import { getApiBaseUrl } from '../platform/web';
+import { previewState } from '../platform/runtime-config';
 
 /** 仅将 HTTP 200 和约定的 hello world 响应判定为成功。 */
 export async function fetchHello(): Promise<
@@ -19,6 +20,13 @@ export async function fetchHello(): Promise<
       headers: { Accept: 'application/json' },
       signal: controller.signal,
     });
+    const responseSha = resp.headers.get('X-Livelife-Backend-SHA');
+    if (responseSha && /^[0-9a-f]{40}$/.test(responseSha)) previewState.observedBackendSha = responseSha;
+    if (previewState.enabled && previewState.config && (responseSha === null
+      || !/^[0-9a-f]{40}$/.test(responseSha)
+      || (previewState.config.backend_mode !== 'staging' && responseSha !== previewState.config.backend_sha))) {
+      return { ok: false, error: '响应后端版本与测试配置不符，请刷新配置并检查部署状态。' };
+    }
     if (resp.status !== 200) {
       return { ok: false, error: `后端返回 HTTP ${resp.status}（期望 HTTP 200）` };
     }

@@ -16,8 +16,8 @@
 
 最终交付目标是 Android/iOS APP，网页用于开发和演示；首阶段同时安排最小 Android 验证包，iOS 后续验证，小程序不纳入当前范围。
 
-后端已实现本地 `GET /test/hello` 演示接口。自动部署与分支预览尚未就绪，见[部署说明](docs/deployment.md#当前实施状态)；数据库、登录和其他业务接口仍属后续工作。
-frontend/ 已从 design 分支 `4d95af0` 迁入 Vue 客户端，包含引导、地图、详情、日历、兴趣、Agent 和个人页，以及依赖锁文件、环境变量样例、构建和行为测试。当前支持本地网页演示；“我的 → 帮助与反馈 → 接口连通性测试”可发起真实 hello 请求并显示结果或失败提示。backend/ 已提供 FastAPI hello 服务及测试；完整联调验收、Android/iOS 工程、共享部署与自动化尚未完成。地图数据是本地 OSM 快照，活动、账户、定位与 Agent 内容为样例。OSM 界面署名由 [#31](https://github.com/TomoriKaho/Livelife/issues/31) 跟进。
+后端已实现本地 `GET /test/hello` 演示接口。后端 main/分支自动部署已接入，网页预览由 #27 扩展，见[部署说明](docs/deployment.md#当前实施状态)；数据库、登录和其他业务接口仍属后续工作。
+frontend/ 已从 design 分支 `4d95af0` 迁入 Vue 客户端，包含引导、地图、详情、日历、兴趣、Agent 和个人页，以及依赖锁文件、环境变量样例、构建和行为测试。当前支持本地网页演示；“我的 → 帮助与反馈 → 接口连通性测试”可发起真实 hello 请求并显示结果或失败提示。backend/ 已提供 FastAPI hello 服务及测试；完整成员验收和 Android/iOS 工程尚未完成；本分支新增网页构建、运行时配置和预览控制，启用状态见部署说明。地图数据是本地 OSM 快照，活动、账户、定位与 Agent 内容为样例。OSM 界面署名由 [#31](https://github.com/TomoriKaho/Livelife/issues/31) 跟进。
 
 首次参与请依次阅读下面的贡献指南、协作流程、工程规范。前后端安装、环境配置、启动及检查入口，以及客户端构建步骤统一放在 [工程规范](docs/engineering.md#目录与启动命令)。
 
@@ -31,7 +31,7 @@ frontend/ 已从 design 分支 `4d95af0` 迁入 Vue 客户端，包含引导、�
 - 完成本地网页演示；使用同一前端生成最小 Android 验证包，验证地图、详情跳转、返回键、布局和接口请求。Android 使用手机可访问的开发后端地址，不使用电脑 localhost 作为手机入口。
 - 提供安装、配置、启动与演示步骤，另一名成员按文档复现并记录提交版本、环境和结果。验收要求见 [测试说明](docs/testing.md#首阶段-demo-验收)。
 
-演示动线：样例引导 → 校园地图与建筑活动 → 活动详情 → 日历列表 → Agent/个人页演示；通过“我的 → 帮助与反馈 → 接口连通性测试”展示 hello 联调；需要先配置并启动真实后端。样例定位、楼层、活动和账户不表示真实位置、教室占用或登录状态。iOS、真实定位、系统推送、自动部署与商店发布留到后续阶段。
+演示动线：样例引导 → 校园地图与建筑活动 → 活动详情 → 日历列表 → Agent/个人页演示；通过“我的 → 帮助与反馈 → 接口连通性测试”展示 hello 联调；需要先配置并启动真实后端。样例定位、楼层、活动和账户不表示真实位置、教室占用或登录状态。iOS、真实定位、系统推送与商店发布留到后续阶段。
 
 任务衔接：[#20](https://github.com/TomoriKaho/Livelife/issues/20) 与 [#23](https://github.com/TomoriKaho/Livelife/issues/23) 当前按网页演示验收；[#24](https://github.com/TomoriKaho/Livelife/issues/24) 实现 hello 接口，[#25](https://github.com/TomoriKaho/Livelife/issues/25) 完成网页联调及复现。新增 Android 验证目标需后续单独安排任务，不视为这些 Issue 已增加 APP 验收要求。自动部署继续由 [#18](https://github.com/TomoriKaho/Livelife/issues/18) 独立推进。本次不修改远程任务或状态。
 
@@ -68,7 +68,7 @@ Livelife/
 │   ├── migrations/         # 后续 Alembic 迁移
 │   └── tests/
 ├── docs/
-├── deploy/                 # 后端环境管理与服务器部署工具
+├── deploy/                 # 前后端预览管理与服务器部署工具
 └── .github/
 ```
 

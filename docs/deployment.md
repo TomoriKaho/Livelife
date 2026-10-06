@@ -2,11 +2,9 @@
 
 ## 当前实施状态
 
-frontend/ 已提供本地网页工程，运行 `npm run build` 后可用 `npm run preview` 查看构建产物；安装、端口及环境变量配置见 [工程规范](engineering.md#目录与启动命令)。backend/ 已提供本地 hello 服务，启动和检查步骤见工程规范；本分支尚无业务后端、Docker 配置、部署凭证、APP 构建配置或可执行工作流，没有已验证的远程服务地址。本地构建预览不代表正式工程已部署。
+frontend/ 和 backend/ 已提供可构建网页及 FastAPI hello 服务。#29 的 main/分支后端构建、课程机部署和公网 HTTPS API 已接入；课程机直接运行 Python，不使用 Docker。网页静态预览在 #27 分支实现，独立开关 `LIVELIFE_FRONTEND_ENABLED` 在合并及初始化前保持关闭。Android/iOS 工程、APK 分发由 #28 及后续任务处理。
 
-#29 增加了后端环境管理工具、服务器初始化脚本与 Actions 工作流。课程机直接运行 Python 后端，不使用 Docker；公网机提供 HTTPS API，经 SSH 隧道访问课程机。跨 PR 联调固定后端提交版本。
-
-正式后端由 #24 初始化，当前已有待合并的后端 PR #32。本分支没有合入后端业务工程；网页预览由 #27 接入，APK 自动构建由 #28 接入。两台服务器的控制程序、IP HTTPS、认证和隧道已配置，三个临时 Git 版本的端到端验证已通过。main 的完整 Actions 部署仍待工作流与正式后端合入，实际验证与未完成项见文末。
+网页启用步骤、接口契约与本次验证记录见[网页预览实现与维护](#网页预览实现与维护)。服务器配置完成、手动预览通过和完整 GitHub 事件链路通过是不同状态，不能相互替代。
 
 ## 分支与环境
 
@@ -56,9 +54,9 @@ https://192.144.253.40/api/versions/be-<完整40位SHA>/   不可变版本
 
 1. 从 main 创建功能分支，修改并提交后端；确保分支已包含 main 上的检查工作流，必要时先同步。
 2. 推送分支，或在 **Actions → Backend checks → Run workflow** 选择分支。检查 checkout 固定 head SHA，不使用 PR 合并模拟提交。
-3. 检查成功后，**Backend environments** 从 main 执行控制程序。同仓库分支自动部署，fork 仅检查，不取得部署秘密。
+3. 检查成功后，**Preview environments** 从 main 执行控制程序。同仓库分支自动部署，fork 仅检查，不取得部署秘密。
 4. 已有 PR 时自动更新同一条说明，提供固定版本 hello 链接、SHA 和 PR 最新入口；没有 PR 时从控制工作流 Summary 获取地址与到期时间。
-5. 使用维护者私下提供的访问凭证打开链接。网页预览需要 #27，API 链接不表示网页已部署。
+5. 使用维护者私下提供的访问凭证打开链接。网页预览需要 #27，API 链接不表示网页已部署；开关启用后同一条评论同时提供网页和 API。
 6. 新提交更新 PR 入口；失败显示候选 SHA 并保留原成功部署，不能把旧版当成本次提交通过。
 
 `workflow_dispatch` 和 `workflow_run` 控制工作流需要先进入 main。缺少真实后端入口或依赖的分支会明确跳过打包/部署，不生成虚假的成功地址。
@@ -70,7 +68,7 @@ https://192.144.253.40/api/versions/be-<完整40位SHA>/   不可变版本
 1. 确认目标后端 PR 已部署最新提交，例如 #40。
 2. **Actions → Backend environments → Run workflow**，operation 选 `bind`，frontend_pr 填 `41`，backend_target 填 `pr-40`。
 3. 工具检查两个 PR 属于本仓库且打开，解析 #40 的成功部署，保存 `frontend:41 → be-完整SHA`。最新提交尚未部署时，报错并保留原绑定。
-4. 返回 `api_base_url`、`api_path`、`backend_sha`、`frontend_sha`。#27 读取此结果更新自己的运行时配置；#29 的 bind 本身不会修改前端网页。
+4. 返回 `api_base_url`、`api_path`、`backend_sha`、`frontend_sha`。网页开关启用后控制器立即更新运行时配置；未启用时只记录后端绑定。
 
 #40 更新后，#41 仍连接原 SHA。需要切换时重新 bind；target 改成 `staging` 恢复默认，填 `be-完整SHA` 可选择仍存在的特定版本。#27 更新前端时先 lookup 原绑定，保留后端 SHA 并同步前端 SHA，不能每次推送都覆盖成 staging。
 
@@ -83,7 +81,7 @@ https://192.144.253.40/api/versions/be-<完整40位SHA>/   不可变版本
 - `frontend:41`：绑定保留固定版本，直到释放或前端 PR 关闭。
 - `branch:<分支摘要>`：未关联 PR 的部署租约，72 小时到期，重新部署可续期。
 
-浏览器打开与否、人数和请求次数不影响保留。PR 关闭释放它的后端记录和前端绑定，其他前端仍引用的版本继续运行。分支删除仅释放分支租约。每十五分钟核对 PR 状态、回收到期租约，弥补任务队列遗漏或 webhook 清理失败。
+浏览器打开与否、人数和请求次数不影响保留。PR 关闭释放它的后端记录和前端绑定，其他前端仍引用的版本继续运行。分支删除也撤销其网页入口。每十五分钟核对 PR 状态、回收到期租约，弥补任务队列遗漏或 webhook 清理失败。
 
 最后一个引用释放后等待一小时再清理。PR reopened 会检查并部署当前 SHA；实例还在则复用/恢复，已清理则重新安装。固定引用不能静默回退到 staging。
 
@@ -184,7 +182,8 @@ sudo systemctl status livelife-gateway.service --no-pager
 | LIVELIFE_PUBLIC_KNOWN_HOSTS | Secret | 核对指纹后的公网机 known_hosts 行 |
 | LIVELIFE_SSH_TARGET | Variable | `livelife@192.144.253.40` |
 | LIVELIFE_PUBLIC_BASE_URL | Variable | `https://192.144.253.40`，与服务器一致 |
-| LIVELIFE_BACKEND_ENABLED | Variable | 完成人工验证后设 `true` |
+| LIVELIFE_BACKEND_ENABLED | Variable | 后端自动部署开关，现已设 `true` |
+| LIVELIFE_FRONTEND_ENABLED | Variable | 网页独立开关；按下文合并后启用步骤设置 |
 
 第二把私钥和 Basic 密码不进入 GitHub。检查/打包 job 无部署秘密；控制程序从 main checkout，只解析限定的 artifact 文件，不执行其中的脚本。fork 不部署；课程机仅持测试权限，不接正式数据库/凭证。venv 是依赖隔离，不能当成安全沙箱。
 
@@ -255,7 +254,7 @@ JSON
 
 ### PR 评论返回 403 时如何处理
 
-1. 打开失败的 **Backend environments** 运行，查看失败步骤。如果 traceback 位于 `GitHub.comment` 的 POST/PATCH 并显示 `HTTP Error 403`，被拒绝的是 GitHub 评论接口；这不能说明腾讯云拦截了 SSH。若失败的是 SSH 超时或公钥认证，则按隧道、网络或密钥问题排查。
+1. 打开失败的 **Preview environments** 运行，查看失败步骤。如果 traceback 位于 `GitHub.comment` 的 POST/PATCH 并显示 `HTTP Error 403`，被拒绝的是 GitHub 评论接口；这不能说明腾讯云拦截了 SSH。若失败的是 SSH 超时或公钥认证，则按隧道、网络或密钥问题排查。
 2. 展开 **Set up job → GITHUB_TOKEN Permissions**，确认实际权限包含 `PullRequests: write`。在上述控制工作流中声明权限，通过 PR 合入 main；不要仅为评论把仓库所有工作流改成写权限或公开部署私钥。
 3. 权限修复合并后，使用新事件验证。合并修复 PR 产生的 closed 事件应成功释放它的引用并创建或更新关闭说明；也可在后续打开的同仓库 PR 上验证预览/绑定说明。直接 Re-run 原来的失败任务仍使用原事件提交的工作流权限，不能用它验证新的 YAML 权限。
 4. 检查新运行的真实权限、评论及 Actions 结果。若仍为 403，核对目标 PR 是否锁定、实际 token 权限与仓库/组织策略，保留运行链接；不把用户个人 token 的成功当成 `GITHUB_TOKEN` 已修复。
@@ -290,3 +289,84 @@ staging 整体验收后记录 SHA，再建立 Tag、Release 与发布说明。Re
 网页构建 → Capacitor 同步 → Android/iOS 原生构建及签名 → 分发与真机验证。后端不随 APK 打包。Android 使用手机可访问的 HTTPS API，不能使用电脑 localhost；包记录前后端 SHA、安装步骤及未测能力。iOS 与商店发布另行安排。
 
 参考：[Capacitor 构建流程](https://capacitorjs.com/docs/basics/workflow)。
+
+## 网页预览实现与维护
+
+#27 使用已有 HTTPS 443、Basic 认证和 Nginx，静态网页目录为 `/opt/livelife/web`；没有新增预览监听端口。网页通过同源 API 路径访问课程机后端，Basic 密码不进入网页、产物、配置或评论。
+
+### 地址和配对契约
+
+以下地址均以 `https://192.144.253.40` 为前缀：
+
+| 环境 | 网页路径 | 自动后端 |
+| --- | --- | --- |
+| main | `/staging/` | main 共享测试后端 |
+| 无 PR 分支 | `/preview/branch-<摘要>/` | staging；自身后端改动时使用配套版本 |
+| 打开的 PR | 原分支路径及 `/preview/pr-<编号>/` | 同上；两者指向同一部署 |
+| 后端-only PR | `/preview/pr-<编号>/` | 自身后端，复用 main 最近成功前端 |
+| 显式联调 | 网页地址不变 | bind 解析时的固定 SHA |
+
+摘要是原分支名 UTF-8 的 SHA-256 前 32 位，不把分支名拼入路径。控制器根据 GitHub 当前 head、PR 状态和合并基线的 Git 树判断改动；自身后端未成功部署时显示等待/失败，保留上一成功页面。仅前端更新而 backend 目录树相同时可复用自身上一后端。前后端构建谁先完成都可以，配套成功后才发布。
+
+无 PR 分支租约为 72 小时，成功部署续期；定期核对不续期。main 永久保留，打开的 PR 保留至关闭。PR 关闭/合并、分支删除、手动释放或过期撤销入口；其他环境的固定引用不受影响。重开优先复用尚在的产物，否则等待新构建。Actions Artifact 保留 7 天，这与已部署文件生命周期不同。
+
+### 前端构建和运行时配置
+
+`Frontend checks` 在 Ubuntu 24.04 使用 Node 24.13.0 / npm 11.6.2，依次 `npm ci`、全部行为测试、类型检查和 Vite build，再由 `deploy/prepare-frontend.py` 生成 frontend.tgz 与版本/构建编号/压缩包 SHA-256 manifest。push、PR opened/synchronize/reopened 按前端及网页工具路径触发；手动 Run workflow 可选择分支。build job 不持有部署密钥。
+
+`Preview environments` 从 main 读取控制代码，验证 GitHub 来源、当前提交、PR 状态与产物身份；fork 仅检查。只解析静态包，不执行产物中的脚本。安全边界参考 [workflow_run 官方说明](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_run)。
+
+每个入口的 `runtime-config.json` 最少包含：
+
+```json
+{
+  "schema_version": 1,
+  "environment": "main",
+  "frontend_sha": "完整40位前端提交SHA",
+  "build_id": "fe-完整SHA-构建运行编号-重试次数",
+  "api_base_url": "https://192.144.253.40/api/staging/",
+  "backend_mode": "staging",
+  "backend_sha": "加载配置时的完整40位后端SHA"
+}
+```
+
+示例中的中文为占位说明，不能直接用于发布。环境标识仅 main 或 branch-32位摘要；后端模式 staging / own / fixed。网页按当前入口读取配置后初始化 API；配置失败禁用接口测试并显示错误，不回退 localhost，样例页面仍可查看。配置 build_id 与当前 HTML 不一致时提示刷新，避免更新期间把旧页面标成新版本。
+
+“我的 → 帮助与反馈 → 接口连通性测试”显示前端 SHA、构建号、后端模式和加载时 SHA；真实 hello 响应头记录实际后端 SHA。staging 可随 main 变化；own/fixed 的响应 SHA 不匹配时报告错误。切换配对仅更新配置，不重建前端；APK 接入由 #28 单独设计。
+
+### 静态文件、配额与恢复
+
+JS/CSS、地图及许可证使用 `/__livelife/web-builds/<build_id>/`；字体和图片通过共享 `/__livelife/web-assets/assets/<哈希文件名>` 分发，硬链接按物理文件去重。HTML/config 无缓存，不可变资源长期缓存，已生成 gzip 文件由 [gzip_static](https://nginx.org/en/docs/http/ngx_http_gzip_static_module.html) 分发。API 独立限流，静态资源不参与 API 限流；目录列表关闭。项目日志由 `/etc/logrotate.d/livelife` 轮转。
+
+每个环境保留当前和上一成功部署，分别登记 `web:<部署ID>` 后端引用，与 `frontend:<PR或分支标识>` 的选择记录和未来 APK 引用分开。回滚恢复原部署的前端和后端配对；回滚后自动核对保持该页面，下一次成功前端构建才推进。候选发布之前提交持久化后端引用，网关验证成功才提交站点；失败保留旧页面。进程中断后 recover 先恢复数据库已提交的路由，再清理候选引用/文件。
+
+默认物理网页上限 2 GiB，按去重后的文件 inode 计量；发布先回收经过宽限期的闲置文件，仍不足拒绝候选。无引用文件至少保留一小时。压缩包 64 MiB、展开 256 MiB、10000 条目；拒绝重复路径、穿越、链接和特殊文件。SSH JSON 请求上限 96 MiB，后端压缩包仍为 20 MiB。
+
+当前字体原始约 22.2 MB、gzip 约 14.7 MB。5 Mbps 下首次完整字体传输理论约 24 秒，实际受协议和网络影响；共享缓存与 gzip 已实现，字体转换/拆分另行安排。
+
+### 新增受限 SSH JSON 操作
+
+原有后端操作兼容。以下操作同样通过既有 SSH 接口调用，不公开 HTTP 管理端点：
+
+| op | 主要输入 | 作用 |
+| --- | --- | --- |
+| web_publish | environment、branch、pr、source_sha、generation、manifest+base64 bundle 或 build_id、target、mode | 校验静态包、保存等待记录、配对成功后原子发布 |
+| web_lookup | environment | 返回状态、网页 URL、版本、API、到期时间及当前检查结果 |
+| web_release | environment、generation | 撤销分支和 PR 别名；main 禁止释放 |
+| web_rollback | environment、generation | 恢复上一成功页面及其后端引用 |
+| web_note | environment、component、source_sha、generation、status | 记录经 GitHub 验证的构建状态 |
+
+generation 使用原构建 run_id * 1000 + attempt；关闭和手动操作使用对应控制运行编号。内容与显式选择分别排序，旧上传、关闭后的晚到任务及前端更新不能覆盖较新的显式绑定。返回状态 ready / waiting / failed / released / superseded；waiting/failed 可能带上一成功版本，不能作为最新提交验收结果。
+
+main 合并后可在 Actions → Preview environments → Run workflow 使用 web-lookup / web-release / web-rollback，填写 frontend_pr 或 frontend_branch（二选一）。未发 PR 的显式绑定也可填写 frontend_branch；创建 PR 时迁移为永久 PR 选择记录。bind 的 backend_target 支持 staging、pr-编号及仍存在的 be-SHA；跨 PR 解析并固定最新成功 SHA，未部署最新提交时拒绝替换旧绑定。
+
+### 维护者启用顺序
+
+1. 合并前运行前端行为测试/build、部署 unittest、ruff、actionlint 和服务器手动验证；由另一名成员正式评审。人工验证不需要启用自动网页开关。
+2. 更新公网机 `/opt/livelife/control` 中的受信工具、项目 nginx.conf 和 logrotate 配置，创建 livelife 可写 `/opt/livelife/web`。先备份项目代码、网关配置和 SQLite，更新时持有项目锁；依赖保持现有 Python 控制环境。检查配置后只重载 livelife-gateway。既有后端操作须验证兼容。
+3. 工作流合入 main 后设置 Repository Variable `LIVELIFE_FRONTEND_ENABLED=true`。后端开关保持现状；网页开关关闭不删除已部署页面，只停止自动网页管理。
+4. 手动运行 Frontend checks，选择 main；等待 Preview environments 成功，检查 `/staging/` 配置/版本、认证、真实 hello。
+5. 用两个开发分支和各类 PR 验证自动链接、单条评论、同分支配对、跨 PR 固定绑定、失败保留、关闭/重开与资源清理。尚未发 PR 的信息由控制 Actions Summary 给出。
+6. 记录实际 SHA、构建 run、访问及测试结果。完整成员使用教程按既定安排在 #28 安装包流程完成后统一整理。
+
+单条 PR 自动评论使用 `<!-- livelife-preview -->`，兼容升级旧后端评论，提供页面/版本/模式/API/状态；不包含认证信息。安装包及正式发布不属于本次开关。

@@ -1,0 +1,54 @@
+name: Frontend checks
+
+on:
+  push:
+    paths: ["frontend/**", "deploy/prepare-frontend.py", "deploy/livelife/web*.py", ".github/workflows/frontend-*.yml"]
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths: ["frontend/**", "deploy/prepare-frontend.py", "deploy/livelife/web*.py", ".github/workflows/frontend-*.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24.13.0"
+      - name: Install fixed npm and dependencies
+        working-directory: frontend
+        run: |
+          npm install --global npm@11.6.2
+          npm ci --no-audit --no-fund
+      - name: Test and build immutable web assets
+        working-directory: frontend
+        env:
+          LIVELIFE_FRONTEND_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          VITE_WEB_PREVIEW: "true"
+        run: |
+          node --test scripts/*.test.mjs
+          export VITE_WEB_BUILD_ID="fe-${LIVELIFE_FRONTEND_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          npm run build -- --base="/__livelife/web-builds/${VITE_WEB_BUILD_ID}/"
+          node scripts/check-preview-build.mjs
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Package static files
+        env:
+          LIVELIFE_FRONTEND_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python deploy/prepare-frontend.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: frontend-bundle
+          path: deploy/.state/frontend-artifact/
+          retention-days: 7
+          if-no-files-found: error
+          overwrite: true

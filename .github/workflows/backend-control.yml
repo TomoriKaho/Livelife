@@ -1,12 +1,12 @@
-name: Backend environments
+name: Preview environments
 
 on:
   workflow_run:
-    workflows: [Backend checks]
+    workflows: [Backend checks, Frontend checks]
     types: [completed]
   # Metadata-only cleanup. Never checks out/executes the PR head here.
   pull_request_target:
-    types: [closed]
+    types: [opened, reopened, closed]
   delete:
   schedule:
     - cron: "*/15 * * * *"
@@ -14,13 +14,16 @@ on:
     inputs:
       operation:
         type: choice
-        options: [bind, lookup, release, snapshot, collect, recover]
+        options: [bind, lookup, release, snapshot, collect, recover, web-lookup, web-release, web-rollback]
         default: lookup
         required: true
         description: "管理后端绑定或检查环境（部署请运行 Backend checks）"
       frontend_pr:
         type: string
         description: "前端 PR 编号；bind/lookup/release 时填写"
+      frontend_branch:
+        type: string
+        description: "未发 PR 的分支；与 frontend_pr 二选一；网页部署请运行 Frontend checks"
       backend_target:
         type: string
         default: staging
@@ -37,7 +40,7 @@ permissions:
 
 jobs:
   control:
-    if: vars.LIVELIFE_BACKEND_ENABLED == 'true'
+    if: vars.LIVELIFE_BACKEND_ENABLED == 'true' || vars.LIVELIFE_FRONTEND_ENABLED == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -70,6 +73,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           LIVELIFE_SSH_TARGET: ${{ vars.LIVELIFE_SSH_TARGET }}
           LIVELIFE_PUBLIC_BASE_URL: ${{ vars.LIVELIFE_PUBLIC_BASE_URL }}
+          LIVELIFE_FRONTEND_ENABLED: ${{ vars.LIVELIFE_FRONTEND_ENABLED }}
           LIVELIFE_SSH_KEY_FILE: ${{ runner.temp }}/livelife-key
           LIVELIFE_KNOWN_HOSTS_FILE: ${{ runner.temp }}/livelife-hosts
         run: python deploy/actions-control.py

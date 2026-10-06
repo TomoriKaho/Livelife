@@ -11,6 +11,18 @@ from .runtime import Runtime
 
 def dispatch(registry, request):
     op = request["op"]
+    if op == 'web_note':
+        return registry.web.note(request)
+    if op == 'web_publish':
+        if 'bundle' in request:
+            request = dict(request, bundle=base64.b64decode(request['bundle'], validate=True))
+        return registry.web.publish(request)
+    if op == 'web_lookup':
+        return registry.web.lookup(request['environment'])
+    if op == 'web_release':
+        return registry.web.release(request['environment'], request['generation'])
+    if op == 'web_rollback':
+        return registry.web.rollback(request['environment'], request['generation'])
     if op == "deploy":
         bundle = base64.b64decode(request["bundle"], validate=True)
         if len(bundle) > 20 * 1024 * 1024 or hashlib.sha256(bundle).hexdigest() != request["digest"]:
@@ -35,8 +47,8 @@ def main():
     try:
         root = Path(__file__).resolve().parents[2]
         config = json.loads((root / "config.json").read_text())
-        raw = sys.stdin.buffer.read(40 * 1024 * 1024 + 1)
-        if len(raw) > 40 * 1024 * 1024:
+        raw = sys.stdin.buffer.read(96 * 1024 * 1024 + 1)
+        if len(raw) > 96 * 1024 * 1024:
             raise ValueError("request exceeds limit")
         registry = Registry(root / "state", Runtime(config), config["base_url"])
         print(json.dumps(dispatch(registry, json.loads(raw)), ensure_ascii=False))

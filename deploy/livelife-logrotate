@@ -1,0 +1,10 @@
+/opt/livelife/gateway/logs/*.log {
+    daily
+    rotate 7
+    size 10M
+    compress
+    missingok
+    notifempty
+    copytruncate
+    su livelife livelife
+}
