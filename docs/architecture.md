@@ -8,7 +8,7 @@
 
 ## 首阶段结构与数据边界
 
-客户端网页已在 frontend/ 实现，包含离线地图与样例页面；hello 测试区已接入请求。本分支真实后端仍待实现，以下结构中后端联调尚未验收。技术栈见 [工程规范](engineering.md#技术栈与实施阶段)。
+客户端网页已在 frontend/ 实现，包含离线地图与样例页面；hello 测试区已接入请求。backend/ 已实现 FastAPI hello 服务；整体联调及另一名成员复现仍需按验收清单完成。技术栈见 [工程规范](engineering.md#技术栈与实施阶段)。
 
 ```mermaid
 flowchart TD

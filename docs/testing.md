@@ -16,7 +16,7 @@
 
 1. 逐项阅读 Issue 验收条件，确认依赖和接口版本。
 2. 启动本地环境，或按 [部署教程](deployment.md#合并前的分支预览) 推送分支并部署预览。
-3. 执行工程中实际提供的格式、类型、相关测试和构建命令。前端现有命令与运行条件见 [工程规范](engineering.md#目录与启动命令)。
+3. 执行工程中实际提供的格式、类型、相关测试和构建命令。前后端现有命令与运行条件见 [工程规范](engineering.md#目录与启动命令)。
 4. 手动验证成功、空数据、错误及权限相关情形。
 5. 查看 git diff，确认没有秘密或无关文件，更新接口和使用文档。
 6. 主分支变化后同步并验证受影响部分，记录测试提交。
@@ -106,6 +106,17 @@ Actions 若配置了构建附件，可在 Actions → 对应运行 → Artifacts
 - hello：以浏览器模拟响应验证 HTTP 200 的 `hello world` 成功；错误字段类型、其他 message、缺失字段、无效 JSON、HTTP 201/500、网络失败及超时均进入错误分支。另检查本地后端不可达的实际失败提示。模拟成功不等于真实后端联调已通过。
 
 OSM 可见署名由 #31 在 v0.1.0 阶段补齐；真实后端 hello 联调、Android/iOS、完整触摸手势与正式部署仍待验证。AI 本地检查不替代成员正式评审。
+
+## 后端本地检查记录（2026-10-07）
+
+检查基于 PR #32 的 `927028e` 和 CORS 修复提交 `0917890`，环境为 macOS、uv `0.10.9`、Python `3.12.13` 和 Playwright Chromium。
+
+- 按工程规范执行 `uv python install 3.12`、`uv sync --locked` 和 `uv run python --version`，通过。
+- 在 backend/ 执行 `uv run pytest`，10 项测试全部通过；`uv run ruff check .`、`uv run ruff format --check .` 和 `uv lock --check` 均通过。
+- 按文档启动 Uvicorn，`curl -i http://127.0.0.1:8000/test/hello` 返回 HTTP 200、JSON `{"message":"hello world"}`。
+- 使用已有客户端开发页面 `http://127.0.0.1:8765` 和构建预览页面 `http://127.0.0.1:8766`，在真实浏览器中通过 `fetch` 请求默认后端地址 `http://localhost:8000/test/hello`，两者均返回 HTTP 200 和约定 JSON，没有模拟响应。
+
+本记录验证后端契约及浏览器跨域连通性；完整页面交互验收、另一名成员复现、手机局域网、Android/iOS 和正式部署仍待验证。临时后端验证结束后关闭，AI 检查不替代成员正式评审。
 
 ## 共享测试服约定
 
