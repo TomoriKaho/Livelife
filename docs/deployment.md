@@ -198,7 +198,7 @@ permissions:
 
 前两项用于读取 main 控制代码和构建产物；`pull-requests: write` 用于创建或更新 PR 的预览、绑定与关闭说明。评论虽然调用 `/issues/{PR编号}/comments`，目标仍是 PR，不能只授予 `issues: write` 并保留 PR 只读。此流程不需要普通 Issue 写权限、代码写权限或个人访问令牌。仓库的全局 Workflow permissions 可保持只读，工作流按需声明上述权限；自动创建或批准 PR 的开关不需要开启。
 
-enabled 未设置时控制 job 跳过，CI 仍检查基础设施。工作流进入 main 前无法验证完整 workflow_run 链路；进入 main 后验证 Runner → 公网机 → 课程机的真实连接。
+两个 enabled 均未开启时控制 job 跳过，CI 仍检查基础设施。工作流进入 main 前无法验证完整 workflow_run 链路；进入 main 后验证 Runner → 公网机 → 课程机的真实连接。
 
 ## 后端接入要求与 #27 控制接口
 
@@ -274,7 +274,7 @@ JSON
 
 测试访问凭证由维护者私下提供，初始凭证保存在公网机 `/opt/livelife/credentials/access.txt`，权限 600；不在文档或 PR 中公开密码。尚无正式后端路由时，不把 API 示例当成可用应用入口。
 
-本分支验证见 [基础设施验证](testing.md#后端部署基础设施验证)。工作流尚需经成员评审合入 main，再与 #24 合入的后端验证完整 workflow_run、PR 自动说明、main 更新与 reopened 链路；网页关联由 #27 完成。完成这些验收前不关闭 #29。
+上述为 #29 合入前的独立服务器验证记录。#29 与真实 hello 后端现已合入 main，后端自动部署已接入；#27 的网页自动事件链路在本分支完成代码后仍需合入、启用并验证。后续记录见文末。
 
 ## 合并前的分支预览
 
@@ -370,3 +370,15 @@ main 合并后可在 Actions → Preview environments → Run workflow 使用 we
 6. 记录实际 SHA、构建 run、访问及测试结果。完整成员使用教程按既定安排在 #28 安装包流程完成后统一整理。
 
 单条 PR 自动评论使用 `<!-- livelife-preview -->`，兼容升级旧后端评论，提供页面/版本/模式/API/状态；不包含认证信息。安装包及正式发布不属于本次开关。
+
+### #27 实施验证记录（2026-10-07）
+
+- 任务分支 `27-frontend-preview` 通过 Issue Create a branch 关联 #27。前端 39 项行为测试、类型检查、普通及预览构建通过；预览资源 URL 回归检查通过。部署工具 70 项测试通过（含真实 Supervisor 与 SIGKILL），ruff、actionlint、shell 语法及改动空白检查通过。
+- GitHub Runner 实际构建提交 `2f92f54491287ce04d17841a0ab9ba3f7fcdfa7e`，Frontend checks run `37513180117` / attempt 1 成功，Artifact 约 17.2 MB。使用其原始产物手动发布分支网页，未把分支产物登记为 main 网页。
+- 公网项目工具及静态网关已更新，更新前备份位于 `/opt/livelife/backups/frontend27-1791312102`。真实 HTTPS 校验发现目录入口 alias 被 Nginx 追加 index.html 的问题，已修复；失败候选未留下站点或后端引用。
+- 无认证返回 401；HTML/config 无缓存；JS/CSS/地图/字体/图片及三份许可证返回 200，不可变缓存和 gzip 生效。原始字体约 22.2 MB，服务器 gzip 14,739,544 bytes；网页物理存储约 43.4 MB（共享字体按 inode 去重）。
+- 临时第二环境验证独立配对、共享资源和释放；验证结束仅保留本任务分支网页。固定后端实际 hello 响应 SHA 与选择一致，随后恢复 staging，上一成功配对继续持有独立回滚引用。
+- Playwright Chrome 390×844 实测样例引导、3D canvas、2D 地图、个人页、刷新/哈希路由及真实 hello；页面显示前端构建号、加载时和真实响应后端 SHA。浏览器内模拟配置 HTTP 503 后，样例仍可访问、接口按钮禁用，未回退 localhost；移除模拟后恢复。控制台仅有原有 favicon.ico 404，不影响页面/API；OSM 可见署名仍由 #31 跟进。
+- 课程机新 SSH 连接曾被重置，已有 staging HTTPS hello 持续返回 200；恢复检查及 Backend environments run `37513257959` 重试后成功，验证旧后端控制与新网页注册表兼容。
+
+**尚待合并后验证**：`LIVELIFE_FRONTEND_ENABLED` 仍未开启；main 首次网页构建、Frontend checks → Preview environments 完整事件链路、自动 PR 评论/别名、真实关闭/重开/删除及跨 PR 联调，需要按上文顺序验证。当前分支网页为人工验收发布，并非自动网页开关已上线。另一名成员的正式 PR 评审与独立复现尚未完成；完整成员教程延后到 #28。

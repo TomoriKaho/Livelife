@@ -88,8 +88,12 @@ class Runtime:
                 blocks.append(f'location = {prefix[:-1]} {{ return 308 {prefix}; }}')
                 for suffix, path, mime in [('', html_path, 'text/html'), ('index.html', html_path, 'text/html'),
                                            ('runtime-config.json', config_path, 'application/json')]:
+                    # A slash-terminated URI invokes Nginx's index handler;
+                    # its alias must be a directory, not the index file itself.
+                    alias = str(path.parent) + '/' if suffix == '' else str(path)
                     blocks.append(f'''location = {prefix}{suffix} {{
-    alias {path};
+    alias {alias};
+    index index.html;
     default_type {mime};
     add_header Cache-Control no-store always;
     add_header X-Livelife-Frontend-SHA {row['config']['frontend_sha']} always;

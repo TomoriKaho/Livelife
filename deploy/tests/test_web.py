@@ -12,9 +12,10 @@ import subprocess
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from livelife.registry import Registry
-from livelife.web import unpack
+from livelife.web import unpack, build_id, environment
 from test_registry import Runtime
 
 A, B, C = 'a' * 40, 'b' * 40, 'c' * 40
@@ -221,6 +222,34 @@ class WebTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'digest'):
             self.registry.web.publish(dict(environment=ENV, branch='feature', pr=40, source_sha=A,
                 generation=10, target='staging', mode='staging', manifest=manifest, bundle=bundle))
+
+    def test_duplicate_paths_entry_count_and_expanded_size_limits(self):
+        for count, duplicate in [(2, True), (10001, False)]:
+            out = io.BytesIO()
+            with tarfile.open(fileobj=out, mode='w:gz') as archive:
+                for n in range(count):
+                    archive.addfile(tarfile.TarInfo('same.js' if duplicate else f'{n}.js'))
+            with tempfile.TemporaryDirectory() as root, self.assertRaises(ValueError):
+                unpack(out.getvalue(), Path(root))
+        _, bundle = artifact()
+        with patch('livelife.web.MAX_EXPANDED', 1), tempfile.TemporaryDirectory() as root:
+            with self.assertRaisesRegex(ValueError, 'expanded'):
+                unpack(bundle, Path(root))
+        for bad in ['../main', 'pr-40', 'branch-x', 'branch-' + 'g' * 32]:
+            with self.assertRaises(ValueError):
+                environment(bad)
+        with self.assertRaises(ValueError):
+            build_id('fe-' + A + '-0-1')
+
+    def test_publish_collects_expired_unused_build_before_applying_quota(self):
+        manifest, bundle = artifact()
+        with self.registry.locked() as db:
+            self.registry.web.store(db, manifest, bundle)
+            db.execute('UPDATE web_builds SET unused=?', (self.now - 11,))
+        old = self.registry.web.root / 'builds' / manifest['build_id']
+        self.registry.web.quota = self.registry.web.physical_bytes() + 2048
+        self.publish(commit=B, generation=11)
+        self.assertFalse(old.exists())
 
     def test_durable_candidate_ref_exists_before_gateway_promotion(self):
         original = self.runtime.publish
