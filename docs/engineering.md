@@ -2,7 +2,7 @@
 
 ## 技术栈与实施阶段
 
-工程按 Issue 分步初始化；后端当前仅实现本地 hello 演示接口，其他模块按各自任务推进。
+技术路线由 [Issue #19](https://github.com/TomoriKaho/Livelife/issues/19) 确认，frontend/ 已初始化网页客户端；本分支业务后端及原生工程仍待实现。选型、实现和验证状态分别记录，不将待引入组件描述为已运行服务。
 
 | 层次 | 确定方案 | 实施阶段与用途 |
 | --- | --- | --- |
@@ -26,9 +26,9 @@ Capacitor 页面在原生容器的 WebView 中运行，复用代码不代表已�
 
 ## 原型迁移与目录职责
 
-完整目标目录见 [README](../README.md#目标目录结构)，它描述按需建立的目标结构。本次不合并 design 分支。
+完整目标目录见 [README](../README.md#目标目录结构)。客户端迁移基线为 design 分支 `4d95af0`，迁入 frontend/ 后以该目录作为网页实现入口；后端、原生工程及数据库部分仍是后续计划。
 
-- 后续客户端初始化从 design 分支选择明确提交作为迁移基线，在 PR 记录 SHA 和来源。迁入 frontend/ 后以正式客户端为业务实现入口，设计参考不长期维护另一套业务代码。
+- 客户端已按上述基线迁移页面、地图和手绘插件；后续变更继续在 frontend/ 维护，设计参考不长期维护另一套业务代码。
 - pages/ 保留现有页面及地图、Agent 等页面专属子目录；components/ 仅放跨页面公共组件。保留哈希路由、pageMeta 元数据和手绘插件，不为了目录统一拆散专属组件。
 - 新增接口、平台适配及业务代码使用 TypeScript，既有 JS/MJS 逐批迁移；初始化时支持过渡期混合文件并提供真实检查命令，不强制首阶段重写所有原型。
 - api/ 集中请求、API 地址配置及错误处理；types/ 定义接口类型；data/ 放明确标注的演示数据；platform/ 封装 Web/原生能力差异，避免页面散布平台分支。
@@ -39,25 +39,70 @@ Capacitor 页面在原生容器的 WebView 中运行，复用代码不代表已�
 
 ## 目录与启动命令
 
-后端使用 Python 3.12 和 uv 0.9.26；按 [uv 官方安装说明](https://docs.astral.sh/uv/getting-started/installation/) 安装后，用 `uv --version` 确认版本。`backend/uv.lock` 固定已验证的依赖版本。在仓库根目录执行：
+### 运行环境与安装
 
-```powershell
-cd backend
-uv sync
-uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+使用符合 `frontend/package.json` 的 Node.js：`^20.19.0 || >=22.12.0`，并使用随 Node.js 提供的 npm。可从 [Node.js 官网](https://nodejs.org/) 安装满足范围的版本。此次本地检查使用 Node.js `25.8.0`、npm `11.11.0`；仓库未固定唯一 npm 版本，依赖精确版本由 package-lock.json 锁定。
+
+从仓库根目录执行：
+
+```bash
+node --version
+npm --version
+cd frontend
+npm ci
+cp .env.example .env
+npm run dev
 ```
 
-本地 API 地址为 `http://127.0.0.1:8000`。接口可用 `http://127.0.0.1:8000/test/hello` 验证；FastAPI 开发文档位于 `/docs`。按 `Ctrl+C` 停止服务。
+首次配置时复制环境变量样例；已有 `.env` 时保留自己的配置。开发入口为 `http://127.0.0.1:8765/`，哈希路由默认进入引导页。点击“登录并进入”进入样例地图，无需真实账号。`vite.config.ts` 使用严格端口，8765 被占用时启动失败；可停止自己的旧预览，或执行 `npm run dev -- --port 8775` 指定空闲端口。
 
-在另一个终端进入 `backend/`，运行后端检查：
+### API 地址与联调
 
-```powershell
-uv run pytest
-uv run ruff check .
-uv run ruff format --check .
+| 变量 | 示例/默认值 | 用途 |
+| --- | --- | --- |
+| `VITE_API_BASE_URL` | `http://localhost:8000` | hello 后端基地址；可按实际后端修改，未设置时使用该默认值 |
+
+Vite 在开发启动或构建时读取环境变量；修改 `.env` 后重启开发服务，构建预览则重新运行构建。变量会进入浏览器产物，只能保存公开配置，不得放服务端秘密。`.env.example` 的地址是本地配置示例，不代表后端已经运行。
+
+“我的 → 帮助与反馈 → 接口连通性测试”显示当前后端地址。点击“测试连接”发起 `GET /test/hello`，加载期间禁用重复点击；只有 HTTP 200 且 JSON `message` 为字符串 `hello world` 才显示成功。网络不可达、非 200、无效 JSON、字段不符或 10 秒超时均显示原因，允许重试。
+
+当前 Vite 未配置 API 代理，网页直接请求配置的基地址。后端须允许实际网页 Origin，例如 `http://127.0.0.1:8765` 或构建预览的 `http://127.0.0.1:8766`；协议、主机或端口不同都属于不同 Origin。页面不可达时先检查前端端口；页面可访问但连接失败时检查后端是否启动、地址及后端 CORS 配置。本分支没有后端启动命令，真实实现由 #24、联调由 #25 推进。
+
+### 构建、预览与检查
+
+以下命令均在 frontend/ 执行：
+
+```bash
+npm run build
+npm run preview
 ```
 
-网页前端通过 `VITE_API_BASE_URL` 指向 `http://localhost:8000`。Android 真机访问配置尚未验证。
+`build` 先运行 `vue-tsc -b` 类型检查，再执行 Vite 生产构建，产物位于 `frontend/dist/`。`preview` 提供本地构建预览 `http://127.0.0.1:8766/`；它要求先构建，不是正式生产服务器。预览端口也为严格端口，可用 `npm run preview -- --port 8776` 指定其他空闲端口。
+
+现有检查与地图命令：
+
+```bash
+node --test scripts/*.test.mjs
+# 也可以按模块运行：
+npm run test:map
+npm run test:plan
+npm run test:drawer
+npm run test:composer
+npm run test:favorites
+
+# 从已提交的离线快照重新生成 campus.json，不访问网络：
+npm run map:prepare
+# 主动访问 Overpass、更新两套快照并重新生成地图：
+# npm run map:download
+```
+
+地图脚本读写 `src/assets/maps/`；下载会修改快照，普通页面演示和构建无需下载。当前没有独立格式或 lint 脚本，不应报告这些检查已经通过。依赖、dist、`.env` 等忽略规则见 `frontend/.gitignore`；TypeScript 构建可能产生 `tsconfig.tsbuildinfo`，属于本地缓存，不应提交。
+
+### 演示范围与移动端
+
+活动、账户、兴趣、Agent 对话和定位为前端样例，无数据库、登录、模型或上传服务；只有 hello 测试区发送真实请求。请求成功需另行启动兼容后端，模拟响应验证不能代替真实联调。
+
+需要手机浏览器预览时，先构建，再执行 `npm run preview:phone`，通过电脑在局域网中的实际 IP 和 8766 端口访问；网络及防火墙需要允许手机连接。hello 后端地址必须设置为手机可访问的地址，手机的 localhost 不指向电脑。手机网页不代表 Android/iOS 安装包已经验证。当前没有 Capacitor 原生工程或 APK 命令，后续安排见 [部署说明](deployment.md#capacitor-构建与首阶段验证包)。
 
 ## 编码约定
 
