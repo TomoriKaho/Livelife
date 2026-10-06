@@ -2,7 +2,7 @@
 
 ## 技术栈与实施阶段
 
-本次按 [Issue #19](https://github.com/TomoriKaho/Livelife/issues/19) 记录已确认技术路线，正式工程尚未初始化。选型、实现和验证状态分别记录，不将待引入组件描述为已运行服务。
+工程按 Issue 分步初始化；后端当前仅实现本地 hello 演示接口，其他模块按各自任务推进。
 
 | 层次 | 确定方案 | 实施阶段与用途 |
 | --- | --- | --- |
@@ -26,7 +26,7 @@ Capacitor 页面在原生容器的 WebView 中运行，复用代码不代表已�
 
 ## 原型迁移与目录职责
 
-完整目标目录见 [README](../README.md#目标目录结构)，它是后续创建计划。本次不合并 design、不迁移源码、不创建工程目录。
+完整目标目录见 [README](../README.md#目标目录结构)，它描述按需建立的目标结构。本次不合并 design 分支。
 
 - 后续客户端初始化从 design 分支选择明确提交作为迁移基线，在 PR 记录 SHA 和来源。迁入 frontend/ 后以正式客户端为业务实现入口，设计参考不长期维护另一套业务代码。
 - pages/ 保留现有页面及地图、Agent 等页面专属子目录；components/ 仅放跨页面公共组件。保留哈希路由、pageMeta 元数据和手绘插件，不为了目录统一拆散专属组件。
@@ -39,19 +39,25 @@ Capacitor 页面在原生容器的 WebView 中运行，复用代码不代表已�
 
 ## 目录与启动命令
 
-正式工程尚未初始化，当前不提供可运行的安装、启动、构建或测试命令。design 原型自身的命令仅适用于其分支和目录，不能作为 frontend/ 的启动入口。前端确定使用 npm 和锁文件；运行时、依赖精确版本及检查工具由初始化任务验证兼容性后固定。
+后端使用 Python 3.12 和 uv 0.9.26；按 [uv 官方安装说明](https://docs.astral.sh/uv/getting-started/installation/) 安装后，用 `uv --version` 确认版本。`backend/uv.lock` 固定已验证的依赖版本。在仓库根目录执行：
 
-后续初始化工程的负责人必须在本节补充：
+```powershell
+cd backend
+uv sync
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
 
-1. 运行时及包管理器版本、安装工具方式。
-2. 从克隆仓库到启动前后端的完整命令及工作目录。
-3. `.env.example`、各变量含义、必填项和获取方式；示例不得包含敏感信息。
-4. `.gitignore`信息，在固定好技术栈后添加，后续尽量在子目录新增，避免根目录的更改
-5. 首阶段说明前端样例数据及无数据库边界；持久化阶段补充数据库启动、迁移、测试数据初始化及清理方法。
-6. 格式、类型、单元测试、集成测试和构建命令。
-7. 默认地址、端口、健康检查、常见启动故障；Android 访问开发后端的网络及配置方式。
+本地 API 地址为 `http://127.0.0.1:8000`。接口可用 `http://127.0.0.1:8000/test/hello` 验证；FastAPI 开发文档位于 `/docs`。按 `Ctrl+C` 停止服务。
 
-首阶段客户端与后端分别初始化，再完成 hello 联调。API 地址统一配置，网页使用适当开发代理或跨域设置，Android 使用手机可访问的后端地址。具体变量名称、端口和网络配置由实现 PR 写明；本次不填入虚构命令或已配置地址。APP 构建与分发流程见 [部署说明](deployment.md#capacitor-构建与首阶段验证包)。
+在另一个终端进入 `backend/`，运行后端检查：
+
+```powershell
+uv run pytest
+uv run ruff check .
+uv run ruff format --check .
+```
+
+网页前端通过 `VITE_API_BASE_URL` 指向 `http://localhost:8000`。Android 真机访问配置尚未验证。
 
 ## 编码约定
 
