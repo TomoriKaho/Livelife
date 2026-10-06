@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+.state/
+*.sqlite3*
+config.json
+*.key
+*.pem
+*.tgz
+*.zip

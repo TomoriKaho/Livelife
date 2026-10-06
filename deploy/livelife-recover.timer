@@ -1,0 +1,8 @@
+[Unit]
+Description=Recover Livelife services after course container or network restarts
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=5min
+Persistent=true
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,78 @@
+name: Backend environments
+
+on:
+  workflow_run:
+    workflows: [Backend checks]
+    types: [completed]
+  # Metadata-only cleanup. Never checks out/executes the PR head here.
+  pull_request_target:
+    types: [closed]
+  delete:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        options: [bind, lookup, release, snapshot, collect, recover]
+        default: lookup
+        required: true
+        description: "管理后端绑定或检查环境（部署请运行 Backend checks）"
+      frontend_pr:
+        type: string
+        description: "前端 PR 编号；bind/lookup/release 时填写"
+      backend_target:
+        type: string
+        default: staging
+        description: "staging、pr-40 或 be-完整SHA；跨 PR 绑定固定版本"
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+  issues: write
+
+# The server lock serializes mutations. A global Actions concurrency group
+# would discard older pending deployment/cleanup events when a third arrives.
+
+jobs:
+  control:
+    if: vars.LIVELIFE_BACKEND_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # All deployment code comes from reviewed main, including manual runs.
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Prepare restricted SSH credentials
+        env:
+          TASK_PRIVATE_KEY: ${{ secrets.LIVELIFE_DEPLOY_SSH_KEY }}
+          TASK_KNOWN_HOSTS: ${{ secrets.LIVELIFE_PUBLIC_KNOWN_HOSTS }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          for variable, name in [('TASK_PRIVATE_KEY', 'livelife-key'), ('TASK_KNOWN_HOSTS', 'livelife-hosts')]:
+              value = os.environ[variable]
+              if not value.strip():
+                  raise SystemExit(f'Missing {variable}')
+              path = Path(os.environ['RUNNER_TEMP']) / name
+              path.write_text(value.rstrip() + '\n')
+              path.chmod(0o600)
+          PY
+      - name: Deploy, bind or reconcile
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LIVELIFE_SSH_TARGET: ${{ vars.LIVELIFE_SSH_TARGET }}
+          LIVELIFE_PUBLIC_BASE_URL: ${{ vars.LIVELIFE_PUBLIC_BASE_URL }}
+          LIVELIFE_SSH_KEY_FILE: ${{ runner.temp }}/livelife-key
+          LIVELIFE_KNOWN_HOSTS_FILE: ${{ runner.temp }}/livelife-hosts
+        run: python deploy/actions-control.py
+      - name: Remove temporary credentials
+        if: always()
+        run: rm -f -- "$RUNNER_TEMP/livelife-key" "$RUNNER_TEMP/livelife-hosts"

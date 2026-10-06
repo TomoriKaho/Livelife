@@ -1,0 +1,9 @@
+{
+  "root": "/opt/livelife",
+  "base_url": "https://192.144.253.40",
+  "course_host": "8.130.213.80",
+  "course_user": "group5",
+  "course_ssh_port": 1021,
+  "course_key": "/opt/livelife/credentials/course_ed25519",
+  "known_hosts": "/opt/livelife/credentials/known_hosts"
+}
