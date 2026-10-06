@@ -373,7 +373,7 @@ main 合并后可在 Actions → Preview environments → Run workflow 使用 we
 
 ### #27 实施验证记录（2026-10-07）
 
-- 任务分支 `27-frontend-preview` 通过 Issue Create a branch 关联 #27。前端 39 项行为测试、类型检查、普通及预览构建通过；预览资源 URL 回归检查通过。部署工具 70 项测试通过（含真实 Supervisor 与 SIGKILL），ruff、actionlint、shell 语法及改动空白检查通过。
+- 任务分支 `27-frontend-preview` 通过 Issue Create a branch 关联 #27。前端 39 项行为测试、类型检查、普通及预览构建通过；预览资源 URL 回归检查通过。部署工具 71 项测试通过（含真实 Supervisor 与 SIGKILL），ruff、actionlint、shell 语法及改动空白检查通过。
 - GitHub Runner 实际构建提交 `2f92f54491287ce04d17841a0ab9ba3f7fcdfa7e`，Frontend checks run `37513180117` / attempt 1 成功，Artifact 约 17.2 MB。使用其原始产物手动发布分支网页，未把分支产物登记为 main 网页。
 - 公网项目工具及静态网关已更新，更新前备份位于 `/opt/livelife/backups/frontend27-1791312102`。真实 HTTPS 校验发现目录入口 alias 被 Nginx 追加 index.html 的问题，已修复；失败候选未留下站点或后端引用。
 - 无认证返回 401；HTML/config 无缓存；JS/CSS/地图/字体/图片及三份许可证返回 200，不可变缓存和 gzip 生效。原始字体约 22.2 MB，服务器 gzip 14,739,544 bytes；网页物理存储约 43.4 MB（共享字体按 inode 去重）。

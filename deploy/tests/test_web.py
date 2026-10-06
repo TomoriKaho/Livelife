@@ -157,6 +157,16 @@ class WebTests(unittest.TestCase):
         self.assertEqual(result['frontend_sha'], A)
         self.assertIn('failure', result['error'])
 
+    def test_unhealthy_pairing_reports_failure_and_keeps_current_page(self):
+        self.publish()
+        self.registry.deploy('pr:40', B, 2, b'backend')
+        self.runtime.running.pop('be-' + B)
+        with self.assertRaisesRegex(RuntimeError, 'unavailable'):
+            self.publish(commit=B, generation=11, target='be-' + B)
+        result = self.registry.web.lookup(ENV)
+        self.assertEqual((result['status'], result['frontend_sha']), ('failed', A))
+        self.assertEqual(self.runtime.routes['/preview/pr-40/']['config']['frontend_sha'], A)
+
     def test_close_blocks_late_upload_reopen_is_new_generation(self):
         self.publish()
         self.registry.web.release(ENV, 20)

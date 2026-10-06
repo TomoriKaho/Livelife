@@ -91,7 +91,14 @@ class WebActions:
                    'target': target, 'mode': mode, 'build_id': selected_build, 'renew': renew}
         if manifest:
             request.update(manifest=manifest, bundle=base64.b64encode(bundle).decode())
-        result = self.rpc(request)
+        try:
+            result = self.rpc(request)
+        except Exception as error:
+            failed = {**prior, 'status': 'failed', 'source_sha': commit, 'error': str(error)[:500]}
+            self.summary(failed)
+            if context['pr']:
+                self.preview_comment(context['pr'], failed)
+            raise
         self.summary(result)
         if context['pr']:
             self.preview_comment(context['pr'], result)

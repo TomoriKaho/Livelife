@@ -287,7 +287,15 @@ class WebRegistry:
                 self.save(db, 'web_envs', key, env)
             if not ident or not target or env['status'] == 'failed':
                 return self.describe(db, env)
-            return self.promote(db, env, ident, target, mode)
+            try:
+                return self.promote(db, env, ident, target, mode)
+            except Exception as error:
+                db.rollback()
+                failed_env = self.get(db, 'web_envs', key)
+                failed_env.update(status='failed', error=str(error)[:500])
+                self.save(db, 'web_envs', key, failed_env)
+                db.commit()
+                raise
 
     def promote(self, db, env, ident, target, mode):
         backend, _ = self.resolve(db, target)
