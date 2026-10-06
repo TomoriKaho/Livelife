@@ -27,7 +27,7 @@ if (!response.ok) throw new Error(`Overpass HTTP ${response.status}: ${(await re
 const raw = await response.json();
 if (raw.remark) throw new Error(raw.remark);
 if (!raw.elements?.length) throw new Error('地图响应没有要素');
-const directory = new URL('../assets/maps/', import.meta.url);
+const directory = new URL('../src/assets/maps/', import.meta.url);
 await mkdir(directory, { recursive: true });
 await writeFile(new URL('yanyuan-osm.json', directory), JSON.stringify(raw));
 await writeFile(new URL('source.json', directory), JSON.stringify({

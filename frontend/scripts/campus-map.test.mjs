@@ -9,7 +9,7 @@ import { createBuilding, extrudeFootprint, profileFor } from '../src/pages/map/a
 import { treeLayout } from '../src/pages/map/landscape.mjs';
 import * as THREE from 'three';
 import { prepareStoreys, sliceGeometry, transitionModel, animateModel } from '../src/pages/map/storeys.mjs';
-const campus = JSON.parse(await readFile(new URL('../assets/maps/campus.json', import.meta.url), 'utf8'));
+const campus = JSON.parse(await readFile(new URL('../src/assets/maps/campus.json', import.meta.url), 'utf8'));
 test('多面建筑拼接反向成员并保留开放折线失败状态', () => {
   const segments = [[[0, 0], [10, 0]], [[0, 10], [10, 10]], [[10, 0], [10, 10]], [[0, 10], [0, 0]]];
   const rings = joinRings(segments);

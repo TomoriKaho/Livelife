@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 
 // 只在显式运行时联网。补齐原快照 out tags 丢失的 relation 成员与真实树点。
-const directory = new URL('../assets/maps/', import.meta.url);
+const directory = new URL('../src/assets/maps/', import.meta.url);
 const { bbox } = JSON.parse(await readFile(new URL('source.json', directory), 'utf8'));
 const query = `[out:json][timeout:120];(relation[type=multipolygon][building](${bbox.join(',')});node[natural=tree](${bbox.join(',')});way[natural=tree_row](${bbox.join(',')}););out body geom;`;
 const endpoint = 'https://overpass-api.de/api/interpreter';

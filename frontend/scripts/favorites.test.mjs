@@ -28,7 +28,7 @@ test('共享收藏添加、重复切换和移除同步更新列表，未知 ID �
   } finally { saved.value = initial; }
 });
 test('演示收藏覆盖三个状态；每条活动可路由到自身详情和有效地图目标', () => {
-  const campus = JSON.parse(readFileSync(new URL('../assets/maps/campus.json', import.meta.url), 'utf8'));
+  const campus = JSON.parse(readFileSync(new URL('../src/assets/maps/campus.json', import.meta.url), 'utf8'));
   const ids = new Set(campus.buildings.map(item => item.id));
   assert.equal(new Set(savedActivities.value.map(item => activityStatus(item))).size, 3);
   for (const item of activities) {

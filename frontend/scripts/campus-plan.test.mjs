@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { center, constrainToBoundary } from '../src/pages/map/geometry.mjs';
 import { demoLocation } from '../src/pages/map/demo.js';
 import { initialPlanScale, planAnchor, worldToPlan, planToWorld, zoomPlan, panPlan, pinchPlan, pickPlanBuilding, planScaleBar, planLimits } from '../src/pages/map/plan-view.mjs';
-const campus = JSON.parse(readFileSync(new URL('../assets/maps/campus.json', import.meta.url), 'utf8'));
+const campus = JSON.parse(readFileSync(new URL('../src/assets/maps/campus.json', import.meta.url), 'utf8'));
 const boundary = [[-1000, -1000], [1000, -1000], [1000, 1000], [-1000, 1000]];
 const close = (a, b) => a.forEach((value, i) => assert.ok(Math.abs(value - b[i]) < 1e-7));
 

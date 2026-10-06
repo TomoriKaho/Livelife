@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { project, contains, center, clipRoad, origin } from '../src/pages/map/geometry.mjs';
 import { joinRings } from '../src/pages/map/rings.mjs';
-const directory = new URL('../assets/maps/', import.meta.url);
+const directory = new URL('../src/assets/maps/', import.meta.url);
 const raw = JSON.parse(await readFile(new URL('yanyuan-osm.json', directory), 'utf8'));
 const source = JSON.parse(await readFile(new URL('source.json', directory), 'utf8'));
 const details = JSON.parse(await readFile(new URL('yanyuan-details-osm.json', directory), 'utf8'));
