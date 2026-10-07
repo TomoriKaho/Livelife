@@ -110,6 +110,9 @@ class Registry:
             previous = self.routes(db)
             row = db.execute("SELECT * FROM instances WHERE id=?", (ident,)).fetchone()
             created = row is None
+            if created and bundle is None:
+                # A cheap reuse probe must not reserve a port or stamp ordering.
+                return {"status": "upload_required", "backend_sha": commit}
             if created:
                 used = {r[0] for r in db.execute("SELECT port FROM instances UNION SELECT port FROM retirements")}
                 port = next((p for p in range(self.port_start, self.port_start + self.slots)

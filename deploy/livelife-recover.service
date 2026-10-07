@@ -6,5 +6,5 @@ After=network-online.target livelife-gateway.service
 Type=oneshot
 User=livelife
 Group=livelife
-ExecStart=/bin/sh -c 'printf "{\"op\":\"recover\"}" | /opt/livelife/control-venv/bin/python /opt/livelife/control/public-entry.py'
+ExecStart=/opt/livelife/control-venv/bin/python /opt/livelife/control/public-entry.py recover
 TimeoutStartSec=900

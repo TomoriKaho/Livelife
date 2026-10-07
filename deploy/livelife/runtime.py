@@ -33,7 +33,7 @@ class Runtime:
 
     def rpc(self, request):
         remote = f"{self.config['course_user']}@{self.config['course_host']}"
-        result = subprocess.run(self.ssh() + [remote], input=json.dumps(request),
+        result = subprocess.run(self.ssh() + [remote], input=json.dumps(request) + '\n',
                                 text=True, capture_output=True, timeout=780)
         if result.returncode:
             raise RuntimeError(f"course RPC failed: {result.stdout[-2000:]} {result.stderr[-1000:]}")

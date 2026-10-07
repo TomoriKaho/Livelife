@@ -136,14 +136,17 @@ class Controller(WebActions):
         self.target = os.environ["LIVELIFE_SSH_TARGET"]
         if not re.fullmatch(r"livelife@[0-9.]+", self.target):
             raise ValueError("expected dedicated livelife@IPv4 SSH target")
-        self.ssh_command = ["ssh", "-T", "-i", os.environ["LIVELIFE_SSH_KEY_FILE"],
+        self.ssh_command = ["ssh", "-C", "-T", "-i", os.environ["LIVELIFE_SSH_KEY_FILE"],
                             "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
                             "-o", "UserKnownHostsFile=" + os.environ["LIVELIFE_KNOWN_HOSTS_FILE"],
-                            "-o", "ConnectTimeout=10", self.target]
+                            "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=15",
+                            "-o", "ServerAliveCountMax=3", self.target]
 
     def rpc(self, request):
-        result = subprocess.run(self.ssh_command, input=json.dumps(request),
-                                capture_output=True, text=True, timeout=900)
+        payload = json.dumps(request) + '\n'
+        print(f"Preview RPC: {request['op']}, {len(payload.encode())} request bytes", flush=True)
+        result = subprocess.run(self.ssh_command, input=payload,
+                                capture_output=True, text=True, timeout=1800)
         if result.returncode:
             raise RuntimeError(f"deployment RPC failed: {result.stdout[-3000:]} {result.stderr[-1000:]}")
         return json.loads(result.stdout)
@@ -183,10 +186,12 @@ class Controller(WebActions):
         # Use the BUILD's ordering, not the later workflow_run callback's ID.
         # A close event that happened during the build wins over its completion.
         generation = int(run["id"]) * 1000 + int(run.get("run_attempt", 1))
-        request = {"op": "deploy", "owner": key, "sha": commit, "generation": generation,
-                   "bundle": base64.b64encode(bundle).decode(), "digest": hashlib.sha256(bundle).hexdigest()}
+        request = {"op": "deploy", "owner": key, "sha": commit, "generation": generation}
         try:
             result = self.rpc(request)
+            if result['status'] == 'upload_required':
+                request.update(bundle=base64.b64encode(bundle).decode(), digest=hashlib.sha256(bundle).hexdigest())
+                result = self.rpc(request)
             self.summary(result)
             if result["status"] == "ready" and number:
                 self.release(branch_owner(branch), generation)

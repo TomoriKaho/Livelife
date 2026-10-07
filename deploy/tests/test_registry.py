@@ -65,6 +65,24 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(set(self.runtime.running.values()), {18000, 18001, 18002})
         self.assertEqual(self.runtime.routes["/api/staging/"]["sha"], A)
 
+    def test_reuse_probe_without_bundle_never_starts_or_reserves_missing_version(self):
+        result = self.registry.deploy('pr:40', A, 2, None)
+        self.assertEqual(result['status'], 'upload_required')
+        self.assertEqual(self.runtime.running, {})
+        self.assertEqual(self.registry.snapshot()['retirements'], [])
+        # Probe must not supersede the actual older upload arriving afterwards.
+        self.assertEqual(self.deploy('pr:40', A, 1)['status'], 'ready')
+
+    def test_reuse_existing_version_without_upload_renews_branch_and_preserves_main(self):
+        self.deploy('main', A)
+        self.now += 50
+        result = self.registry.deploy('branch:' + 'a' * 32, A, 2, None)
+        self.assertEqual(result['status'], 'ready')
+        self.assertEqual(len(self.runtime.running), 1)
+        self.assertEqual(self.registry.lookup('main')['backend_sha'], A)
+        row = next(row for row in self.registry.snapshot()['refs'] if row['owner'].startswith('branch:'))
+        self.assertEqual(row['expires'], self.now + 100)
+
     def test_startup_intent_is_committed_before_external_start(self):
         original = self.runtime.ensure
         def ensure(ident, commit, port, bundle):

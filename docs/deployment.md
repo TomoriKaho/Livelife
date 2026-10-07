@@ -241,6 +241,10 @@ uv 参数参考：[锁文件与导出教程](https://docs.astral.sh/uv/concepts/
 
 #27 使用同一专用 SSH JSON RPC，响应 JSON，失败时非零退出且包含 error。generation 为 `GitHub run_id * 1000 + run_attempt`，自动部署使用原始构建 run 的 generation：
 
+公网入口以一个完整 JSON 对象作为请求边界，按块读取并限制总输入 96 MiB；不等待 SSH stdin 的 EOF 才执行。兼容旧控制器不带换行的请求，新控制器在 JSON 后附换行。引号、转义、嵌套对象和数组必须解析完整，不接受同一已读块里的额外非空白数据。客户端优化包括 SSH 压缩、15 秒 keepalive 和连续 3 次无响应断开；单次 RPC 上限 1800 秒，控制 job 上限 45 分钟。改动须合入 main 才由自动控制器使用；旧 main 仍采用 900 秒。日志仅记录操作名称和请求字节数，不输出请求体或凭证。
+
+`livelife-recover.service` 直接执行 `public-entry.py recover`，无需 shell 拼接 JSON。强制 SSH 命令仍不带这个参数，继续只接收标准输入 JSON，不取得通用 shell 能力。
+
 | op | 输入 | 行为 |
 | --- | --- | --- |
 | lookup | owner，如 frontend:41/main | 返回版本和 API 地址 |
@@ -248,7 +252,7 @@ uv 参数参考：[锁文件与导出教程](https://docs.astral.sh/uv/concepts/
 | release | owner、generation | 幂等释放，禁止 main |
 | snapshot | 无 | 返回实例与引用 |
 | collect / recover | 无 | 延迟清理 / 恢复进程、检查健康 |
-| deploy | owner、sha、generation、bundle、digest | CI 内的部署操作，不公开 HTTP 管理入口 |
+| deploy | owner、sha、generation；上传时另含 bundle、digest | 无包请求先复用已登记版本；不存在返回 upload_required，不占端口或更新 generation；上传校验完整包，不公开 HTTP 管理入口 |
 
 维护者可用专用密钥测试控制接口，先在本地准备权限 600 的密钥与已核对的 known_hosts，再执行：
 
@@ -414,3 +418,16 @@ main 合并后可在 Actions → Preview environments → Run workflow 使用 we
 本地部署测试共 76 项：73 项通过，3 项 Linux Nginx 集成测试因本地环境不具备依赖而 skip。这 3 项另在公网机独立临时 Nginx、随机回环端口、自签证书和模拟上游中全部通过，覆盖无认证输入页、无 Basic 弹窗、错误/大小写错误 key、7 天 Cookie、静态资源保护、Cookie 各位置及名称大小写、重复 Cookie 拒绝和业务认证透传。CI 已添加 Nginx 依赖，运行同一组测试。
 
 现网 key 文件由 livelife 拥有、权限 600，网关保持 active。Chrome 实测错误 key 提示、正确 key 进入已有 PR #37 网页、配置读取和真实 hello 均通过；hello 返回 `hello world` 及 staging 后端 SHA `fcb7f9d72454c7061ac140b1d4353ac88bd8579d`。预览前端仍为此前已发布的 `797199c8de20cf09e43ef5ef61d56260258c456e` 产物，本次变更是网关认证，不重新声明网页自动链路已启用。`LIVELIFE_FRONTEND_ENABLED` 保持关闭，成员正式评审仍待完成。
+
+
+### SSH 部署超时与恢复服务修复（2026-10-07）
+
+`e111c28` 推送同时触发 push 和 PR synchronize 的 Backend checks，两个检查成功后各自产生 workflow_run.completed：[部署 37581819563](https://github.com/TomoriKaho/Livelife/actions/runs/37581819563) 和 [部署 37581836765](https://github.com/TomoriKaho/Livelife/actions/runs/37581836765)。前后端构建通过，失败阶段是 Actions 等待公网 SSH RPC 900 秒，不能称为编译失败。公网日志确认两个 Runner 都通过公钥认证；没有证据将此失败归因于公网 SSH 登录被拦截。
+
+服务端原先读取到 EOF 才解析请求。这次时间线中，14:30 建立会话，14:45 Actions 超时后，服务器才在 14:45:27 记录新后端成功，PR hello 实际返回 `e111c28`。重跑实时 TCP 统计进一步确认主因是 Runner 到公网机的上传慢：约 90 秒只收到 1 MiB，而 9.8 MB 压缩包在 JSON 中 base64 后约 13 MiB；900 秒可能在输入尚未完成时到期。单凭“超时后才部署”的时间线不能断言 EOF 是主因。公网输入也改为完整 JSON 对象边界，作为健壮性修复，兼容原 main 控制器。只读实测保持 SSH stdin 打开：小请求约 0.82 秒返回，13 MiB 请求约 1.63 秒返回。新客户端先发无包复用请求，只在服务端返回 upload_required 时上传；冷上传采用 SSH 压缩，RPC 上限 1800 秒、job 上限 45 分钟，并记录操作和字节数。尚未合入时原 main 控制器仍上传完整包，不能把服务器修复当作客户端优化已上线。生产凭证、主机公钥校验、端口和后端引用规则均未改变。
+
+同时发现独立问题：恢复服务的 shell/systemd 多层引号使 `{"op":"recover"}` 失去 JSON 引号。改为直接运行 `public-entry.py recover`，14:58:52 实测返回 recovered，systemd Result=success、ExecMainStatus=0。公网控制代码及服务定义已备份至 `/opt/livelife/backups/rpc-input-1791356329` 后更新；本次无需更新课程机控制程序。
+
+本地部署测试共 84 项：81 项通过，3 项 Linux Nginx 依赖项 skip；本次新增 5 项真实管道/输入边界回归及 3 项复用探测、分支续期和按需上传回归，ruff、actionlint 和 diff 检查通过。原失败部署在负责人授权后重跑，结果继续记录于对应 Actions 运行及 PR #37；不能把本地或只读实测当成原部署任务已恢复。
+
+原部署两次 attempt 2 已全部成功，约 14–15 分钟，仍接近旧上限。真实无包复用 PR #37 当前 SHA 返回 ready，约 1.38 秒，main 路由不变。只读随机 base64 数据压缩验证：约 14.0 MB 原始 SSH 数据压到约 10.6 MB，factor=0.76；不能据本地速度推断跨境链路同样快速。客户端优化要合入 main 后自动生效。

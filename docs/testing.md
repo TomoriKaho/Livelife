@@ -134,6 +134,8 @@ OSM 可见署名由 #31 在 v0.1.0 阶段补齐；真实后端 hello 联调、An
 
 ## 后端部署基础设施验证
 
+`test_rpc_input.py` 覆盖 SSH JSON 输入边界：使用真实子进程管道，故意保持写端打开，确认收到完整 JSON 后返回；另外验证嵌套、转义、Unicode 跨块、旧格式/换行格式兼容、大小限制及非法输入。实际服务器验证也仅用受限 SSH 的 snapshot 操作，保持 stdin 打开，不用部署请求代替只读检查。
+
 单 key 测试入口有独立 Nginx 集成测试 `test_access_nginx.py`：使用临时目录、自签测试证书、随机回环端口和模拟上游，验证输入页、错误 key、Cookie 属性、静态资源保护及基础设施凭证剥离，同时保留业务认证。CI 安装 Nginx 后运行；本地缺少 Linux Nginx/OpenSSL 时明确 skip，可在服务器独立候选目录运行，不能记为本地通过。不使用真实 key，也不修改共享网关或后端。
 
 #29 的工具不依赖业务后端即可检查引用与环境管理。先按工程规范安装控制工具依赖，再运行 `python -m unittest discover -s deploy/tests -v`。Supervisor 集成测试需要本地 Unix socket 权限；没有安装 Supervisor 时该项明确 skip，不能当成通过。
