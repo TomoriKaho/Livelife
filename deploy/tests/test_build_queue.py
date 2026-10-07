@@ -55,6 +55,14 @@ class QueueTests(unittest.TestCase):
         self.queue.finish(claimed[0]["id"], {"ok": True})
         self.assertIsNotNone(self.queue.claim())
 
+    def test_same_sha_notifications_reuse_build_when_newer_arrives_first(self):
+        newer = self.submit(20)
+        self.assertEqual(self.submit(10)["id"], newer["id"])
+        self.queue.claim()
+        self.assertEqual(self.submit(11)["id"], newer["id"])
+        self.queue.finish(newer["id"], {"ok": True})
+        self.assertEqual(self.submit(12)["status"], "success")
+
     def test_queued_older_sha_is_cancelled_and_late_request_rejected(self):
         old = self.submit(10)
         new = self.submit(20, commit=B)

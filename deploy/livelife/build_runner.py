@@ -125,6 +125,35 @@ def sandbox_command(root, workspace, command):
     return args
 
 
+def anchor_cached_commits(source):
+    """Advertise cached shallow commits so Git can negotiate incremental packs."""
+    shallow = Path(source) / "shallow"
+    if not shallow.exists():
+        return
+    for commit in shallow.read_text().splitlines():
+        if len(commit) != 40 or any(c not in "0123456789abcdef" for c in commit):
+            raise ValueError("invalid cached shallow commit")
+        probe = subprocess.run(
+            ["git", "--git-dir", str(source), "cat-file", "-e", commit + "^{commit}"],
+            capture_output=True,
+            timeout=10,
+        )
+        if probe.returncode == 0:
+            subprocess.run(
+                [
+                    "git",
+                    "--git-dir",
+                    str(source),
+                    "update-ref",
+                    "refs/livelife/source/" + commit,
+                    commit,
+                ],
+                check=True,
+                capture_output=True,
+                timeout=10,
+            )
+
+
 def run_fetch(command, source, timeout=180):
     """Terminate the whole Git process group before releasing the source lock."""
     shallow_lock = Path(source) / "shallow.lock"
@@ -196,6 +225,7 @@ class Runner:
                     ],
                     check=True,
                 )
+            anchor_cached_commits(source)
             try:
                 subprocess.run(
                     [
@@ -226,7 +256,7 @@ class Runner:
                                 "fetch",
                                 "--depth=1",
                                 "origin",
-                                job["sha"],
+                                job["sha"] + ":refs/livelife/source/" + job["sha"],
                             ],
                             source,
                         )
