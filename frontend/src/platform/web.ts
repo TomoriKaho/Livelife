@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core';
 import { previewState } from './runtime-config';
 
 /**
@@ -9,7 +10,7 @@ import { previewState } from './runtime-config';
 
 /** 是否为 Capacitor 原生环境 */
 export const isNative = (): boolean => {
-  return false; // 首阶段均为 Web
+  return Capacitor.isNativePlatform();
 };
 
 /** 获取 API 基地址 */
