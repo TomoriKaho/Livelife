@@ -80,9 +80,12 @@ class Course:
             if op == 'build_status':
                 return queue.lookup(request['job'], request.get('offset', 0))
             if op == 'build_artifact':
-                result = queue.completed(request['job'], 'frontend', request['sha'])
+                component = request.get('component', 'frontend')
+                if component not in ('frontend', 'android'):
+                    raise ValueError('unsupported artifact component')
+                result = queue.completed(request['job'], component, request['sha'])
                 manifest = result['result']
-                payload = (queue.jobs / job_id(request['job']) / 'artifact/frontend.tgz').read_bytes()
+                payload = (queue.jobs / job_id(request['job']) / ('artifact/android-unsigned.apk' if component == 'android' else 'artifact/frontend.tgz')).read_bytes()
                 if len(payload) > 64 * 1024**2 or hashlib.sha256(payload).hexdigest() != manifest['digest']:
                     raise ValueError('stored frontend artifact mismatch')
                 return {'manifest': manifest, 'bundle': base64.b64encode(payload).decode()}
