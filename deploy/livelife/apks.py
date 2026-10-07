@@ -251,7 +251,10 @@ class ApkRegistry:
         unsigned, aligned = directory / "unsigned.apk", directory / "aligned.apk"
         output = directory / f"livelife-test-{config['version_code']}.apk"
         badging = subprocess.check_output(
-            [str(sdk / "aapt2"), "dump", "badging", str(unsigned)], env=env, timeout=30
+            [str(sdk / "aapt2"), "dump", "badging", str(unsigned)],
+            env=env,
+            timeout=30,
+            cwd=directory,
         ).decode()
         if not re.search(
             r"package: name='"
@@ -264,7 +267,9 @@ class ApkRegistry:
             badging,
         ):
             raise ValueError("APK applicationId/version mismatch")
-        if "sdkVersion:'24'" not in badging or "targetSdkVersion:'36'" not in badging:
+        if not re.search(
+            r"^(?:minSdkVersion|sdkVersion):'24'$", badging, re.M
+        ) or not re.search(r"^targetSdkVersion:'36'$", badging, re.M):
             raise ValueError("APK SDK mismatch")
         subprocess.run(
             [str(sdk / "zipalign"), "-f", "-p", "4", str(unsigned), str(aligned)],
@@ -272,6 +277,7 @@ class ApkRegistry:
             env=env,
             timeout=120,
             capture_output=True,
+            cwd=directory,
         )
         credentials = Path(settings["root"]) / "credentials"
         subprocess.run(
@@ -284,8 +290,6 @@ class ApkRegistry:
                 "livelife-test",
                 "--ks-pass",
                 "file:" + str(credentials / "android-test.pass"),
-                "--key-pass",
-                "file:" + str(credentials / "android-test.pass"),
                 "--v4-signing-enabled",
                 "false",
                 "--out",
@@ -296,6 +300,7 @@ class ApkRegistry:
             env=env,
             timeout=120,
             capture_output=True,
+            cwd=directory,
         )
         report = subprocess.check_output(
             [
@@ -307,6 +312,7 @@ class ApkRegistry:
             ],
             env=env,
             timeout=30,
+            cwd=directory,
         ).decode()
         expected = (credentials / "android-test.sha256").read_text().strip().lower()
         if "Signer #1 certificate SHA-256 digest: " + expected not in report:
@@ -426,7 +432,7 @@ class ApkRegistry:
 <img src="qr.png" alt="Android 下载页二维码"><p>有效期：{escape(date)}</p>
 <p>客户端 SHA：<code>{escape(result["frontend_sha"])}</code><br>后端模式：{escape(result["backend_mode"])}<br>后端 SHA：<code>{escape(result["backend_sha"])}</code><br>API：<code>{escape(result["api_base_url"])}</code><br>versionCode：{result["version_code"]}<br>SHA-256：<code>{escape(result["digest"])}</code></p>
 <p>手机扫码打开页面，下载后允许浏览器安装未知来源应用。各 PR 共用同一测试应用，安装较新 versionCode 会覆盖；切回旧代码请重新构建，勿直接降级。包到期后不能继续接口测试。</p>
-<p><a href="https://github.com/TomoriKaho/Livelife/blob/main/docs/android-testing.md">完整安装与验收教程</a></p>
+<p><a href="https://github.com/TomoriKaho/Livelife/blob/{escape(result["frontend_sha"])}/docs/android-testing.md">完整安装与验收教程</a></p>
 <script>fetch('status.json',{{cache:'no-store'}}).then(r=>{{if(!r.ok)throw Error('状态读取失败');return r.json()}}).then(s=>{{const ok=s.status==='ready'&&(s.expires===null||Date.now()<s.expires*1000);document.getElementById('status').textContent=ok?'可下载安装':'此测试包已过期或被释放，请下载新的版本';document.getElementById('download').hidden=!ok;}}).catch(()=>{{document.getElementById('status').textContent='无法确认安装包状态，请稍后刷新';}});</script></html>'''
         atomic_text(directory / "index.html", page)
         qrcode.make(result["download_page"]).save(directory / "qr.png")

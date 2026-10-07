@@ -30,6 +30,29 @@ class Controller(AndroidActions):
 
 
 class AndroidActionsTests(unittest.TestCase):
+    def test_manual_android_reuses_backend_only_when_its_git_tree_is_unchanged(self):
+        from test_actions import control, A, B, REPO
+
+        c = control.Controller.__new__(control.Controller)
+        c.repo = REPO
+        c.pr = lambda number: {
+            "state": "open",
+            "head": {"repo": {"full_name": REPO}, "sha": B},
+        }
+        c.rpc = lambda request: {"backend_sha": A, "instance": "be-" + A}
+        c.tree = lambda commit: {"backend": "same-backend-tree"}
+        with patch.dict(os.environ, LIVELIFE_ANDROID_ENABLED="true"):
+            self.assertEqual(c.manual_target("pr-42"), "be-" + A)
+            c.tree = lambda commit: {"backend": commit}
+            with self.assertRaises(ValueError):
+                c.manual_target("pr-42")
+            c.pr = lambda number: {
+                "state": "open",
+                "head": {"repo": {"full_name": "fork/Livelife"}, "sha": A},
+            }
+            with self.assertRaises(ValueError):
+                c.manual_target("pr-42")
+
     def test_only_backend_branch_has_no_automatic_apk(self):
         c = Controller()
         c.context = lambda *args: {

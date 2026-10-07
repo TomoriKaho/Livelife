@@ -70,4 +70,21 @@ Android checks 失败看 Preview environments 的课程日志和错误阶段。�
 
 ## 实施记录
 
-2026-10-07：已在 28-android-test-apk 分支实现 Android 工程、原生配置、队列、受信签名、独立引用、下载页、二维码和自动/手动控制。尚未合入 main，LIVELIFE_ANDROID_ENABLED 尚未开启；完整自动链路与真实 APK 发布结果将在本任务验证后补记。成员真机验收待执行，不将自动构建通过记为真机通过。
+2026-10-07：已在 28-android-test-apk 分支实现 Android 工程、原生配置、队列、受信签名、独立引用、下载页、二维码和自动/手动控制；PR 为 [#41](https://github.com/TomoriKaho/Livelife/pull/41)。课程机及公网机增量控制、JDK/SDK/Gradle、维护者已接受的 SDK 许可证和专用测试密钥已配置。
+
+通过受限 RPC 完成一次真实候选发布（不代表 main 工作流已启用）：
+
+| 项目 | 实际记录 |
+| --- | --- |
+| 下载入口 | [PR #41 Android 下载页](https://192.144.253.40/downloads/android/pr-41/) |
+| 安装包 | 0.1.0-test.7，versionCode 7，20,485,204 字节 |
+| 客户端 SHA | `0c3a6c52fda4727bb3b36963935c6f1ecbd6080c` |
+| 固定后端 SHA | `9ce6d52190f48de388331f49705e70641015fe83`；该分支后端 Git 树与客户端提交相同 |
+| SHA-256 | `2ba37e783aa00a0063fda88e08b8a1edfa0aad92d9ee39a19b1c6793aeac311f` |
+| 有效期 | 2026-10-14 23:43:34 CST；PR 释放后可提前失效 |
+
+已验证课程机完整未签名构建、公网机签名及证书指纹、HTTPS 页面/状态/APK 下载、二维码解码、下载校验值、原生来源 `https://localhost` 的 hello 与版本响应头，以及包内相对资源路径和字体/地图/Three.js 许可证。真实注册表中，APK 独立引用仍指向上述后端，而 PR 后端入口已更新到另一提交；main 引用保持永久。首次成功 Gradle 编译约 2 分 27 秒，缓存复用后的构建约 59 秒；不包括源码准备、网页检查、上传及签名耗时。
+
+本地部署测试 124 项通过（本地跳过 3 项 Linux/Nginx 检查），前端 41 项行为测试、preview/production 构建、后端 12 项测试、actionlint、ruff 和 shell 检查通过。初次工具安装中断导致历史 android-tools.json 只记录了 Gradle；安装器现已按工具立即保存，已有工具不会被虚构为重新校验过。
+
+尚未合入 main，LIVELIFE_ANDROID_ENABLED 尚未开启；自动事件、main APK 入口和 Android PR 关闭/重开链路需在合并并启用后验证。候选下载页和 PR 正文已可使用，统一自动评论的 APK 信息由启用后的 main 控制器维护。成员 Android 真机安装、覆盖升级、2D/3D 地图、返回键及 hello 验收待执行，不将自动构建通过记为真机通过。

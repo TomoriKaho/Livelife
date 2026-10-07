@@ -21,11 +21,14 @@ def dispatch(registry, request):
             return registry.apks.publish_built(request)
         except Exception as error:
             registry.apks.fail(request["apk_id"], str(error))
+            registry.apks.prune_files()
             raise
     if op == "apk_fail":
-        return registry.apks.fail(
+        result = registry.apks.fail(
             request["apk_id"], request.get("error", "build failed")
         )
+        registry.apks.prune_files()
+        return result
     if op == "apk_release":
         result = registry.apks.release(request["environment"], request["generation"])
         registry.apks.prune_files()
@@ -71,7 +74,9 @@ def dispatch(registry, request):
         registry.apks.prune_files()
         return result
     if op == "recover":
-        return registry.recover()
+        result = registry.recover()
+        registry.apks.prune_files()
+        return result
     if op == "snapshot":
         return registry.snapshot()
     raise ValueError("unsupported operation")

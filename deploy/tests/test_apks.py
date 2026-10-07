@@ -38,6 +38,53 @@ class ApkTests(unittest.TestCase):
             )
         )
 
+    def test_signing_validates_actual_aapt_sdk_metadata(self):
+        first = self.reserve()
+        directory = self.r.apks.root / first["apk_id"]
+        directory.mkdir(exist_ok=True)
+        data = apk(first)
+        root = self.r.root.parent
+        credentials = root / "credentials"
+        credentials.mkdir()
+        (credentials / "android-test.sha256").write_text("a" * 64)
+        identity = f"package: name='io.github.tomorikaho.livelife.dev' versionCode='{first['version_code']}' versionName='{first['version_name']}'"
+
+        def run(args, **kwargs):
+            self.assertEqual(kwargs["cwd"], directory)
+            # apksigner reuses the keystore password for this PKCS12 key.
+            # Asking it to read the same single-line file twice reaches EOF.
+            self.assertNotIn("--key-pass", args)
+            output = args[args.index("--out") + 1] if "--out" in args else args[-1]
+            Path(output).write_bytes(data)
+
+        with patch.object(self.runtime, "config", {"root": str(root)}, create=True):
+            for label in ("minSdkVersion", "sdkVersion"):
+                (directory / "unsigned.apk").write_bytes(data)
+                with (
+                    patch("livelife.apks.subprocess.run", side_effect=run),
+                    patch(
+                        "livelife.apks.subprocess.check_output",
+                        side_effect=[
+                            (
+                                identity + f"\n{label}:'24'\ntargetSdkVersion:'36'\n"
+                            ).encode(),
+                            (
+                                "Signer #1 certificate SHA-256 digest: " + "a" * 64
+                            ).encode(),
+                        ],
+                    ),
+                ):
+                    self.assertTrue(self.r.apks.sign(directory, first).is_file())
+            for sdk in ("minSdkVersion:'23'", "platformBuildVersionCode:'24'"):
+                with patch(
+                    "livelife.apks.subprocess.check_output",
+                    return_value=(
+                        identity + f"\n{sdk}\ntargetSdkVersion:'36'\n"
+                    ).encode(),
+                ):
+                    with self.assertRaisesRegex(ValueError, "SDK mismatch"):
+                        self.r.apks.sign(directory, first)
+
     def publish(self, result, fail=False):
         config = {
             k: v
@@ -137,7 +184,13 @@ class ApkTests(unittest.TestCase):
         second = self.reserve(gen=11, force=True)
         with self.assertRaises(RuntimeError):
             self.publish(second, fail=True)
-        self.r.apks.fail(second["apk_id"], "gateway failure")
+        from livelife.manager import dispatch
+
+        dispatch(
+            self.r,
+            dict(op="apk_fail", apk_id=second["apk_id"], error="gateway failure"),
+        )
+        self.assertFalse(list((self.r.apks.root / second["apk_id"]).glob("*.apk")))
         result = self.r.apks.lookup("pr-42")
         self.assertEqual(result["status"], "failure")
         self.assertEqual(result["last_success"]["apk_id"], first["apk_id"])
