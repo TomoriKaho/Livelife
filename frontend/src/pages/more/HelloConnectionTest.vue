@@ -2,10 +2,10 @@
 import { androidState, loadAndroidConfig } from '../../platform/android-config';
 import { computed, ref } from 'vue';
 import { fetchHello } from '../../api/hello';
-import { getApiBaseUrl } from '../../platform/web';
+import { isNative, getApiBaseUrl } from '../../platform/web';
 import { previewState, loadPreviewConfig } from '../../platform/runtime-config';
 
-const available = computed(() => !previewState.enabled || !!previewState.config);
+const available = computed(() => previewState.enabled ? !!previewState.config : !isNative() || !!import.meta.env.VITE_API_BASE_URL);
 const apiBaseUrl = computed(() => available.value ? getApiBaseUrl() : '配置不可用');
 const state = ref<'idle' | 'loading' | 'success' | 'error'>('idle');
 const message = ref('');
@@ -27,6 +27,7 @@ async function testConnection() {
 
 <template>
   <section class="connection-test" aria-labelledby="connection-test-title" :aria-busy="state === 'loading'">
+    <p v-if="androidState.config" class="connection-note">Android {{ androidState.config.version_name }} · versionCode {{ androidState.config.version_code }}</p>
     <h2 id="connection-test-title">接口连通性测试</h2>
     <p class="connection-note">点击按钮，检查能否连接后端。此处展示实际请求结果。</p>
     <p class="connection-address">后端地址：<span>{{ apiBaseUrl }}</span></p>
@@ -41,7 +42,7 @@ async function testConnection() {
       </template>
       <template v-else>
         <p role="alert">{{ previewState.error || '正在读取测试配置…' }}</p>
-        <button type="button" :disabled="previewState.loading" @click="androidState.config ? loadAndroidConfig() : loadPreviewConfig()">重新读取配置</button>
+        <button type="button" :disabled="previewState.loading" @click="isNative() ? loadAndroidConfig() : loadPreviewConfig()">重新读取配置</button>
       </template>
     </div>
     <button v-sketch class="connection-button sketch" data-pencil="blue" type="button" :disabled="state === 'loading' || !available" @click="testConnection">

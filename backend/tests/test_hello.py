@@ -30,6 +30,7 @@ async def test_hello_returns_contract_response(client: httpx.AsyncClient) -> Non
 @pytest.mark.parametrize(
     "origin",
     [
+        "https://localhost",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:8765",
@@ -74,3 +75,9 @@ async def test_unsupported_method_returns_method_not_allowed(client: httpx.Async
 
     assert response.status_code == 405
     assert response.json() == {"detail": "Method Not Allowed"}
+
+
+@pytest.mark.anyio
+async def test_native_origin_can_read_backend_version_header(client: httpx.AsyncClient) -> None:
+    response = await client.get("/test/hello", headers={"Origin": "https://localhost"})
+    assert response.headers["access-control-expose-headers"] == "X-Livelife-Backend-SHA"

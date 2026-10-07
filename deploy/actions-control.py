@@ -18,6 +18,7 @@ import zipfile
 
 from livelife.common import sha
 from livelife.web_actions import WebActions, web_environment
+from livelife.android_actions import AndroidActions
 from livelife.remote_actions import RemoteActions, REQUESTS
 
 
@@ -129,7 +130,7 @@ def read_web_artifact(data):
         return manifest, bundle
 
 
-class Controller(RemoteActions, WebActions):
+class Controller(AndroidActions, RemoteActions, WebActions):
     def __init__(self):
         self.repo = os.environ["GITHUB_REPOSITORY"]
         self.github = GitHub(self.repo, os.environ["GH_TOKEN"])
@@ -216,45 +217,63 @@ class Controller(RemoteActions, WebActions):
     def reconcile(self):
         snapshot = self.rpc({"op": "snapshot"})
         for ref in snapshot["refs"]:
-            if re.fullmatch(r'(pr|frontend):[1-9][0-9]*', ref['owner']):
+            if re.fullmatch(r"(pr|frontend):[1-9][0-9]*", ref["owner"]):
                 number = int(ref["owner"].split(":")[1])
                 # API failures stop reconciliation, never imply all PRs closed.
                 if self.pr(number)["state"] != "open":
                     self.release(ref["owner"])
         if self.web_enabled:
             self.reconcile_web()
+        self.reconcile_android()
         self.summary(self.rpc({"op": "collect"}))
+
 
     def manual(self, inputs):
         op = inputs["operation"]
-        if op in ('web-lookup', 'web-release', 'web-rollback'):
-            branch = inputs.get('frontend_branch')
-            if branch and inputs.get('frontend_pr'):
-                raise ValueError('choose a PR or branch, not both')
+        if op == "android-build":
+            return self.manual_android(inputs)
+        if op in ("web-lookup", "web-release", "web-rollback"):
+            branch = inputs.get("frontend_branch")
+            if branch and inputs.get("frontend_pr"):
+                raise ValueError("choose a PR or branch, not both")
             if not branch:
-                pr = self.pr(int(inputs['frontend_pr']))
-                if pr['head']['repo']['full_name'] != self.repo:
-                    raise ValueError('fork previews cannot access deployment credentials')
-                branch = pr['head']['ref']
+                pr = self.pr(int(inputs["frontend_pr"]))
+                if pr["head"]["repo"]["full_name"] != self.repo:
+                    raise ValueError(
+                        "fork previews cannot access deployment credentials"
+                    )
+                branch = pr["head"]["ref"]
             key = web_environment(branch)
-            request = {'op': op.replace('-', '_'), 'environment': key, 'generation': self.generation}
+            request = {
+                "op": op.replace("-", "_"),
+                "environment": key,
+                "generation": self.generation,
+            }
             return self.summary(self.rpc(request))
         if op in ("collect", "recover", "snapshot"):
             return self.summary(self.rpc({"op": op}))
-        if inputs.get('frontend_branch'):
-            if inputs.get('frontend_pr'):
-                raise ValueError('choose a PR or branch, not both')
-            branch = inputs['frontend_branch']
-            if branch == 'main':
-                raise ValueError('main frontend always follows staging')
-            commit = self.commit(branch)['sha']
-            key = 'frontend:' + web_environment(branch)
-            if op == 'lookup':
-                return self.summary(self.rpc({'op': 'lookup', 'owner': key}))
-            if op == 'release':
+        if inputs.get("frontend_branch"):
+            if inputs.get("frontend_pr"):
+                raise ValueError("choose a PR or branch, not both")
+            branch = inputs["frontend_branch"]
+            if branch == "main":
+                raise ValueError("main frontend always follows staging")
+            commit = self.commit(branch)["sha"]
+            key = "frontend:" + web_environment(branch)
+            if op == "lookup":
+                return self.summary(self.rpc({"op": "lookup", "owner": key}))
+            if op == "release":
                 return self.summary(self.release(key))
-            target = self.manual_target(inputs['backend_target'])
-            result = self.rpc({'op': 'bind', 'owner': key, 'target': target, 'generation': self.generation, 'frontend_sha': commit})
+            target = self.manual_target(inputs["backend_target"])
+            result = self.rpc(
+                {
+                    "op": "bind",
+                    "owner": key,
+                    "target": target,
+                    "generation": self.generation,
+                    "frontend_sha": commit,
+                }
+            )
             self.summary(result)
             if self.web_enabled:
                 self.sync_web(branch)
@@ -274,23 +293,39 @@ class Controller(RemoteActions, WebActions):
         if re.fullmatch(r"pr-[1-9][0-9]*", target):
             backend_number = int(target[3:])
             backend_pr = self.pr(backend_number)
-            if backend_pr["state"] != "open" or backend_pr["head"]["repo"]["full_name"] != self.repo:
+            if (
+                backend_pr["state"] != "open"
+                or backend_pr["head"]["repo"]["full_name"] != self.repo
+            ):
                 raise ValueError("backend target must be an open same-repository PR")
             current = self.rpc({"op": "lookup", "owner": "pr:" + str(backend_number)})
             if current["backend_sha"] != backend_pr["head"]["sha"]:
                 raise ValueError("backend latest SHA is not deployed yet")
-            target = current["instance"]  # Pin the resolved SHA; don't race an alias update.
-        result = self.rpc({"op": "bind", "owner": key, "target": target,
-                           "frontend_sha": pr["head"]["sha"], "generation": self.generation})
+            target = current[
+                "instance"
+            ]  # Pin the resolved SHA; don't race an alias update.
+        result = self.rpc(
+            {
+                "op": "bind",
+                "owner": key,
+                "target": target,
+                "frontend_sha": pr["head"]["sha"],
+                "generation": self.generation,
+            }
+        )
         self.summary(result)
         if result["status"] != "ready":
             return  # A newer binding/close won; don't advertise this request.
         if self.web_enabled:
-            return self.sync_web(pr['head']['ref'])
-        self.github.comment(number, f"后端绑定已更新。\n\n"
+            return self.sync_web(pr["head"]["ref"])
+        self.github.comment(
+            number,
+            f"后端绑定已更新。\n\n"
             f"- API 地址：`{result['api_base_url']}`\n"
             f"- 后端 SHA：`{result['backend_sha']}`\n"
-            "- 这是 #29 的绑定记录；#27 接入后负责更新网页配置。\n")
+            "- 这是 #29 的绑定记录；#27 接入后负责更新网页配置。\n",
+        )
+
 
     def manual_target(self, target):
         if re.fullmatch(r'pr-[1-9][0-9]*', target):
@@ -306,55 +341,111 @@ class Controller(RemoteActions, WebActions):
 
     def handle(self, event_name, event):
         if event_name == "workflow_run":
-            run = event['workflow_run']
-            if run.get('name') in REQUESTS:
-                return self.remote_completed(run)
+            run = event["workflow_run"]
+            if run.get("name") in REQUESTS:
+                result = self.remote_completed(run)
+                if self.android_enabled and getattr(self, "course_checked_run", None) == (run["id"], run.get("run_attempt", 1), run["head_sha"]):
+                    checked = self.github.call(
+                        f"/repos/{self.repo}/actions/runs/{int(run['id'])}"
+                    )
+                    if (
+                        checked.get("conclusion") == "success"
+                        and checked["head_repository"]["full_name"] == self.repo
+                        and checked.get("path", "").split("@")[0]
+                        == REQUESTS[checked["name"]][1]
+                        and (
+                            checked["name"] == "Frontend build request"
+                            or checked["head_branch"] != "main"
+                        )
+                    ):
+                        self.sync_android(
+                            checked["head_branch"],
+                            checked["head_sha"],
+                            int(checked["id"]) * 1000
+                            + int(checked.get("run_attempt", 1)),
+                            checked["id"],
+                            checked.get("run_attempt", 1),
+                        )
+                return result
             try:
                 result = self.build_completed(run)
             except Exception:
                 # Preserve the deployment error even if reporting also fails.
                 try:
-                    if run.get('name') != 'Frontend checks':
+                    if run.get("name") != "Frontend checks":
                         self.backend_web_completed(run, deployment_failed=True)
                 except Exception as report_error:
-                    self.summary({'status': 'failed', 'report_error': str(report_error)[:500]})
+                    self.summary(
+                        {"status": "failed", "report_error": str(report_error)[:500]}
+                    )
                 raise
             else:
-                if run.get('name') != 'Frontend checks':
+                if run.get("name") != "Frontend checks":
                     self.backend_web_completed(run)
                 return result
         if event_name == "workflow_dispatch":
             return self.manual(event["inputs"])
         if event_name == "pull_request_target":
             pr = self.pr(event["number"])
-            if pr['head']['repo']['full_name'] != self.repo:
-                return self.summary({'status': 'skipped', 'reason': 'fork'})
-            if pr['state'] == 'open':
+            if pr["head"]["repo"]["full_name"] != self.repo:
+                return self.summary({"status": "skipped", "reason": "fork"})
+            if pr["state"] == "open":
                 if self.web_enabled:
-                    return self.sync_web(pr['head']['ref'], pr['head']['sha'])
+                    self.sync_web(pr["head"]["ref"], pr["head"]["sha"])
+                if self.android_enabled:
+                    self.sync_android(pr["head"]["ref"], pr["head"]["sha"])
+                return
                 return
             if pr["state"] == "closed":
+                if self.android_enabled:
+                    self.summary(
+                        self.rpc(
+                            {
+                                "op": "apk_release",
+                                "environment": f"pr-{event['number']}",
+                                "generation": self.generation,
+                            }
+                        )
+                    )
                 if self.web_enabled:
-                    self.summary(self.rpc({'op': 'web_release', 'environment': web_environment(pr['head']['ref']),
-                                           'generation': self.generation}))
+                    self.summary(
+                        self.rpc(
+                            {
+                                "op": "web_release",
+                                "environment": web_environment(pr["head"]["ref"]),
+                                "generation": self.generation,
+                            }
+                        )
+                    )
                 self.release("pr:" + str(event["number"]))
                 self.release("frontend:" + str(event["number"]))
                 if self.web_enabled:
-                    self.preview_comment(event['number'], {'status': 'released'})
+                    self.preview_comment(event["number"], {"status": "released"})
                 else:
-                    self.github.comment(event["number"], "PR 已关闭，已释放此 PR 的后端保留记录和前端绑定。\n\n"
-                    "其他前端仍引用的固定版本继续保留；无引用版本经过一小时后回收。重新打开后重新检查、部署。")
+                    self.github.comment(
+                        event["number"],
+                        "PR 已关闭，已释放此 PR 的后端保留记录和前端绑定。\n\n"
+                        "其他前端仍引用的固定版本继续保留；无引用版本经过一小时后回收。重新打开后重新检查、部署。",
+                    )
             return self.summary(self.rpc({"op": "collect"}))
         if event_name == "delete":
             if event["ref_type"] == "branch":
-                if self.web_enabled and event['ref'] != 'main':
-                    self.summary(self.rpc({'op': 'web_release', 'environment': web_environment(event['ref']),
-                                           'generation': self.generation}))
+                if self.web_enabled and event["ref"] != "main":
+                    self.summary(
+                        self.rpc(
+                            {
+                                "op": "web_release",
+                                "environment": web_environment(event["ref"]),
+                                "generation": self.generation,
+                            }
+                        )
+                    )
                 self.summary(self.release(branch_owner(event["ref"])))
             return
         if event_name == "schedule":
             return self.reconcile()
         raise ValueError("unsupported workflow event")
+
 
 
 if __name__ == "__main__":

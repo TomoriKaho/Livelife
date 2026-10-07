@@ -121,6 +121,7 @@ class RemoteActions:
                 commit, component, "success", "课程机检查、测试和构建通过", run
             )
             checked["conclusion"] = "success"
+            self.course_checked_run = (run["id"], run.get("run_attempt", 1), commit)
         except Exception as error:
             self.check_status(
                 commit, component, "failure", "课程机检查失败：" + str(error), run

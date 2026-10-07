@@ -14,20 +14,24 @@ on:
     inputs:
       operation:
         type: choice
-        options: [bind, lookup, release, snapshot, collect, recover, web-lookup, web-release, web-rollback]
+        options: [bind, lookup, release, snapshot, collect, recover, web-lookup, web-release, web-rollback, android-build]
         default: lookup
         required: true
         description: "管理后端绑定或检查环境（部署请运行 Backend build request）"
+      client_ref:
+        type: string
+        default: main
+        description: "android-build：客户端分支、Tag 或完整 SHA"
       frontend_pr:
         type: string
-        description: "前端 PR 编号；bind/lookup/release 时填写"
+        description: "关联 PR 编号；Android 可填写后端-only PR 编号，不填生成独立下载页"
       frontend_branch:
         type: string
         description: "未发 PR 的分支；与 frontend_pr 二选一；网页部署请运行 Frontend build request"
       backend_target:
         type: string
         default: staging
-        description: "staging、pr-40 或 be-完整SHA；跨 PR 绑定固定版本"
+        description: "default、staging、pr-40 或 be-完整SHA；Android default 沿用配对，指定目标固定 SHA"
 
 permissions:
   contents: read
@@ -41,7 +45,7 @@ permissions:
 
 jobs:
   control:
-    if: vars.LIVELIFE_BACKEND_ENABLED == 'true' || vars.LIVELIFE_FRONTEND_ENABLED == 'true'
+    if: vars.LIVELIFE_BACKEND_ENABLED == 'true' || vars.LIVELIFE_FRONTEND_ENABLED == 'true' || vars.LIVELIFE_ANDROID_ENABLED == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -75,6 +79,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           LIVELIFE_SSH_TARGET: ${{ vars.LIVELIFE_SSH_TARGET }}
           LIVELIFE_PUBLIC_BASE_URL: ${{ vars.LIVELIFE_PUBLIC_BASE_URL }}
+          LIVELIFE_ANDROID_ENABLED: ${{ vars.LIVELIFE_ANDROID_ENABLED }}
           LIVELIFE_FRONTEND_ENABLED: ${{ vars.LIVELIFE_FRONTEND_ENABLED }}
           LIVELIFE_SSH_KEY_FILE: ${{ runner.temp }}/livelife-key
           LIVELIFE_KNOWN_HOSTS_FILE: ${{ runner.temp }}/livelife-hosts
@@ -84,7 +89,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: course-build-logs
-          path: ${{ runner.temp }}/livelife-course-*.log
+          path: ${{ runner.temp }}/livelife-course-*
           retention-days: 7
           if-no-files-found: ignore
       - name: Remove temporary credentials

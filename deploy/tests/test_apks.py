@@ -175,3 +175,17 @@ class ApkTests(unittest.TestCase):
         self.assertNotIn(
             "apk:" + first["apk_id"], [r["owner"] for r in self.r.snapshot()["refs"]]
         )
+
+    def test_capacity_rejection_does_not_replace_current_or_drop_its_reference(self):
+        first = self.reserve()
+        self.publish(first)
+        second = self.reserve(gen=11, force=True)
+        with patch("livelife.apks.MAX_STORAGE", 1), self.assertRaises(ValueError):
+            self.publish(second)
+        self.r.apks.fail(second["apk_id"], "capacity")
+        self.assertEqual(
+            self.r.apks.lookup("pr-42")["last_success"]["apk_id"], first["apk_id"]
+        )
+        self.assertIn(
+            "apk:" + first["apk_id"], [r["owner"] for r in self.r.snapshot()["refs"]]
+        )
