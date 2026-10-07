@@ -449,7 +449,7 @@ main 合并后可在 Actions → Preview environments → Run workflow 使用 we
 1. 开发者 push 或打开/更新/重开 PR，触发 Backend build request / Frontend build request。它们不检出代码、不执行构建、不取得部署私钥；绿色仅表示请求通知已发出。
 2. workflow_run.completed 触发 main 上的 Preview environments。控制器重新查询 GitHub 的 run、来源仓库、固定工作流路径、当前分支 SHA 和 PR 状态；旧提交、关闭/删除分支及 fork 均不提交任务。特权代码只来自 main，不执行分支中的部署脚本。
 3. 公网机转发 build_submit，课程机持久化到 `/home/group5/livelife/builds/queue.sqlite3`。整个项目最多同时运行 **2 个任务**，包含拉取、依赖安装、检查、测试与构建；其余 FIFO 排队。同 SHA、同模块的首次 push/PR 通知复用一份检查，前后端是两个独立任务。相同分支尚未执行的旧 SHA 被新的请求取代；已运行的任务结束后再次核对 SHA，不能发布过期提交。
-4. 课程机用 GitHub 直连拉取已指定 SHA，复用 source.git，不跟随浮动分支。每个任务有独立 worktree、虚拟环境、日志和产物目录；仅构建目录与依赖缓存可写，主目录、SSH 文件和队列数据库不进入构建沙箱，环境中没有 GitHub token 或部署私钥。每个任务限制为最多 4 个可用 CPU；Node 堆上限 1536 MiB，不等同于整个进程的 OS 内存硬限制。
+4. 课程机用 GitHub 直连拉取已指定 SHA，复用 source.git，不跟随浮动分支。源码拉取持有项目 source.lock；fetch 单次上限 180 秒、最多 3 次尝试，连续 30 秒低于 1 KiB/s 时终止慢连接。超时先终止整个 Git 进程组，再清理本次新建的 shallow.lock，已有锁不自动删除；失败日志包含 Git stderr，便于区分网络和锁错误。每个任务有独立 worktree、虚拟环境、日志和产物目录；仅构建目录与依赖缓存可写，主目录、SSH 文件和队列数据库不进入构建沙箱，环境中没有 GitHub token 或部署私钥。每个任务限制为最多 4 个可用 CPU；Node 堆上限 1536 MiB，不等同于整个进程的 OS 内存硬限制。
 5. npm 使用 `https://registry.npmmirror.com`，Python 优先使用 `https://mirrors.aliyun.com/pypi/simple`，依赖准备失败时仅重试到清华镜像，测试失败不会重试掩盖；npm/uv/pip 下载缓存分别位于 builds/cache。为避免 uv.lock 内原始 wheel URL 绕过镜像，仅在临时 worktree 改写官方包源域名，版本和原有哈希保持；不修改仓库锁文件。源或包不可用就报错，不静默放弃锁文件。Node 镜像包核对 Node 官方 SHASUMS，APT 工具核对官方 APT 元数据 SHA-256。
 6. Backend checks 包含部署工具 unittest、后端 pytest/ruff/格式检查及真实 hello。Frontend checks 包含 npm ci、行为测试、类型检查、Vite build 和预览资源 URL 校验。后端通过后保留原 venv，发布时链接到这份已测试环境；不再下载 wheel 或第二次安装。网页由受信程序打包，manifest 固定 SHA、构建编号和 digest。
 7. Actions 每次通过短 RPC 查询 build_status，按 offset 获取日志并写回 GitHub。SHA 的 Frontend checks / Backend checks 状态由 pending 改为 success/failure；日志中的 workflow command 禁用解析，不能把分支输出当成 Actions 指令。失败令控制工作流非零退出，保留原成功环境。检查成功与部署成功分别记录，发布失败不会抹掉真实测试结果。
@@ -502,3 +502,5 @@ build_artifact 是公网机 → 课程机的内部操作，验证 frontend/sha �
 本次按维护者决定取消网页/API 的预览 key 门禁，并同步健康检查与自动评论。hello 接口、内部测试工具开关、HTTPS、API 限流、受限 SSH 管理和构建隔离保持原有职责；业务账号鉴权仍待实现。历史章节中的 Basic/key 验证记录仅代表当时行为，当前访问方式以上面的公开测试入口为准。
 
 公开入口迁移已在现网完成，备份位于 `/opt/livelife/backups/public-preview-access-1791380739`。本地 101 项部署测试中 98 项通过、3 项 Linux Nginx 测试跳过；这 3 项另在公网机独立临时网关全部通过。从本机不携带 key/Cookie 验证 `/staging/`、配置、JS/CSS、版本清单和真实 hello 为 200；旧 key 入口和已关闭 PR #38 为 404。业务 Authorization/Cookie 透传与业务 401 使用独立模拟上游验证；当前业务登录尚未实现，不能将其记为真实用户登录通过。自动评论文案需本次代码合入 main 后由后续运行采用。
+
+PR #40 首次自动检查在源码 fetch 超时后遗留 shallow.lock，后续 fetch 返回 128。维护时已确认无活跃 Git 和构建任务，在 source.lock 内将遗留锁移入 `/home/group5/livelife/backups/fetch-recovery-1791381860`，安装拉取修复并只重启 build-worker。遇到既有锁时先检查队列、Git 进程与持有者，不能直接删除正在使用的锁。新增回归使用真实子进程验证超时后的子进程停止、锁清理范围及 stderr 返回。

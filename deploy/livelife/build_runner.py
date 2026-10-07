@@ -125,6 +125,48 @@ def sandbox_command(root, workspace, command):
     return args
 
 
+def run_fetch(command, source, timeout=180):
+    """Terminate the whole Git process group before releasing the source lock."""
+    shallow_lock = Path(source) / "shallow.lock"
+    existing_lock = shallow_lock.exists()
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+    )
+    try:
+        _, stderr = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            _, stderr = process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            _, stderr = process.communicate()
+        # A helper may have closed its pipes while still running.
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        if not existing_lock:
+            shallow_lock.unlink(missing_ok=True)
+        raise RuntimeError(
+            f"Git fetch timed out after {timeout}s: {stderr.decode(errors='replace')[-2000:]}"
+        )
+    if process.returncode:
+        raise RuntimeError(
+            f"Git fetch failed ({process.returncode}): {stderr.decode(errors='replace')[-2000:]}"
+        )
+
+
 class Runner:
     def __init__(self, root):
         self.root = Path(root).resolve()
@@ -168,22 +210,31 @@ class Runner:
                     capture_output=True,
                 )
             except subprocess.CalledProcessError:
-                subprocess.run(
-                    [
-                        "git",
-                        "--git-dir",
-                        str(source),
-                        "-c",
-                        "core.hooksPath=/dev/null",
-                        "fetch",
-                        "--depth=1",
-                        "origin",
-                        job["sha"],
-                    ],
-                    check=True,
-                    capture_output=True,
-                    timeout=180,
-                )
+                for attempt in range(3):
+                    try:
+                        run_fetch(
+                            [
+                                "git",
+                                "--git-dir",
+                                str(source),
+                                "-c",
+                                "core.hooksPath=/dev/null",
+                                "-c",
+                                "http.lowSpeedLimit=1024",
+                                "-c",
+                                "http.lowSpeedTime=30",
+                                "fetch",
+                                "--depth=1",
+                                "origin",
+                                job["sha"],
+                            ],
+                            source,
+                        )
+                        break
+                    except RuntimeError:
+                        if attempt == 2:
+                            raise
+                        time.sleep(2 * (attempt + 1))
             subprocess.run(
                 [
                     "git",
