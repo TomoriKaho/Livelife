@@ -299,7 +299,7 @@ class Controller(AndroidActions, RemoteActions, WebActions):
             ):
                 raise ValueError("backend target must be an open same-repository PR")
             current = self.rpc({"op": "lookup", "owner": "pr:" + str(backend_number)})
-            if current["backend_sha"] != backend_pr["head"]["sha"]:
+            if self.tree(current["backend_sha"]).get("backend") != self.tree(backend_pr["head"]["sha"]).get("backend"):
                 raise ValueError("backend latest SHA is not deployed yet")
             target = current[
                 "instance"
@@ -334,7 +334,7 @@ class Controller(AndroidActions, RemoteActions, WebActions):
             if pr['state'] != 'open' or pr['head']['repo']['full_name'] != self.repo:
                 raise ValueError('backend target must be an open same-repository PR')
             current = self.rpc({'op': 'lookup', 'owner': 'pr:' + str(number)})
-            if current['backend_sha'] != pr['head']['sha']:
+            if self.tree(current['backend_sha']).get('backend') != self.tree(pr['head']['sha']).get('backend'):
                 raise ValueError('backend latest SHA is not deployed yet')
             return current['instance']
         return target

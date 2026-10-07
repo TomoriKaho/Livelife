@@ -74,3 +74,18 @@ class AndroidBuildTests(unittest.TestCase):
             self.assertIsNotNone(q.claim())
             self.assertIsNotNone(q.claim())
             self.assertIsNone(q.claim())
+
+    def test_sandbox_identity_has_no_host_home_or_accounts(self):
+        import os
+        from livelife.build_runner import Runner, sandbox_command
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            runner = Runner(root)
+            contents = (runner.tools / "sandbox/passwd").read_text()
+            self.assertEqual(
+                contents, f"sandbox:x:{os.getuid()}:{os.getgid()}::/tmp/home:/bin/sh\n"
+            )
+            command = sandbox_command(root, root / "workspace", ["true"])
+            self.assertIn(str(runner.tools / "sandbox/passwd"), command)
+            self.assertNotIn("/home/group5", contents)

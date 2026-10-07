@@ -1,5 +1,6 @@
 """Default-branch orchestration for Android build/sign/download records."""
 
+from datetime import datetime, timezone
 import hashlib
 import os
 import urllib.error
@@ -36,7 +37,7 @@ class AndroidActions:
                 f"- Android：`{downloadable['version_name']}` / versionCode `{downloadable['version_code']}`",
                 f"- 后端：`{downloadable['backend_mode']}` / `{downloadable['backend_sha']}`",
                 f"- API：`{downloadable['api_base_url']}`",
-                f"- 有效期（Unix 秒）：`{downloadable['expires']}`",
+                f"- 有效期：{datetime.fromtimestamp(downloadable['expires'], timezone.utc).isoformat() if downloadable['expires'] is not None else 'main 最新包永久保留'}",
                 f"![Android 下载二维码]({downloadable['qr_url']})",
             ]
         if result.get("error"):

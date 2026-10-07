@@ -186,7 +186,7 @@ class RemoteActions:
                     f"- 固定版本 API 地址：`{deployed['api_base_url']}`\n"
                     f"- 后端 SHA：`{deployed['backend_sha']}`\n"
                     f"- 当前 PR 最新入口：`{os.environ['LIVELIFE_PUBLIC_BASE_URL'].rstrip('/')}/api/pr-{context['pr']}/`\n"
-                    "- 检查与构建在课程服务器完成；访问 key 由维护者另行提供。",
+                    "- 检查与构建在课程服务器完成；网页与 API 可直接访问。",
                 )
         except Exception:
             self.backend_web_completed(checked, deployment_failed=True)

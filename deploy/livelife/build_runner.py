@@ -98,6 +98,8 @@ def sandbox_command(root, workspace, command):
         if Path(path).exists():
             args += ["--ro-bind", path, path]
     args += [
+        "--ro-bind", str(tools / "sandbox/passwd"), "/etc/passwd",
+        "--ro-bind", str(tools / "sandbox/group"), "/etc/group",
         "--ro-bind",
         str(tools),
         str(tools),
@@ -202,6 +204,10 @@ class Runner:
         self.queue = BuildQueue(self.root / "builds")
         self.tools = self.root / "build-tools"
         self.python = str(self.tools / "venv/bin/python")
+        identity = self.tools / 'sandbox'
+        identity.mkdir(parents=True, exist_ok=True)
+        (identity / 'passwd').write_text(f'sandbox:x:{os.getuid()}:{os.getgid()}::/tmp/home:/bin/sh\n')
+        (identity / 'group').write_text(f'sandbox:x:{os.getgid()}:\n')
 
     def checkout(self, job, workspace):
         source = self.root / "builds/source.git"
