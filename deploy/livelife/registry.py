@@ -201,6 +201,8 @@ class Registry:
 
     def release(self, key, generation):
         owner(key)
+        if key.startswith("apk:"):
+            raise ValueError("APK references must be released through apk_release")
         if key == "main":
             raise ValueError("staging cannot be released")
         with self.locked() as db:

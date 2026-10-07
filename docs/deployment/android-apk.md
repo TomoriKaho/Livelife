@@ -4,9 +4,9 @@
 
 ## 工具和权限
 
-课程机使用 /home/group5/livelife，Android 加入现有全项目双任务队列。分支代码运行在命名空间沙箱中，工具只读，只有任务目录和下载缓存可写；没有签名密钥、SSH 私钥或 GitHub Token。Gradle 不运行 daemon，最多两个 worker，堆内存约 1.5 GiB。
+课程机使用 /home/group5/livelife，Android 加入现有全项目双任务队列。分支代码运行在命名空间沙箱中，工具只读，只有任务目录和下载缓存可写；没有签名密钥、SSH 私钥或 GitHub Token。沙箱只提供一个虚拟用户记录，/proc 保持空文件系统；JDK 使用明确的只读库路径启动，避免依赖 /proc/self/exe。Gradle 不运行 daemon，最多两个 worker，堆内存约 1.5 GiB。
 
-工具固定为 Node 24.13.0、npm 11.6.2、Capacitor core/android/cli 8.5.2、App 8.1.2、JDK 21.0.8+9、Gradle 8.14.3、AGP 8.13.0、SDK 36、Build Tools 36.0.0、最低 SDK 24。JDK 使用 Azul 官方包及固定 SHA-256；SDK 由 Google HTTPS 仓库校验清单验证；Gradle 验证官方 SHA-256。下载记录在 build-tools/android-tools.json。npm 使用 npmmirror，Gradle 依赖优先阿里 Google/Central 镜像，官方源作为依赖下载的后备；锁定版本不因镜像改变。
+工具固定为 Node 24.13.0、npm 11.6.2、Capacitor core/android/cli 8.5.2、App 8.1.2、JDK 21.0.8+9、Gradle 8.14.3、AGP 8.13.0、SDK 36、Build Tools 36.0.0、最低 SDK 24。JDK 使用 Azul 官方包及固定 SHA-256；SDK 由 Google HTTPS 仓库校验清单验证；Gradle 验证官方 SHA-256。每个工具下载校验成功后立即写入 build-tools/android-tools.json，后续工具安装失败不会丢失已完成记录；此前已有但未记录的工具不会被虚构为重新校验过。npm 使用 npmmirror，Gradle 依赖优先阿里 Google/Central 镜像，官方源作为依赖下载的后备；锁定版本不因镜像改变。
 
 在审查过的项目 checkout 中更新课程控制代码，然后：
 

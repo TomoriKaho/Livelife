@@ -118,6 +118,19 @@ class ApkTests(unittest.TestCase):
             "apk:" + first["apk_id"], [r["owner"] for r in self.r.snapshot()["refs"]]
         )
 
+    def test_main_and_apk_leases_cannot_be_released_directly(self):
+        with self.assertRaises(ValueError):
+            self.r.apks.release("main", 20)
+        self.assertEqual(self.r.apks.lookup("main")["status"], "missing")
+        first = self.reserve()
+        with self.assertRaises(ValueError):
+            self.r.release("apk:" + first["apk_id"], 20)
+        self.assertIn(
+            "apk:" + first["apk_id"], [r["owner"] for r in self.r.snapshot()["refs"]]
+        )
+        with self.assertRaises(ValueError):
+            self.r.apks.fail("f" * 32, "unknown")
+
     def test_new_failure_keeps_previous_success_and_releases_candidate(self):
         first = self.reserve()
         self.publish(first)

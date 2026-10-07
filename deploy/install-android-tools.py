@@ -73,7 +73,15 @@ def extract_zip(data, destination):
 def install(root, signing_only=False):
     tools = root / "build-tools"
     tools.mkdir(parents=True, exist_ok=True)
-    records = {}
+    manifest = tools / "android-tools.json"
+    records = json.loads(manifest.read_text()) if manifest.exists() else {}
+
+    def record(name, metadata):
+        records[name] = metadata
+        candidate = manifest.with_suffix(".json.next")
+        candidate.write_text(json.dumps(records, indent=2) + "\n")
+        candidate.replace(manifest)
+
     if not (tools / "jdk/bin/java").is_file():
         asset = json.loads(
             download(
@@ -97,11 +105,14 @@ def install(root, signing_only=False):
             if len(dirs) != 1:
                 raise ValueError("unexpected JDK archive")
             dirs[0].rename(tools / "jdk")
-        records["jdk"] = {
-            "version": JDK,
-            "sha256": asset["checksum"],
-            "url": asset["link"],
-        }
+        record(
+            "jdk",
+            {
+                "version": JDK,
+                "sha256": asset["checksum"],
+                "url": asset["link"],
+            },
+        )
     sdk = tools / "android-sdk"
     sdk.mkdir(exist_ok=True)
     # Checksums come from Google's HTTPS repository metadata, not mirrors.
@@ -138,11 +149,14 @@ def install(root, signing_only=False):
                     raise ValueError("unexpected SDK archive")
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 dirs[0].rename(destination)
-            records[name] = {
-                "url": url,
-                "checksum": checksum.text,
-                "algorithm": checksum.get("type", "sha1"),
-            }
+            record(
+                name,
+                {
+                    "url": url,
+                    "checksum": checksum.text,
+                    "algorithm": checksum.get("type", "sha1"),
+                },
+            )
             break
     if not signing_only:
         for name in needed:
@@ -152,14 +166,14 @@ def install(root, signing_only=False):
         if not (tools / "gradle/bin/gradle").is_file():
             url = f"https://downloads.gradle.org/distributions/gradle-{GRADLE}-bin.zip"
             checksum = download(url + ".sha256", 1024).decode().strip()
-            data = verified(f'https://mirrors.huaweicloud.com/gradle/gradle-{GRADLE}-bin.zip?livelife=android28', checksum)
+            data = verified(
+                f"https://mirrors.huaweicloud.com/gradle/gradle-{GRADLE}-bin.zip?livelife=android28",
+                checksum,
+            )
             with tempfile.TemporaryDirectory(dir=tools) as tmp:
                 extract_zip(data, Path(tmp))
                 (Path(tmp) / f"gradle-{GRADLE}").rename(tools / "gradle")
-            records["gradle"] = {"version": GRADLE, "sha256": checksum, "url": url}
-    manifest = tools / "android-tools.json"
-    previous = json.loads(manifest.read_text()) if manifest.exists() else {}
-    manifest.write_text(json.dumps({**previous, **records}, indent=2) + "\n")
+            record("gradle", {"version": GRADLE, "sha256": checksum, "url": url})
     print(
         "Android tools installed. Maintainer: review/accept SDK licenses with sdkmanager --licenses."
     )

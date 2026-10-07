@@ -328,6 +328,9 @@ class Runner:
             "VITE_ANDROID_TEST": "true" if job["component"] == "android" else "false",
             "VITE_TEST_PUBLIC_ORIGIN": "https://192.144.253.40",
             "JAVA_HOME": str(self.tools / "jdk"),
+            # This host disallows mounting namespace procfs. Preserve the empty
+            # /proc boundary and supply JDK libraries without /proc/self/exe.
+            "LD_LIBRARY_PATH": f"{self.tools}/jdk/lib:{self.tools}/jdk/lib/jli:{self.tools}/jdk/lib/server",
             "ANDROID_HOME": str(self.tools / "android-sdk"),
             "GRADLE_USER_HOME": str(cache / "gradle"),
             "LIVELIFE_ANDROID_VERSION_CODE": str(json.loads(job.get("options") or "{}").get("version_code", 1)),

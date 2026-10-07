@@ -2,7 +2,7 @@
 
 ## 技术栈与实施阶段
 
-技术路线由 [Issue #19](https://github.com/TomoriKaho/Livelife/issues/19) 确认，frontend/ 已初始化网页客户端，backend/ 已实现本地 hello 接口；业务后端及原生工程仍待实现。选型、实现和验证状态分别记录，不将待引入组件描述为已运行服务。
+技术路线由 [Issue #19](https://github.com/TomoriKaho/Livelife/issues/19) 确认，frontend/ 已初始化网页客户端，backend/ 已实现本地 hello 接口；Android 工程由 #28 接入，业务后端及 iOS 工程仍待实现。选型、实现和验证状态分别记录，不将待引入组件描述为已运行服务。
 
 | 层次 | 确定方案 | 实施阶段与用途 |
 | --- | --- | --- |
@@ -26,7 +26,7 @@ Capacitor 页面在原生容器的 WebView 中运行，复用代码不代表已�
 
 ## 原型迁移与目录职责
 
-完整目标目录见 [README](../README.md#目标目录结构)。客户端迁移基线为 design 分支 `4d95af0`，迁入 frontend/ 后以该目录作为网页实现入口；backend/ 已提供 FastAPI 服务入口、hello 路由、响应模型和测试；业务模块、原生工程及数据库部分仍是后续计划。
+完整目标目录见 [README](../README.md#目标目录结构)。客户端迁移基线为 design 分支 `4d95af0`，迁入 frontend/ 后以该目录作为网页实现入口；backend/ 已提供 FastAPI 服务入口、hello 路由、响应模型和测试；frontend/android 已提供 Capacitor Android 测试工程；业务模块、iOS 工程及数据库部分仍是后续计划。
 
 - 客户端已按上述基线迁移页面、地图和手绘插件；后续变更继续在 frontend/ 维护，设计参考不长期维护另一套业务代码。
 - pages/ 保留现有页面及地图、Agent 等页面专属子目录；components/ 仅放跨页面公共组件。保留哈希路由、pageMeta 元数据和手绘插件，不为了目录统一拆散专属组件。

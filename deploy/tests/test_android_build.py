@@ -43,6 +43,46 @@ def apk(c, extra=None):
 
 
 class AndroidBuildTests(unittest.TestCase):
+    def test_tool_install_failure_preserves_already_verified_download_record(self):
+        import importlib.util
+        import tarfile
+        from unittest.mock import patch
+
+        spec = importlib.util.spec_from_file_location(
+            "android_tools", Path(__file__).parents[1] / "install-android-tools.py"
+        )
+        installer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(installer)
+        archive = io.BytesIO()
+        with tarfile.open(fileobj=archive, mode="w:gz") as tar:
+            item = tarfile.TarInfo("jdk/bin/java")
+            item.size = 4
+            tar.addfile(item, io.BytesIO(b"java"))
+        metadata = json.dumps(
+            dict(
+                java_version=[21, 0, 8],
+                download_url="https://cdn.azul.com/test.tar.gz",
+                sha256_hash="63f56bbb46958cf57352fba08f2755e0953799195e5545acc0c8a92920beff1e",
+            )
+        ).encode()
+        xml = b'<sdk><remotePackage path="build-tools;36.0.0"><archives><archive><host-os>linux</host-os><complete><checksum type="sha1">hash</checksum><url>sdk.zip</url></complete></archive></archives></remotePackage></sdk>'
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(installer, "download", side_effect=[metadata, xml]),
+            patch.object(
+                installer,
+                "verified",
+                side_effect=[archive.getvalue(), RuntimeError("SDK download failed")],
+            ),
+        ):
+            with self.assertRaises(RuntimeError):
+                installer.install(Path(tmp), signing_only=True)
+            record = json.loads(
+                (Path(tmp) / "build-tools/android-tools.json").read_text()
+            )
+            self.assertEqual(record["jdk"]["version"], installer.JDK)
+            self.assertEqual(set(record), {"jdk"})
+
     def test_invalid_binding_and_unsafe_archives_rejected(self):
         c = config()
         validate_config(c)
@@ -88,4 +128,13 @@ class AndroidBuildTests(unittest.TestCase):
             )
             command = sandbox_command(root, root / "workspace", ["true"])
             self.assertIn(str(runner.tools / "sandbox/passwd"), command)
+            self.assertIn("--unshare-all", command)
+            self.assertEqual(command[command.index("/proc") - 1], "--tmpfs")
+            env = runner.environment(
+                dict(sha="a" * 40, run_id=1, attempt=1, component="android")
+            )
+            self.assertEqual(
+                env["LD_LIBRARY_PATH"],
+                f"{runner.tools}/jdk/lib:{runner.tools}/jdk/lib/jli:{runner.tools}/jdk/lib/server",
+            )
             self.assertNotIn("/home/group5", contents)

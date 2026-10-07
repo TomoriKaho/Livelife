@@ -436,6 +436,8 @@ class ApkRegistry:
             row = db.execute(
                 "SELECT * FROM apk_builds WHERE id=?", (apk_id(ident),)
             ).fetchone()
+            if row is None:
+                raise ValueError("unknown APK ID")
             if row and row["state"] == "pending":
                 db.execute(
                     "UPDATE apk_builds SET error=? WHERE id=?",
@@ -465,6 +467,9 @@ class ApkRegistry:
         self.r.mark_unused(db)
 
     def release(self, env, generation):
+        environment(env)
+        if env == "main":
+            raise ValueError("main APK cannot be released")
         with self.r.locked() as db:
             record = db.execute(
                 "SELECT * FROM apk_environments WHERE id=?", (environment(env),)
@@ -475,8 +480,6 @@ class ApkRegistry:
                     (env, generation),
                 )
                 return {"status": "released"}
-            if env == "main":
-                raise ValueError("main APK cannot be released")
             if record["generation"] > generation:
                 return {"status": "superseded"}
             previous = self.r.routes(db)

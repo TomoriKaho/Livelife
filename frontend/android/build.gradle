@@ -18,6 +18,11 @@ buildscript {
 apply from: "variables.gradle"
 
 allprojects {
+    // Plugin libraries otherwise request AGP's default Build Tools 35.
+    // Keep every module on the same preinstalled, read-only tool version.
+    plugins.withId('com.android.library') {
+        android.buildToolsVersion '36.0.0'
+    }
     repositories {
         google()
         mavenCentral()
