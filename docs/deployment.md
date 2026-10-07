@@ -2,7 +2,7 @@
 
 ## 当前实施状态
 
-frontend/ 和 backend/ 已提供可构建网页及 FastAPI hello 服务。#29 的 main/分支后端构建、课程机部署和公网 HTTPS API 已接入；课程机直接运行 Python，不使用 Docker。网页静态预览在 #27 分支实现，独立开关 `LIVELIFE_FRONTEND_ENABLED` 在合并及初始化前保持关闭。Android/iOS 工程、APK 分发由 #28 及后续任务处理。
+frontend/ 和 backend/ 已提供可构建网页及 FastAPI hello 服务。#29 的 main/分支后端构建、课程机部署和公网 HTTPS API 已接入；课程机直接运行 Python，不使用 Docker。网页静态预览已随 #27 合入 main，独立开关 `LIVELIFE_FRONTEND_ENABLED=true` 已开启并完成 main 自动发布验证。Android/iOS 工程、APK 分发由 #28 及后续任务处理。
 
 本分支按新的团队决定改为课程机统一拉取、检查及构建，见[课程机统一构建与队列](#课程机统一构建与队列)。新调度工作流已随 PR #37 合入 main，完整事件链路及网页开关仍需按实施记录验收；不能把请求工作流成功当成真实检查通过。
 
@@ -62,7 +62,7 @@ https://192.144.253.40/api/versions/be-<完整40位SHA>/   不可变版本
 
 请求 hello 时加 `test/hello`。网关去掉部署前缀，后端收到 `/test/hello`，响应仍为 `{"message":"hello world"}`。响应头 `X-Livelife-Backend-SHA` 提供版本，不修改业务 JSON。Uvicorn root-path 指向不可变入口，Swagger/OpenAPI 使用该前缀。
 
-`/__livelife/versions.json` 提供已发布路由和 SHA。网页/API 使用 HTTPS 单 key 测试访问认证；key 不写入链接、PR、静态前端或构建产物，网关不把测试访问头和 Cookie 转给后端。控制平面只有专用 SSH JSON 命令，不提供公网 bind/delete 接口。业务登录和 APP 认证另行设计。
+`/__livelife/versions.json` 提供已发布路由和 SHA。网页/API 使用 HTTPS，预览入口无需额外 key；业务账号鉴权由后端接口按需实现。网关仍剥离旧测试访问头和 Cookie，保留业务认证头和 Cookie。控制平面只有专用 SSH JSON 命令，不提供公网 bind/delete 接口。业务登录和 APP 认证另行设计。
 
 ### 成员如何获得测试链接
 
@@ -70,7 +70,7 @@ https://192.144.253.40/api/versions/be-<完整40位SHA>/   不可变版本
 2. 推送分支，或在 **Actions → Backend build request → Run workflow** 选择分支。该工作流仅提交请求，课程机检出固定 head SHA，不使用 PR 合并模拟提交。
 3. **Preview environments** 从 main 执行控制程序，提交课程机任务并回传检查结果；commit 上的 Backend checks 成功后才发布。同仓库分支可执行，fork 不自动提交到课程机，也不取得部署秘密。
 4. 已有 PR 时自动更新同一条说明，提供固定版本 hello 链接、SHA 和 PR 最新入口；没有 PR 时从控制工作流 Summary 获取地址与到期时间。
-5. 使用维护者私下提供的访问凭证打开链接。网页预览需要 #27，API 链接不表示网页已部署；开关启用后同一条评论同时提供网页和 API。
+5. 直接打开网页或 API 链接，无需输入预览 key。同一条自动评论提供已发布的网页和 API，核对状态及版本后测试。
 6. 新提交更新 PR 入口；失败显示候选 SHA 并保留原成功部署，不能把旧版当成本次提交通过。
 
 `workflow_dispatch` 和 `workflow_run` 控制工作流需要先进入 main。缺少真实后端入口或依赖的分支会明确跳过打包/部署，不生成虚假的成功地址。
@@ -169,37 +169,29 @@ ACME_EMAIL=维护者指定的联系邮箱
 
 参考：[IP 证书说明](https://letsencrypt.org/2026/01/15/6day-and-ip-general-availability)、[Lego 官方文档](https://go-acme.github.io/lego/)。
 
-### 4. 设置测试访问认证并启动
+### 4. 启动公开测试入口
+
+网页预览、运行时配置、静态资源和当前 hello API 可直接通过 HTTPS 访问，无需用户名、密码或预览 key。后续业务接口由后端实现登录及逐请求权限检查；取消网关门禁不表示业务鉴权已经实现。
+
+维护者初始化时直接使用本仓库 `deploy/nginx.conf`。旧部署迁移时，先备份 `/opt/livelife/gateway/nginx.conf` 及本次更新的控制工具，在 `/opt/livelife/state/manager.lock` 部署锁内更新项目配置，执行检查并仅重载项目网关：
 
 ```bash
-cd /opt/livelife/control
-sudo -u livelife /opt/livelife/control-venv/bin/python -m livelife.access
+sudo /usr/sbin/nginx -p /opt/livelife/gateway/ -c /opt/livelife/gateway/nginx.conf -t
+sudo systemctl reload livelife-gateway.service
 ```
 
-bootstrap 已生成 256 位随机 key；上述命令可补齐配置，重复执行保留已有 key。私有文件 `credentials/preview-key.txt` 和供 Nginx 使用的 `preview-key.conf` 均由 livelife 拥有、权限 600。不再使用用户名、htpasswd 或浏览器 Basic 弹窗。
+配置检查或重载失败时恢复备份并重新检查、重载，不把配置写入等同于访问方式已生效。更新控制工具时同时同步 `livelife/runtime.py`，其网页健康检查不再读取 key 文件。
 
-维护者从自己有权限的 SSH 连接读取 key，再通过团队私下渠道提供给测试成员：
+旧 `credentials/preview-key.txt`、`preview-key.conf` 和 `gateway/access.html` 不再被当前配置加载，无需读取或分发；本次迁移不删除这些遗留文件。旧浏览器 Cookie 不授予任何权限，网关会剥离 `livelife_preview` Cookie 及 `X-Livelife-Preview-Key` 头；重复旧 Cookie 时不向业务后端转发该 Cookie 头。正常业务 `Authorization` 和业务 Cookie 仍保留，业务 401 不会被网关替换成 key 输入页。旧 `/__livelife/access` 和输入页入口返回 404。
+
+可直接验证：
 
 ```bash
-ssh ubuntu@192.144.253.40 'sudo cat /opt/livelife/credentials/preview-key.txt'
+curl --fail https://192.144.253.40/staging/runtime-config.json
+curl --fail -i https://192.144.253.40/api/staging/test/hello
 ```
 
-成员直接打开原来的网页预览或 API 链接，在“Livelife 测试访问”页面输入 key。页面通过 HTTPS POST 的 `X-Livelife-Preview-Key` 头验证，不把 key 放在 URL 或 localStorage；成功后网关设置有效期 7 天的 `Secure; HttpOnly; SameSite=Lax` Cookie，并刷新回原地址，保留 hash 路由。同一浏览器随后访问静态文件和 API 都使用该 Cookie。无凭证返回带输入页的 401，不发送 `WWW-Authenticate`；错误 key 返回 403。共享 key 不能区分成员身份，不授予业务账号或管理员权限。
-
-自动检查直接发送 `X-Livelife-Preview-Key` 头，key 从公网机私有文件读取，不新增 GitHub Secret。网关转发 API 时移除该头及 `livelife_preview` Cookie，保留业务 `Authorization` 和其他 Cookie，便于后续接入软件登录。测试 Cookie 重复出现时拒绝请求，避免把测试凭证传入业务服务。
-
-需要撤销全部浏览器的测试访问时，轮换 key 并重载项目网关；旧 Cookie 随即失效，成员重新输入新 key。维护者在部署锁内执行：
-
-```bash
-sudo flock /opt/livelife/state/manager.lock bash -c '
-set -e
-cd /opt/livelife/control
-runuser -u livelife -- /opt/livelife/control-venv/bin/python -m livelife.access --rotate
-systemctl reload livelife-gateway.service
-'
-```
-
-重载失败时修复并重试，不把新 key 已写入等同于网关已生效。只需退出某个浏览器时，清除该站点的 Cookie。key 不写入命令参数、仓库、Actions 日志或 PR 评论。Cookie 属性参考 [MDN Set-Cookie](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie)。
+hello 应为 HTTP 200、`{"message":"hello world"}`，并返回真实后端 SHA。尚未发布或已释放的预览地址应为 404。部署管理仍只经受限 SSH JSON 接口进行，取消网页访问门禁不开放公网部署、绑定或删除操作。
 
 ```bash
 sudo systemctl enable --now livelife-gateway.service
@@ -222,7 +214,7 @@ sudo systemctl status livelife-gateway.service --no-pager
 | LIVELIFE_BACKEND_ENABLED | Variable | 后端自动部署开关，现已设 `true` |
 | LIVELIFE_FRONTEND_ENABLED | Variable | 网页独立开关；按下文合并后启用步骤设置 |
 
-第二把私钥和测试访问 key 不进入 GitHub。请求 job 无部署秘密、无 checkout、无构建；特权控制程序只从 main 的 deploy/ 检出。课程机在命名空间沙箱中执行检查与构建，产物作为数据由公网机校验发布。fork 不提交到课程机；课程机仅持测试权限，不接正式数据库/凭证。venv 是依赖隔离，构建的文件/进程隔离由 bubblewrap 提供。
+第二把私钥不进入 GitHub。请求 job 无部署秘密、无 checkout、无构建；特权控制程序只从 main 的 deploy/ 检出。课程机在命名空间沙箱中执行检查与构建，产物作为数据由公网机校验发布。fork 不提交到课程机；课程机仅持测试权限，不接正式数据库/凭证。venv 是依赖隔离，构建的文件/进程隔离由 bubblewrap 提供。
 
 控制工作流的 GitHub token 权限由 `.github/workflows/backend-control.yml` 明确声明：
 
@@ -314,7 +306,7 @@ JSON
 - 前端固定绑定在后端 owner 释放后继续保留该版本；全部引用释放后，临时实例、路由和隧道已清理。未将验证服务登记为 main。
 - 项目网关、恢复 timer 与证书续期 timer 已启用；GitHub 部署密钥、主机公钥和连接变量已配置，LIVELIFE_BACKEND_ENABLED 已设 true。工作流进入 main 前不会因此获得完整自动部署链路。
 
-该阶段最初使用 Basic 测试凭证；#27 后续已替换为单 key，当前私有文件为公网机 `/opt/livelife/credentials/preview-key.txt`，权限 600，由维护者私下提供，不在文档或 PR 中公开。尚无正式后端路由时，不把 API 示例当成可用应用入口。
+该阶段最初使用 Basic 测试凭证，#27 后续改为单 key；按维护者决定，当前预览门禁已取消，参见[公开测试入口](#4-启动公开测试入口)。尚无正式后端路由时，不把 API 示例当成可用应用入口。
 
 上述为 #29 合入前的独立服务器验证记录。#29 与真实 hello 后端现已合入 main，后端自动部署已接入；#27 的网页自动事件链路在本分支完成代码后仍需合入、启用并验证。后续记录见文末。
 
@@ -334,7 +326,7 @@ staging 整体验收后记录 SHA，再建立 Tag、Release 与发布说明。Re
 
 ## 网页预览实现与维护
 
-#27 使用已有 HTTPS 443 和 Nginx，静态网页目录为 `/opt/livelife/web`；没有新增预览监听端口。测试访问改为单 key 输入页和 Cookie；网页通过同源 API 路径访问课程机后端，访问 key 不进入网页产物、运行配置或评论。
+#27 使用已有 HTTPS 443 和 Nginx，静态网页目录为 `/opt/livelife/web`；没有新增预览监听端口。网页通过同源 API 路径访问课程机后端；当前网页/API 直接访问，不要求预览 key。
 
 ### 地址和配对契约
 
@@ -407,7 +399,7 @@ main 合并后可在 Actions → Preview environments → Run workflow 使用 we
 1. 合并前运行前端行为测试/build、部署 unittest、ruff、actionlint 和服务器手动验证；由另一名成员正式评审。人工验证不需要启用自动网页开关。
 2. 更新公网机 `/opt/livelife/control` 中的受信工具、项目 nginx.conf 和 logrotate 配置，创建 livelife 可写 `/opt/livelife/web`。先备份项目代码、网关配置和 SQLite，更新时持有项目锁；依赖保持现有 Python 控制环境。检查配置后只重载 livelife-gateway。既有后端操作须验证兼容。
 3. 工作流合入 main 后设置 Repository Variable `LIVELIFE_FRONTEND_ENABLED=true`。后端开关保持现状；网页开关关闭不删除已部署页面，只停止自动网页管理。
-4. 手动运行 Frontend build request，选择 main；等待 Preview environments 成功，检查 `/staging/` 配置/版本、认证、真实 hello。
+4. 手动运行 Frontend build request，选择 main；等待 Preview environments 成功，检查 `/staging/` 配置/版本、直接访问、真实 hello。
 5. 用两个开发分支和各类 PR 验证自动链接、单条评论、同分支配对、跨 PR 固定绑定、失败保留、关闭/重开与资源清理。尚未发 PR 的信息由控制 Actions Summary 给出。
 6. 记录实际 SHA、构建 run、访问及测试结果。完整成员使用教程按既定安排在 #28 安装包流程完成后统一整理。
 
@@ -423,7 +415,7 @@ main 合并后可在 Actions → Preview environments → Run workflow 使用 we
 - Playwright Chrome 390×844 实测样例引导、3D canvas、2D 地图、个人页、刷新/哈希路由及真实 hello；页面显示前端构建号、加载时和真实响应后端 SHA。浏览器内模拟配置 HTTP 503 后，样例仍可访问、接口按钮禁用，未回退 localhost；移除模拟后恢复。控制台仅有原有 favicon.ico 404，不影响页面/API；OSM 可见署名仍由 #31 跟进。
 - 课程机新 SSH 连接曾被重置，已有 staging HTTPS hello 持续返回 200；恢复检查及 Backend environments run `37513257959` 重试后成功，验证旧后端控制与新网页注册表兼容。
 
-**尚待合并后验证**：`LIVELIFE_FRONTEND_ENABLED` 仍未开启；main 首次网页构建、Frontend build request → 课程机检查 → Preview environments 完整事件链路、自动 PR 评论/别名、真实关闭/重开/删除及跨 PR 联调，需要按上文顺序验证。当前分支网页为人工验收发布，并非自动网页开关已上线。另一名成员的正式 PR 评审与独立复现尚未完成；完整成员教程延后到 #28。
+**当时尚待合并后验证**：以下为 #27 合并前的历史记录。网页开关、main 首次发布及自动 PR 评论/别名已在后续启用验证中完成；真实关闭/重开/删除及跨 PR 联调仍需完整验收。完整成员教程延后到 #28。
 
 
 ### 单 key 访问替换实测（2026-10-07）
@@ -456,8 +448,8 @@ main 合并后可在 Actions → Preview environments → Run workflow 使用 we
 
 1. 开发者 push 或打开/更新/重开 PR，触发 Backend build request / Frontend build request。它们不检出代码、不执行构建、不取得部署私钥；绿色仅表示请求通知已发出。
 2. workflow_run.completed 触发 main 上的 Preview environments。控制器重新查询 GitHub 的 run、来源仓库、固定工作流路径、当前分支 SHA 和 PR 状态；旧提交、关闭/删除分支及 fork 均不提交任务。特权代码只来自 main，不执行分支中的部署脚本。
-3. 公网机转发 build_submit，课程机持久化到 `/home/group5/livelife/builds/queue.sqlite3`。整个项目最多同时运行 **2 个任务**，包含拉取、依赖安装、检查、测试与构建；其余 FIFO 排队。同 SHA、同模块的首次 push/PR 通知复用一份检查，前后端是两个独立任务。相同分支尚未执行的旧 SHA 被新的请求取代；已运行的任务结束后再次核对 SHA，不能发布过期提交。
-4. 课程机用 GitHub 直连拉取已指定 SHA，复用 source.git，不跟随浮动分支。每个任务有独立 worktree、虚拟环境、日志和产物目录；仅构建目录与依赖缓存可写，主目录、SSH 文件和队列数据库不进入构建沙箱，环境中没有 GitHub token 或部署私钥。每个任务限制为最多 4 个可用 CPU；Node 堆上限 1536 MiB，不等同于整个进程的 OS 内存硬限制。
+3. 公网机转发 build_submit，课程机持久化到 `/home/group5/livelife/builds/queue.sqlite3`。整个项目最多同时运行 **2 个任务**，包含拉取、依赖安装、检查、测试与构建；其余 FIFO 排队。同 SHA、同模块的首次 push/PR 通知复用一份检查，前后端是两个独立任务。同 SHA 的 push/PR 通知即使乱序到达也复用同一任务，不能把较晚到达的旧通知误报为检查失败。相同分支尚未执行的旧 SHA 被新的请求取代；已运行的任务结束后再次核对 SHA，不能发布过期提交。
+4. 课程机用 GitHub 直连拉取已指定 SHA，复用 source.git，不跟随浮动分支。缓存提交以 `refs/livelife/source/<SHA>` 保留，使 Git 能协商增量传输；旧浅缓存中已有的有效提交会先补齐引用，避免只有对象、没有引用而重复拉取大包。源码拉取持有项目 source.lock；fetch 单次上限 180 秒、最多 3 次尝试，连续 30 秒低于 1 KiB/s 时终止慢连接。超时先终止整个 Git 进程组，再清理本次新建的 shallow.lock，已有锁不自动删除；失败日志包含 Git stderr，便于区分网络和锁错误。每个任务有独立 worktree、虚拟环境、日志和产物目录；仅构建目录与依赖缓存可写，主目录、SSH 文件和队列数据库不进入构建沙箱，环境中没有 GitHub token 或部署私钥。每个任务限制为最多 4 个可用 CPU；Node 堆上限 1536 MiB，不等同于整个进程的 OS 内存硬限制。
 5. npm 使用 `https://registry.npmmirror.com`，Python 优先使用 `https://mirrors.aliyun.com/pypi/simple`，依赖准备失败时仅重试到清华镜像，测试失败不会重试掩盖；npm/uv/pip 下载缓存分别位于 builds/cache。为避免 uv.lock 内原始 wheel URL 绕过镜像，仅在临时 worktree 改写官方包源域名，版本和原有哈希保持；不修改仓库锁文件。源或包不可用就报错，不静默放弃锁文件。Node 镜像包核对 Node 官方 SHASUMS，APT 工具核对官方 APT 元数据 SHA-256。
 6. Backend checks 包含部署工具 unittest、后端 pytest/ruff/格式检查及真实 hello。Frontend checks 包含 npm ci、行为测试、类型检查、Vite build 和预览资源 URL 校验。后端通过后保留原 venv，发布时链接到这份已测试环境；不再下载 wheel 或第二次安装。网页由受信程序打包，manifest 固定 SHA、构建编号和 digest。
 7. Actions 每次通过短 RPC 查询 build_status，按 offset 获取日志并写回 GitHub。SHA 的 Frontend checks / Backend checks 状态由 pending 改为 success/failure；日志中的 workflow command 禁用解析，不能把分支输出当成 Actions 指令。失败令控制工作流非零退出，保留原成功环境。检查成功与部署成功分别记录，发布失败不会抹掉真实测试结果。
@@ -501,3 +493,14 @@ build_artifact 是公网机 → 课程机的内部操作，验证 frontend/sha �
 本地新增队列、隔离边界、venv 复用、回收保护和调度状态测试；103 项部署工具测试中 100 项通过，3 项 Nginx 集成测试仅因本机 macOS 未安装 Nginx 跳过，课程机上述 Nginx 检查已真实通过。ruff、actionlint、shell 语法和差异空白检查通过。
 
 这些是人工调用受限 RPC 的基础设施验证。新 workflow_run 控制程序尚未合入 main，网页开关仍关闭；完整自动链路和成员正式验收继续按前文执行。
+
+
+## 网页自动预览启用与公开入口（2026-10-07）
+
+已设置 Repository Variable `LIVELIFE_FRONTEND_ENABLED=true`。[main 控制运行](https://github.com/TomoriKaho/Livelife/actions/runs/37613254277) 和 [PR #38 控制运行](https://github.com/TomoriKaho/Livelife/actions/runs/37613465083) 成功；`/staging/`、PR 别名及分支入口的页面、配置、不可变资源和真实 hello 已验证，机器人自动评论已生成。构建队列复用同 SHA 已通过的产物，运行编号与产物构建编号可能不同。
+
+本次按维护者决定取消网页/API 的预览 key 门禁，并同步健康检查与自动评论。hello 接口、内部测试工具开关、HTTPS、API 限流、受限 SSH 管理和构建隔离保持原有职责；业务账号鉴权仍待实现。历史章节中的 Basic/key 验证记录仅代表当时行为，当前访问方式以上面的公开测试入口为准。
+
+公开入口迁移已在现网完成，备份位于 `/opt/livelife/backups/public-preview-access-1791380739`。本地 101 项部署测试中 98 项通过、3 项 Linux Nginx 测试跳过；这 3 项另在公网机独立临时网关全部通过。从本机不携带 key/Cookie 验证 `/staging/`、配置、JS/CSS、版本清单和真实 hello 为 200；旧 key 入口和已关闭 PR #38 为 404。业务 Authorization/Cookie 透传与业务 401 使用独立模拟上游验证；当前业务登录尚未实现，不能将其记为真实用户登录通过。自动评论文案需本次代码合入 main 后由后续运行采用。
+
+PR #40 首次自动检查在源码 fetch 超时后遗留 shallow.lock，后续 fetch 返回 128。维护时已确认无活跃 Git 和构建任务，在 source.lock 内将遗留锁移入 `/home/group5/livelife/backups/fetch-recovery-1791381860`，安装拉取修复并只重启 build-worker。遇到既有锁时先检查队列、Git 进程与持有者，不能直接删除正在使用的锁。新增回归使用真实子进程验证超时后的子进程停止、锁清理范围及 stderr 返回。

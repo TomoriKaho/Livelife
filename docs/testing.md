@@ -148,13 +148,13 @@ OSM 可见署名由 #31 在 v0.1.0 阶段补齐；真实后端 hello 联调、An
 
 `test_rpc_input.py` 覆盖 SSH JSON 输入边界：使用真实子进程管道，故意保持写端打开，确认收到完整 JSON 后返回；另外验证嵌套、转义、Unicode 跨块、旧格式/换行格式兼容、大小限制及非法输入。实际服务器验证也仅用受限 SSH 的 snapshot 操作，保持 stdin 打开，不用部署请求代替只读检查。
 
-单 key 测试入口有独立 Nginx 集成测试 `test_access_nginx.py`：使用临时目录、自签测试证书、随机回环端口和模拟上游，验证输入页、错误 key、Cookie 属性、静态资源保护及基础设施凭证剥离，同时保留业务认证。CI 安装 Nginx 后运行；本地缺少 Linux Nginx/OpenSSL 时明确 skip，可在服务器独立候选目录运行，不能记为本地通过。不使用真实 key，也不修改共享网关或后端。
+公开测试入口有独立 Nginx 集成测试 `test_access_nginx.py`：使用临时目录、自签测试证书、随机回环端口和模拟上游，验证无需预览凭证的 API/静态资源访问、旧 key 入口 404、遗留凭证剥离，以及业务认证透传和业务 401 原样返回。CI 安装 Nginx 后运行；本地缺少 Linux Nginx/OpenSSL 时明确 skip，在服务器独立临时网关验证，不修改共享后端。
 
 #29 的工具不依赖业务后端即可检查引用与环境管理。先按工程规范安装控制工具依赖，再运行 `python -m unittest discover -s deploy/tests -v`。Supervisor 集成测试需要本地 Unix socket 权限；没有安装 Supervisor 时该项明确 skip，不能当成通过。
 
 #27 同一命令加入网页测试，覆盖双分支及 PR 别名、固定配对、前后端完成顺序、后端-only 复用 main、分支选择迁移、到期/关闭/重开、旧任务晚到、配额、非法产物、候选持久引用及真实 SIGKILL 后恢复。前端执行 `node --test scripts/*.test.mjs`，验证配置校验、加载失败和旧 HTML/新配置不匹配；原有地图与页面行为测试一起运行。测试环境需要 Node 24.13.0。
 
-实际 HTTPS 网页还须检查认证、缓存与 gzip、刷新/哈希路由、2D/3D 地图、字体/图片/许可证，以及 hello 响应的后端 SHA。代码测试通过不代表 main 工作流已启用；本次服务器实测和剩余验收以 [部署记录](deployment.md#网页预览实现与维护) 为准。另一名成员在 PR 记录版本、步骤和结果，AI 自查不替代正式评审。
+实际 HTTPS 网页还须检查无需 key 直接访问、缓存与 gzip、刷新/哈希路由、2D/3D 地图、字体/图片/许可证，以及 hello 响应的后端 SHA。代码测试通过不代表 main 工作流已启用；本次服务器实测和剩余验收以 [部署记录](deployment.md#网页预览实现与维护) 为准。另一名成员在 PR 记录版本、步骤和结果，AI 自查不替代正式评审。
 
 自动测试覆盖：
 
@@ -181,7 +181,7 @@ sudo -u livelife /opt/livelife/control-venv/bin/python \
   /opt/livelife/control/smoke-servers.py /绝对路径/three-backends.json
 ```
 
-网关使用现有 HTTPS 与测试凭证。脚本退出时只清理测试注册表登记的实例和候选，并在仍持有真实部署锁时恢复真实注册表的路由；清理失败保留测试状态用于排查。不要绕过锁或手动清空共享路由。
+网关使用现有 HTTPS，测试请求不发送预览凭证。脚本退出时只清理测试注册表登记的实例和候选，并在仍持有真实部署锁时恢复真实注册表的路由；清理失败保留测试状态用于排查。不要绕过锁或手动清空共享路由。
 
 两项故障回归可以独立运行：
 
@@ -195,7 +195,7 @@ deploy/.venv/bin/python -m unittest discover -s deploy/tests -p test_smoke.py -v
 正式后端就绪后的服务器验收：
 
 1. 配置 HTTPS、密钥及 GitHub Variables/Secrets，部署 main 和两个不同 SHA 的后端 PR。记录完整 SHA、端口和真实 hello 响应。
-2. 不提供凭证时应为 401；提供测试凭证后返回约定 JSON。检查 X-Livelife-Backend-SHA，与 PR 记录相同。
+2. 无预览凭证直接请求 hello 应返回 HTTP 200 和约定 JSON；检查 X-Livelife-Backend-SHA 与 PR 记录相同。业务鉴权接入后另验证业务接口的未登录与越权响应。
 3. 在另一个前端 PR 建立固定绑定，更新目标后端 PR，确认两个固定 URL 分别返回正确版本；用响应头区分，不改变 hello JSON。
 4. 关闭后端 PR，确认其旧版本仍被前端引用；关闭前端 PR，经过清理宽限期确认实例、路由和隧道释放。不要为了测试缩短共享配置，使用独立测试注册表。
 5. 制造候选启动失败、项目隧道中断、课程机暂时不可达，分别验证回滚、自动恢复和清理重试。

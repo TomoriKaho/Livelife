@@ -83,8 +83,8 @@ class BuildQueue:
             if same:
                 return self.describe(same)
             newer = db.execute(
-                "SELECT 1 FROM jobs WHERE component=? AND branch=? AND generation>?",
-                (component, branch, generation),
+                "SELECT 1 FROM jobs WHERE component=? AND branch=? AND generation>? AND sha<>?",
+                (component, branch, generation, commit),
             ).fetchone()
             if newer:
                 return {

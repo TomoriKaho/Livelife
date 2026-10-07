@@ -13,7 +13,6 @@ import time
 import urllib.parse
 
 from .common import atomic_json, atomic_text, instance
-from .access import read_key
 from .course import check_health
 from .supervisor import Supervisor
 
@@ -157,18 +156,17 @@ class Runtime:
 
     def check_web_route(self, prefix, config):
         host = urllib.parse.urlparse(self.config['base_url']).hostname
-        headers = {'X-Livelife-Preview-Key': read_key(self.root)}
         deadline = time.monotonic() + 5
         while True:
             connection = http.client.HTTPConnection(host, timeout=10)
             connection.sock = ssl.create_default_context().wrap_socket(
                 socket.create_connection(('127.0.0.1', 443), timeout=10), server_hostname=host)
             try:
-                connection.request('GET', prefix, headers=headers)
+                connection.request('GET', prefix)
                 response = connection.getresponse()
                 response.read()
                 valid = response.status == 200 and response.getheader('X-Livelife-Frontend-SHA') == config['frontend_sha']
-                connection.request('GET', prefix + 'runtime-config.json', headers=headers)
+                connection.request('GET', prefix + 'runtime-config.json')
                 response = connection.getresponse()
                 body = response.read()
                 valid = valid and response.status == 200 and json.loads(body) == config

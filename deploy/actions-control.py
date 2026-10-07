@@ -201,7 +201,7 @@ class Controller(RemoteActions, WebActions):
                     f"- 固定版本 API 地址：`{result['api_base_url']}`\n"
                     f"- 后端 SHA：`{result['backend_sha']}`\n"
                     f"- 当前 PR 最新入口：`{os.environ['LIVELIFE_PUBLIC_BASE_URL'].rstrip('/')}/api/pr-{number}/`\n"
-                    "- 网页预览由 #27 接入；访问凭证由维护者另行提供。\n")
+                    "- 网页预览由 #27 接入；网页与 API 可直接访问。\n")
         except Exception:
             if number:
                 self.comment(number, f"本次后端部署失败，候选 SHA：`{commit}`。\n\n"

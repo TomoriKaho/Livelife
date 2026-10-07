@@ -15,7 +15,6 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from livelife.access import configure, read_key
 from livelife.runtime import Runtime
 
 NGINX = shutil.which('nginx')
@@ -26,7 +25,9 @@ SOURCE = Path(__file__).resolve().parents[1]
 class Echo(BaseHTTPRequestHandler):
     def do_GET(self):
         body = json.dumps(dict(self.headers)).encode()
-        self.send_response(200)
+        self.send_response(401 if self.path == '/private' else 200)
+        if self.path == '/private':
+            self.send_header('WWW-Authenticate', 'Bearer')
         self.send_header('Content-Length', str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -45,9 +46,7 @@ class NginxAccessTests(unittest.TestCase):
         for name in ['gateway/run/client_body', 'gateway/run/proxy', 'gateway/logs', 'gateway/config',
                      'gateway/data', 'tls', 'web/builds', 'web/shared']:
             (cls.root / name).mkdir(parents=True, exist_ok=True)
-        configure(cls.root)
-        cls.key = read_key(cls.root)
-        (cls.root / 'gateway/access.html').write_text((SOURCE / 'preview-access.html').read_text())
+        cls.key = 'a' * 64
         (cls.root / 'web/shared/asset.txt').write_text('static fixture')
         cls.upstream = ThreadingHTTPServer(('127.0.0.1', 0), Echo)
         cls.addClassCleanup(cls.upstream.server_close)
@@ -99,28 +98,23 @@ class NginxAccessTests(unittest.TestCase):
         finally:
             connection.close()
 
-    def test_unauthenticated_resources_show_key_form_without_basic_popup(self):
+    def test_public_resources_need_no_preview_credentials(self):
         for path in ['/api/staging/test/hello', '/__livelife/versions.json', '/__livelife/web-assets/asset.txt']:
-            status, headers, body = self.request(path)
-            self.assertEqual(status, 401)
+            status, headers, _ = self.request(path)
+            self.assertEqual(status, 200)
             self.assertNotIn('WWW-Authenticate', headers)
-            self.assertEqual(headers['Cache-Control'], 'no-store')
-            self.assertIn('访问 key'.encode(), body)
-        self.assertEqual(self.request(headers={'Authorization': 'Basic b2xkOnBhc3N3b3Jk'})[0], 401)
-
-    def test_sign_in_wrong_key_and_cookie_properties(self):
-        for key in ['', 'wrong', self.key.upper()]:
-            status, headers, _ = self.request('/__livelife/access', {'X-Livelife-Preview-Key': key}, 'POST')
-            self.assertEqual(status, 403)
             self.assertNotIn('Set-Cookie', headers)
-        self.assertEqual(self.request('/__livelife/access', {'X-Livelife-Preview-Key': self.key})[0], 405)
-        status, headers, _ = self.request('/__livelife/access', {'X-Livelife-Preview-Key': self.key}, 'POST')
-        self.assertEqual(status, 204)
-        cookie = headers['Set-Cookie']
-        for option in ['Secure', 'HttpOnly', 'SameSite=Lax', 'Max-Age=604800', 'Path=/']:
-            self.assertIn(option, cookie)
-        self.assertEqual(self.request(headers={'Cookie': cookie.split(';', 1)[0]})[0], 200)
-        self.assertEqual(self.request('/__livelife/web-assets/asset.txt', {'Cookie': cookie.split(';', 1)[0]})[0], 200)
+        status, headers, body = self.request('/__livelife/access', method='POST')
+        self.assertEqual(status, 404)
+        self.assertNotIn('Set-Cookie', headers)
+        self.assertEqual(self.request('/__livelife/access-form.html')[0], 404)
+
+    def test_business_unauthorized_response_is_not_replaced(self):
+        status, headers, body = self.request('/api/staging/private')
+        self.assertEqual(status, 401)
+        self.assertEqual(headers['WWW-Authenticate'], 'Bearer')
+        self.assertIsInstance(json.loads(body), dict)
+        self.assertNotIn('Set-Cookie', headers)
 
     def test_infrastructure_secret_removed_and_application_auth_preserved(self):
         for cookie in [f'livelife_preview={self.key}', f'livelife_preview={self.key}; app=one; theme=dark',
@@ -137,4 +131,12 @@ class NginxAccessTests(unittest.TestCase):
                 self.assertEqual(headers['Cookie'], 'app=one; theme=dark')
             else:
                 self.assertNotIn('Cookie', headers)
-        self.assertEqual(self.request(headers={'Cookie': f'livelife_preview={self.key}; livelife_preview={self.key}'})[0], 401)
+        status, _, body = self.request(headers={'Cookie': f'livelife_preview={self.key}; app=one; livelife_preview={self.key}',
+                                               'Authorization': 'Bearer application-fixture'})
+        self.assertEqual(status, 200)
+        self.assertNotIn(self.key, body.decode())
+        self.assertNotIn('Cookie', json.loads(body))
+        self.assertEqual(json.loads(body)['Authorization'], 'Bearer application-fixture')
+        status, _, body = self.request(headers={'Cookie': 'session=business', 'Authorization': 'Bearer application-fixture'})
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)['Cookie'], 'session=business')
