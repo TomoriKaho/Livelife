@@ -195,3 +195,10 @@ deploy/.venv/bin/python -m unittest discover -s deploy/tests -p test_smoke.py -v
 同日根据 PR #34 评审补充故障回归后，完整部署测试增至 43 项并全部通过；新增的真实 SIGKILL、启动前预约提交及验收/部署交错测试覆盖上述两项问题。ruff、actionlint、shell 语法与文档链接/锚点检查通过。这次验证在本机临时环境进行，服务器控制程序需在部署修复版本后生效。
 
 GitHub CI 成功不能代替完整服务器验收。#24 后端已合入当前分支，main 完整工作流、PR 自动说明与重新打开的实际事件链路仍待部署工作流合并后验证；上述独立验收不代表正式应用上线。
+
+
+## 课程机构建结果的判断
+
+Backend build request / Frontend build request 的成功只证明通知已发出，不证明检查通过。验收应查看被测试提交 SHA 的 Backend checks / Frontend checks commit 状态、Preview environments 实际日志及 course-build-logs 附件。任务排队显示 pending；测试/构建失败显示 failure，原预览可能仍可访问，必须核对其版本。检查成功后发布失败是部署故障，不伪称测试失败或新页面已上线。
+
+维护者验证应覆盖：两个全项目槽位及第三个任务排队；push/PR 同 SHA 去重；旧排队提交替换；构建失败/worker 重启；日志分页；SHA/模块不匹配拒绝；源码路径和静态包链接拒绝；沙箱无法读取 ~/.ssh、控制数据库或部署凭证；原成功路由、固定绑定与回滚引用保持。新路径安装和完整 GitHub 链路以[实施状态](deployment.md#当前实施状态)为准。

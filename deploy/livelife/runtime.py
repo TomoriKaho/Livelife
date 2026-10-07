@@ -61,6 +61,11 @@ class Runtime:
         self.supervisor.configure(ident, shlex.join(command), self.root)
         self.health(port)
 
+    def ensure_built(self, ident, commit, port, job):
+        self.rpc({'op': 'ensure', 'instance': instance(ident), 'sha': commit, 'port': port, 'job': job})
+        # Standard ensure now recovers the already installed tested release.
+        self.ensure(ident, commit, port, None)
+
     def health(self, port):
         check_health(self.tunnel_port(port))
 

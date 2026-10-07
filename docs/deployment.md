@@ -4,6 +4,8 @@
 
 frontend/ 和 backend/ 已提供可构建网页及 FastAPI hello 服务。#29 的 main/分支后端构建、课程机部署和公网 HTTPS API 已接入；课程机直接运行 Python，不使用 Docker。网页静态预览在 #27 分支实现，独立开关 `LIVELIFE_FRONTEND_ENABLED` 在合并及初始化前保持关闭。Android/iOS 工程、APK 分发由 #28 及后续任务处理。
 
+本分支按新的团队决定改为课程机统一拉取、检查及构建，见[课程机统一构建与队列](#课程机统一构建与队列)。新调度工作流尚需合入 main；不能把请求工作流成功当成真实检查通过。
+
 网页启用步骤、接口契约与本次验证记录见[网页预览实现与维护](#网页预览实现与维护)。服务器配置完成、手动预览通过和完整 GitHub 事件链路通过是不同状态，不能相互替代。
 
 ## 分支与环境
@@ -18,7 +20,7 @@ frontend/ 和 backend/ 已提供可构建网页及 FastAPI hello 服务。#29 �
 
 main 是代码分支，staging 是测试环境。生产不会随 main 自动发布。本阶段没有数据库、模型凭证或真实账号数据。
 
-同一 SHA 共用一个不可变后端实例，使用独立目录、虚拟环境与端口。新 SHA 启动并检查通过后，才切换 main/PR 的最新入口；其他前端仍绑定旧 SHA 时继续保留旧实例。#24 的 uv.lock 锁定依赖，构建时导出运行依赖和 wheel，一同传输到课程机，在各自虚拟环境中离线安装。
+同一 SHA 共用一个不可变后端实例，使用独立目录、虚拟环境与端口。新 SHA 启动并检查通过后，才切换 main/PR 的最新入口；其他前端仍绑定旧 SHA 时继续保留旧实例。#24 的 uv.lock 锁定依赖。新方案在课程机按锁文件准备和测试独立虚拟环境，发布复用这份已测试环境；旧 CI wheel 包入口保留兼容已有部署与恢复。
 
 默认仅改前端时连接 staging，随 main 更新；**主动指定另一个 PR 时固定其部署 SHA**。同一 PR 同时改前后端时，其自身预览跟随自己的最新成功部署，其他 PR 的固定绑定保持不变。
 
@@ -53,8 +55,8 @@ https://192.144.253.40/api/versions/be-<完整40位SHA>/   不可变版本
 ### 成员如何获得测试链接
 
 1. 从 main 创建功能分支，修改并提交后端；确保分支已包含 main 上的检查工作流，必要时先同步。
-2. 推送分支，或在 **Actions → Backend checks → Run workflow** 选择分支。检查 checkout 固定 head SHA，不使用 PR 合并模拟提交。
-3. 检查成功后，**Preview environments** 从 main 执行控制程序。同仓库分支自动部署，fork 仅检查，不取得部署秘密。
+2. 推送分支，或在 **Actions → Backend build request → Run workflow** 选择分支。该工作流仅提交请求，课程机检出固定 head SHA，不使用 PR 合并模拟提交。
+3. **Preview environments** 从 main 执行控制程序，提交课程机任务并回传检查结果；commit 上的 Backend checks 成功后才发布。同仓库分支可执行，fork 不自动提交到课程机，也不取得部署秘密。
 4. 已有 PR 时自动更新同一条说明，提供固定版本 hello 链接、SHA 和 PR 最新入口；没有 PR 时从控制工作流 Summary 获取地址与到期时间。
 5. 使用维护者私下提供的访问凭证打开链接。网页预览需要 #27，API 链接不表示网页已部署；开关启用后同一条评论同时提供网页和 API。
 6. 新提交更新 PR 入口；失败显示候选 SHA 并保留原成功部署，不能把旧版当成本次提交通过。
@@ -208,7 +210,7 @@ sudo systemctl status livelife-gateway.service --no-pager
 | LIVELIFE_BACKEND_ENABLED | Variable | 后端自动部署开关，现已设 `true` |
 | LIVELIFE_FRONTEND_ENABLED | Variable | 网页独立开关；按下文合并后启用步骤设置 |
 
-第二把私钥和测试访问 key 不进入 GitHub。检查/打包 job 无部署秘密；控制程序从 main checkout，只解析限定的 artifact 文件，不执行其中的脚本。fork 不部署；课程机仅持测试权限，不接正式数据库/凭证。venv 是依赖隔离，不能当成安全沙箱。
+第二把私钥和测试访问 key 不进入 GitHub。请求 job 无部署秘密、无 checkout、无构建；特权控制程序只从 main 的 deploy/ 检出。课程机在命名空间沙箱中执行检查与构建，产物作为数据由公网机校验发布。fork 不提交到课程机；课程机仅持测试权限，不接正式数据库/凭证。venv 是依赖隔离，构建的文件/进程隔离由 bubblewrap 提供。
 
 控制工作流的 GitHub token 权限由 `.github/workflows/backend-control.yml` 明确声明：
 
@@ -217,17 +219,18 @@ permissions:
   contents: read
   actions: read
   pull-requests: write
+  statuses: write
 ```
 
-前两项用于读取 main 控制代码和构建产物；`pull-requests: write` 用于创建或更新 PR 的预览、绑定与关闭说明。评论虽然调用 `/issues/{PR编号}/comments`，目标仍是 PR，不能只授予 `issues: write` 并保留 PR 只读。此流程不需要普通 Issue 写权限、代码写权限或个人访问令牌。仓库的全局 Workflow permissions 可保持只读，工作流按需声明上述权限；自动创建或批准 PR 的开关不需要开启。
+前两项用于读取 main 控制代码和可信工作流元数据；`statuses: write` 将课程机真实结果写为当前 SHA 的 Frontend checks / Backend checks，不能用请求 job 的绿色状态代替；`pull-requests: write` 用于创建或更新 PR 的预览、绑定与关闭说明。评论虽然调用 `/issues/{PR编号}/comments`，目标仍是 PR，不能只授予 `issues: write` 并保留 PR 只读。此流程不需要普通 Issue 写权限、代码写权限或个人访问令牌。仓库的全局 Workflow permissions 可保持只读，工作流按需声明上述权限；自动创建或批准 PR 的开关不需要开启。
 
-两个 enabled 均未开启时控制 job 跳过，CI 仍检查基础设施。工作流进入 main 前无法验证完整 workflow_run 链路；进入 main 后验证 Runner → 公网机 → 课程机的真实连接。
+两个 enabled 均未开启时控制 job 跳过，仅记录构建请求，不执行课程机检查；请求成功不能表示测试通过。工作流进入 main 前无法验证完整 workflow_run 链路；进入 main 后验证 Runner → 公网机 → 课程机的真实连接。
 
 ## 后端接入要求与 #27 控制接口
 
 #24 提供 Python 3.12 工程、`backend/app/main.py` 中的 `app`、`backend/pyproject.toml` 与 `backend/uv.lock`，以及约定的 `GET /test/hello`。部署启动为 `python -m uvicorn app.main:app`，工作目录为 release/backend。不为基础设施改动业务 JSON。
 
-构建在 GitHub 的 Ubuntu 24.04 Runner 上进行，使用 Python 3.12 与固定 `uv==0.12.23`：
+以下为旧 GitHub Runner 打包模式，保留兼容旧产物，不是新请求工作流的执行路径。新路径见[课程机统一构建与队列](#课程机统一构建与队列)。旧模式使用 Python 3.12 与固定 `uv==0.12.23`：
 
 1. `uv sync --locked` 检查锁文件并安装检查环境；运行实际后端的 pytest、ruff 和格式检查。
 2. 启动候选后端，真实请求 hello；失败则不部署。
@@ -335,11 +338,11 @@ staging 整体验收后记录 SHA，再建立 Tag、Release 与发布说明。Re
 
 摘要是原分支名 UTF-8 的 SHA-256 前 32 位，不把分支名拼入路径。控制器根据 GitHub 当前 head、PR 状态和合并基线的 Git 树判断改动；自身后端未成功部署时显示等待/失败，保留上一成功页面。仅前端更新而 backend 目录树相同时可复用自身上一后端。前后端构建谁先完成都可以，配套成功后才发布。
 
-无 PR 分支租约为 72 小时，成功部署续期；定期核对不续期。main 永久保留，打开的 PR 保留至关闭。PR 关闭/合并、分支删除、手动释放或过期撤销入口；其他环境的固定引用不受影响。重开优先复用尚在的产物，否则等待新构建。Actions Artifact 保留 7 天，这与已部署文件生命周期不同。
+无 PR 分支租约为 72 小时，成功部署续期；定期核对不续期。main 永久保留，打开的 PR 保留至关闭。PR 关闭/合并、分支删除、手动释放或过期撤销入口；其他环境的固定引用不受影响。重开优先复用尚在的产物，否则等待新构建。GitHub 仅上传构建日志并保留 7 天；课程机任务/网页包默认保留 7 天，这与公网已部署文件生命周期不同。
 
 ### 前端构建和运行时配置
 
-`Frontend checks` 在 Ubuntu 24.04 使用 Node 24.13.0 / npm 11.6.2，依次 `npm ci`、全部行为测试、类型检查和 Vite build，再由 `deploy/prepare-frontend.py` 生成 frontend.tgz 与版本/构建编号/压缩包 SHA-256 manifest。push、PR opened/synchronize/reopened 按前端及网页工具路径触发；手动 Run workflow 可选择分支。build job 不持有部署密钥。
+`Frontend build request` 仅在 push、PR opened/synchronize/reopened 和手动选择分支时记录请求，不拉取项目或执行 npm。课程机使用固定 Node 24.13.0 / npm 11.6.2，按锁文件执行 npm ci、39 项当前行为测试、类型检查和 Vite build，并由受信 prepare-frontend.py 打包。真正的结果回传为 SHA 上的 `Frontend checks`，日志由 Preview environments 展示并保留 7 天。静态包留在课程机，公网机直接通过 SSH 获取，不经过 GitHub Runner 上传大包。
 
 `Preview environments` 从 main 读取控制代码，验证 GitHub 来源、当前提交、PR 状态与产物身份；fork 仅检查。只解析静态包，不执行产物中的脚本。安全边界参考 [workflow_run 官方说明](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_run)。
 
@@ -392,7 +395,7 @@ main 合并后可在 Actions → Preview environments → Run workflow 使用 we
 1. 合并前运行前端行为测试/build、部署 unittest、ruff、actionlint 和服务器手动验证；由另一名成员正式评审。人工验证不需要启用自动网页开关。
 2. 更新公网机 `/opt/livelife/control` 中的受信工具、项目 nginx.conf 和 logrotate 配置，创建 livelife 可写 `/opt/livelife/web`。先备份项目代码、网关配置和 SQLite，更新时持有项目锁；依赖保持现有 Python 控制环境。检查配置后只重载 livelife-gateway。既有后端操作须验证兼容。
 3. 工作流合入 main 后设置 Repository Variable `LIVELIFE_FRONTEND_ENABLED=true`。后端开关保持现状；网页开关关闭不删除已部署页面，只停止自动网页管理。
-4. 手动运行 Frontend checks，选择 main；等待 Preview environments 成功，检查 `/staging/` 配置/版本、认证、真实 hello。
+4. 手动运行 Frontend build request，选择 main；等待 Preview environments 成功，检查 `/staging/` 配置/版本、认证、真实 hello。
 5. 用两个开发分支和各类 PR 验证自动链接、单条评论、同分支配对、跨 PR 固定绑定、失败保留、关闭/重开与资源清理。尚未发 PR 的信息由控制 Actions Summary 给出。
 6. 记录实际 SHA、构建 run、访问及测试结果。完整成员使用教程按既定安排在 #28 安装包流程完成后统一整理。
 
@@ -408,7 +411,7 @@ main 合并后可在 Actions → Preview environments → Run workflow 使用 we
 - Playwright Chrome 390×844 实测样例引导、3D canvas、2D 地图、个人页、刷新/哈希路由及真实 hello；页面显示前端构建号、加载时和真实响应后端 SHA。浏览器内模拟配置 HTTP 503 后，样例仍可访问、接口按钮禁用，未回退 localhost；移除模拟后恢复。控制台仅有原有 favicon.ico 404，不影响页面/API；OSM 可见署名仍由 #31 跟进。
 - 课程机新 SSH 连接曾被重置，已有 staging HTTPS hello 持续返回 200；恢复检查及 Backend environments run `37513257959` 重试后成功，验证旧后端控制与新网页注册表兼容。
 
-**尚待合并后验证**：`LIVELIFE_FRONTEND_ENABLED` 仍未开启；main 首次网页构建、Frontend checks → Preview environments 完整事件链路、自动 PR 评论/别名、真实关闭/重开/删除及跨 PR 联调，需要按上文顺序验证。当前分支网页为人工验收发布，并非自动网页开关已上线。另一名成员的正式 PR 评审与独立复现尚未完成；完整成员教程延后到 #28。
+**尚待合并后验证**：`LIVELIFE_FRONTEND_ENABLED` 仍未开启；main 首次网页构建、Frontend build request → 课程机检查 → Preview environments 完整事件链路、自动 PR 评论/别名、真实关闭/重开/删除及跨 PR 联调，需要按上文顺序验证。当前分支网页为人工验收发布，并非自动网页开关已上线。另一名成员的正式 PR 评审与独立复现尚未完成；完整成员教程延后到 #28。
 
 
 ### 单 key 访问替换实测（2026-10-07）
@@ -431,3 +434,58 @@ main 合并后可在 Actions → Preview environments → Run workflow 使用 we
 本地部署测试共 84 项：81 项通过，3 项 Linux Nginx 依赖项 skip；本次新增 5 项真实管道/输入边界回归及 3 项复用探测、分支续期和按需上传回归，ruff、actionlint 和 diff 检查通过。原失败部署在负责人授权后重跑，结果继续记录于对应 Actions 运行及 PR #37；不能把本地或只读实测当成原部署任务已恢复。
 
 原部署两次 attempt 2 已全部成功，约 14–15 分钟，仍接近旧上限。真实无包复用 PR #37 当前 SHA 返回 ready，约 1.38 秒，main 路由不变。只读随机 base64 数据压缩验证：约 14.0 MB 原始 SSH 数据压到约 10.6 MB，factor=0.76；不能据本地速度推断跨境链路同样快速。客户端优化要合入 main 后自动生效。
+
+
+## 课程机统一构建与队列
+
+2026-10-07 团队决定：代码拉取、依赖准备、检查、测试和构建统一在课程机执行。GitHub Actions 负责调度和结果呈现；后端留在课程机运行；网页包从课程机直接传到腾讯云，由原有 Nginx 发布。以下描述本分支实现契约，实际上线状态以末尾验证记录为准。
+
+### 执行顺序与结果
+
+1. 开发者 push 或打开/更新/重开 PR，触发 Backend build request / Frontend build request。它们不检出代码、不执行构建、不取得部署私钥；绿色仅表示请求通知已发出。
+2. workflow_run.completed 触发 main 上的 Preview environments。控制器重新查询 GitHub 的 run、来源仓库、固定工作流路径、当前分支 SHA 和 PR 状态；旧提交、关闭/删除分支及 fork 均不提交任务。特权代码只来自 main，不执行分支中的部署脚本。
+3. 公网机转发 build_submit，课程机持久化到 `/home/group5/livelife/builds/queue.sqlite3`。整个项目最多同时运行 **2 个任务**，包含拉取、依赖安装、检查、测试与构建；其余 FIFO 排队。同 SHA、同模块的首次 push/PR 通知复用一份检查，前后端是两个独立任务。相同分支尚未执行的旧 SHA 被新的请求取代；已运行的任务结束后再次核对 SHA，不能发布过期提交。
+4. 课程机用 GitHub 直连拉取已指定 SHA，复用 source.git，不跟随浮动分支。每个任务有独立 worktree、虚拟环境、日志和产物目录；仅构建目录与依赖缓存可写，主目录、SSH 文件和队列数据库不进入构建沙箱，环境中没有 GitHub token 或部署私钥。每个任务限制为最多 4 个可用 CPU；Node 堆上限 1536 MiB，不等同于整个进程的 OS 内存硬限制。
+5. npm 使用 `https://registry.npmmirror.com`，Python 优先使用 `https://mirrors.aliyun.com/pypi/simple`，依赖准备失败时仅重试到清华镜像，测试失败不会重试掩盖；npm/uv/pip 下载缓存分别位于 builds/cache。为避免 uv.lock 内原始 wheel URL 绕过镜像，仅在临时 worktree 改写官方包源域名，版本和原有哈希保持；不修改仓库锁文件。源或包不可用就报错，不静默放弃锁文件。Node 镜像包核对 Node 官方 SHASUMS，APT 工具核对官方 APT 元数据 SHA-256。
+6. Backend checks 包含部署工具 unittest、后端 pytest/ruff/格式检查及真实 hello。Frontend checks 包含 npm ci、行为测试、类型检查、Vite build 和预览资源 URL 校验。后端通过后保留原 venv，发布时链接到这份已测试环境；不再下载 wheel 或第二次安装。网页由受信程序打包，manifest 固定 SHA、构建编号和 digest。
+7. Actions 每次通过短 RPC 查询 build_status，按 offset 获取日志并写回 GitHub。SHA 的 Frontend checks / Backend checks 状态由 pending 改为 success/failure；日志中的 workflow command 禁用解析，不能把分支输出当成 Actions 指令。失败令控制工作流非零退出，保留原成功环境。检查成功与部署成功分别记录，发布失败不会抹掉真实测试结果。
+8. 发布前再次核对分支/PR。后端 deploy_built 沿用端口预约、健康检查、generation 和引用生命周期；网页 web_publish_built 从课程机获取 frontend.tgz，在公网机校验、解包、准备配置和引用、原子切换。大包不经过 GitHub Runner，也不会在公网机执行产物里的脚本。网页开关关闭时仍可检查前端，明确记录 checked 而不发布。
+
+每条命令上限 20 分钟，任务检查阶段合计最多 30 分钟；Actions 队列等待和检查查询合计最多 40 分钟，控制 job 最多 45 分钟。日志上限 4 MiB，每次回传最多 32 KiB。工具/源码失败同样记为 failure。worker 重启后未完成任务记为失败，不伪造成功；重新运行请求可重建，已成功的同 SHA 可复用。
+
+课程机任务记录和网页包默认保留 7 天。后端 release.json 中仍指向的任务目录永久保留到实例真正清理，避免回收正在运行或固定绑定/回滚使用的 venv。公网网页仍按自身当前/上一版本及容量规则保存，不跟随课程机包到期删除。磁盘不足 1 GiB 时拒绝新构建。下载缓存和 source.git 是项目级缓存；长期磁盘配额与缓存淘汰需要根据实际增长维护，不将 1.4 TiB 共享磁盘视为本组独占。
+
+### 维护者安装与排查教程
+
+先在课程机以 group5 使用已审查部署文件，运行 bootstrap-course.sh。脚本只更新 `/home/group5/livelife`，将固定工具安装到 build-tools，不需 Docker/sudo，不修改系统 APT/Python/npm。若 APT 镜像缺少本机缓存元数据中的版本，核对并刷新项目工具使用的元数据或使用有相同官方 SHA-256 的备用来源；不要绕过校验。
+
+```bash
+python3 ~/livelife/control/install-build-tools.py ~/livelife
+~/livelife/build-tools/node/bin/node --version
+~/livelife/build-tools/node/bin/node ~/livelife/build-tools/node/lib/node_modules/npm/bin/npm-cli.js --version
+~/livelife/control-venv/bin/python -m supervisor.supervisorctl \
+  -c ~/livelife/supervisor/supervisord.conf status build-worker
+```
+
+首次 build_submit 会由项目 Supervisor 启动 build-worker。工作流合入 main 后，需要检查 statuses:write 权限；现有 SSH 私钥和 known_hosts 不变。main 首次网页请求和网页开关的顺序仍按前文，不能绕过正式成员评审。完整成员教程继续等 #28 统一整理。
+
+新增控制 RPC：
+
+| op | 字段 | 返回/作用 |
+| --- | --- | --- |
+| build_submit | component=frontend/backend、sha、branch、run_id、attempt | job id、queued/running/终态；不等待构建结束 |
+| build_status | job、offset=0 | 状态、最多 32 KiB 日志、新 offset、检查结果 manifest |
+| deploy_built | owner、sha、generation、job | 仅接受该 SHA 已通过的后端任务，复用测试 venv |
+| web_publish_built | 原 web_publish 环境/配对字段、source_sha、job | 公网机从课程机取已通过的网页包，再按原契约发布 |
+
+build_artifact 是公网机 → 课程机的内部操作，验证 frontend/sha 后返回包和 manifest；不提供浏览器下载接口。部署失败在 Preview environments 查看日志；检查失败查看 commit 状态和 course-build-logs；请求已成功但无实际状态时先确认新控制工作流已合入 main、enabled 至少一个开启，再查看控制运行与 build-worker 日志。
+
+### 2026-10-07 服务器验证记录
+
+已在项目目录安装固定 Node 24.13.0 / npm 11.6.2、uv 0.12.23、Supervisor 和用户命名空间工具，公网受限 RPC 已增加构建操作。课程机不允许沙箱挂载新 proc 文件系统，因此使用空的临时 /proc；系统动态库索引只读挂载，Nginx 测试目录使用临时 /var，不访问宿主服务目录。
+
+使用已推送的 `bcc2cf98363dcb072b725528a07517152ba1b155` 手动提交真实任务，前端 39 项行为测试、类型检查、Vite 和资源回归通过（约 12 秒），后端 84 项部署工具测试（含 Nginx）、10 项接口测试、ruff/格式检查及真实 hello 通过（约 16 秒）。清华镜像部分 wheel 返回 403，阿里镜像一次安装 29 个锁定依赖约 1 秒，因此正式任务优先阿里。期间发现并修复的隔离配置失败均记录为 failure，没有发布失败产物。
+
+本地新增队列、隔离边界、venv 复用、回收保护和调度状态测试；103 项部署工具测试中 100 项通过，3 项 Nginx 集成测试仅因本机 macOS 未安装 Nginx 跳过，课程机上述 Nginx 检查已真实通过。ruff、actionlint、shell 语法和差异空白检查通过。
+
+这些是人工调用受限 RPC 的基础设施验证。新 workflow_run 控制程序尚未合入 main，网页开关仍关闭；完整自动链路和成员正式验收继续按前文执行。

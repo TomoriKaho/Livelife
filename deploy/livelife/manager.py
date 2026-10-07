@@ -12,6 +12,17 @@ from .common import read_request
 
 def dispatch(registry, request):
     op = request["op"]
+    if op in ('build_submit', 'build_status'):
+        return registry.runtime.rpc(request)
+    if op == 'deploy_built':
+        return registry.deploy(request['owner'], request['sha'], request['generation'], None, request['job'])
+    if op == 'web_publish_built':
+        result = registry.runtime.rpc({'op': 'build_artifact', 'job': request['job'], 'sha': request['source_sha']})
+        manifest = result['manifest']
+        if manifest['frontend_sha'] != request['source_sha']:
+            raise ValueError('course frontend SHA mismatch')
+        return registry.web.publish({**request, 'op': 'web_publish', 'manifest': manifest,
+                                     'bundle': base64.b64decode(result['bundle'], validate=True)})
     if op == 'web_note':
         return registry.web.note(request)
     if op == 'web_publish':

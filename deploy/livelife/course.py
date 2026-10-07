@@ -13,7 +13,7 @@ import tarfile
 import time
 import urllib.request
 
-from .common import atomic_json, instance, sha
+from .common import atomic_json, instance, sha, read_request
 from .supervisor import Supervisor
 
 MAX_BUNDLE = 20 * 1024 * 1024
@@ -70,6 +70,23 @@ class Course:
 
     def handle(self, request):
         op = request["op"]
+        if op.startswith('build_'):
+            from .build_queue import BuildQueue, job_id
+            queue = BuildQueue(self.root / 'builds')
+            if op == 'build_submit':
+                worker = f'{self.root}/control-venv/bin/python -m livelife.build_runner {self.root}'
+                self.supervisor.configure('build-worker', worker, self.root / 'control')
+                return queue.submit(request)
+            if op == 'build_status':
+                return queue.lookup(request['job'], request.get('offset', 0))
+            if op == 'build_artifact':
+                result = queue.completed(request['job'], 'frontend', request['sha'])
+                manifest = result['result']
+                payload = (queue.jobs / job_id(request['job']) / 'artifact/frontend.tgz').read_bytes()
+                if len(payload) > 64 * 1024**2 or hashlib.sha256(payload).hexdigest() != manifest['digest']:
+                    raise ValueError('stored frontend artifact mismatch')
+                return {'manifest': manifest, 'bundle': base64.b64encode(payload).decode()}
+            raise ValueError('unsupported build operation')
         if op == "port_available":
             port = self.port(request["port"])
             with socket.socket() as sock:
@@ -93,8 +110,12 @@ class Course:
         port = self.port(request["port"])
         metadata = directory / "release.json"
         if not metadata.exists():
-            if request.get("bundle") is None:
+            if request.get('job'):
+                self.install_built(request['job'], commit, port, directory)
+            elif request.get("bundle") is None:
                 raise ValueError("release source missing; redeploy the recorded SHA")
+            if metadata.exists():
+                return self.handle({**request, 'job': None, 'bundle': None})
             # Clean incomplete installs before retry; completed versions are immutable.
             if directory.exists():
                 shutil.rmtree(directory)
@@ -120,7 +141,7 @@ class Course:
                 tail = (directory / "install.log").read_text(errors="replace")[-2000:]
                 raise RuntimeError(f"offline dependency install failed: {tail}") from error
             atomic_json(metadata, {"sha": commit, "port": port})
-        elif json.loads(metadata.read_text()) != {"sha": commit, "port": port}:
+        elif any(json.loads(metadata.read_text()).get(k) != v for k, v in {'sha': commit, 'port': port}.items()):
             raise ValueError("immutable release metadata mismatch")
         self.supervisor.configure(ident,
             f"{directory}/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port {port} "
@@ -128,6 +149,27 @@ class Course:
             f'LIVELIFE_BACKEND_SHA="{commit}"')
         check_health(port)
         return {"status": "ready", "sha": commit, "port": port}
+
+    def install_built(self, job, commit, port, directory):
+        from .build_queue import BuildQueue, job_id
+        from .build_runner import extract_source
+        queue = BuildQueue(self.root / 'builds')
+        result = queue.completed(job, 'backend', commit)
+        if not result['result']['available']:
+            raise ValueError('backend entry not initialized')
+        workspace = queue.jobs / job_id(job) / 'repo'
+        venv = workspace / 'backend/.venv'
+        if venv.is_symlink() or not (venv / 'pyvenv.cfg').is_file() or not (venv / 'bin/python').is_file():
+            raise ValueError('tested virtual environment is missing')
+        if (venv / 'bin/python').resolve() != Path(sys.executable).resolve():
+            raise ValueError('unexpected virtual environment interpreter')
+        source = subprocess.check_output(['git', '--git-dir', str(self.root / 'builds/source.git'), 'archive', commit, 'backend'], timeout=30)
+        if directory.exists():
+            shutil.rmtree(directory)
+        directory.mkdir()
+        extract_source(source, directory)
+        (directory / '.venv').symlink_to(venv, target_is_directory=True)
+        atomic_json(directory / 'release.json', {'sha': commit, 'port': port, 'job': job})
 
     @staticmethod
     def port(value):
@@ -138,10 +180,7 @@ class Course:
 
 def main():
     try:
-        raw = sys.stdin.buffer.read(MAX_BUNDLE * 2 + 1)
-        if len(raw) > MAX_BUNDLE * 2:
-            raise ValueError("request exceeds limit")
-        request = json.loads(raw)
+        request = read_request(sys.stdin.buffer, MAX_BUNDLE * 2)
         # This module is installed under ~/livelife/control/livelife/.
         root = Path(__file__).resolve().parents[2]
         print(json.dumps(Course(root).handle(request)))

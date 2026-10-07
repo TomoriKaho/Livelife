@@ -64,7 +64,7 @@ class WebActions:
             return None, mode
         return 'staging' if mode == 'staging' else backend['id'], mode
 
-    def sync_web(self, branch, commit=None, manifest=None, bundle=None, generation=None, renew=True):
+    def sync_web(self, branch, commit=None, manifest=None, bundle=None, generation=None, renew=True, job=None):
         commit = commit or self.commit(branch)['sha']
         context = self.context(branch, commit)
         if context is None:
@@ -90,7 +90,10 @@ class WebActions:
                    'generation': generation if generation is not None else self.generation,
                    'target': target, 'mode': mode, 'build_id': selected_build, 'renew': renew}
         if manifest:
-            request.update(manifest=manifest, bundle=base64.b64encode(bundle).decode())
+            if job:
+                request.update(op='web_publish_built', job=job)
+            else:
+                request.update(manifest=manifest, bundle=base64.b64encode(bundle).decode())
         try:
             result = self.rpc(request)
         except Exception as error:

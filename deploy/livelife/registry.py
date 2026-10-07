@@ -96,7 +96,7 @@ class Registry:
         db.execute("""UPDATE instances SET unreferenced=? WHERE unreferenced IS NULL
             AND id NOT IN (SELECT instance FROM refs WHERE instance IS NOT NULL)""", (now,))
 
-    def deploy(self, key, commit, generation, bundle):
+    def deploy(self, key, commit, generation, bundle, build_job=None):
         owner(key)
         if key.startswith(("frontend:", "web:")):
             raise ValueError("frontend owners use bind")
@@ -110,7 +110,7 @@ class Registry:
             previous = self.routes(db)
             row = db.execute("SELECT * FROM instances WHERE id=?", (ident,)).fetchone()
             created = row is None
-            if created and bundle is None:
+            if created and bundle is None and build_job is None:
                 # A cheap reuse probe must not reserve a port or stamp ordering.
                 return {"status": "upload_required", "backend_sha": commit}
             if created:
@@ -128,7 +128,10 @@ class Registry:
                 port = row["port"]
             try:
                 # Existing versions are recovered and health checked, not replaced.
-                self.runtime.ensure(ident, commit, port, bundle if created else None)
+                if created and build_job is not None:
+                    self.runtime.ensure_built(ident, commit, port, build_job)
+                else:
+                    self.runtime.ensure(ident, commit, port, bundle if created else None)
                 if created:
                     db.execute("INSERT INTO instances VALUES (?, ?, ?, ?, NULL)",
                                (ident, commit, port, self.clock()))

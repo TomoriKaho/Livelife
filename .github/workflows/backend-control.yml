@@ -2,7 +2,7 @@ name: Preview environments
 
 on:
   workflow_run:
-    workflows: [Backend checks, Frontend checks]
+    workflows: [Backend build request, Frontend build request, Backend checks, Frontend checks]
     types: [completed]
   # Metadata-only cleanup. Never checks out/executes the PR head here.
   pull_request_target:
@@ -17,13 +17,13 @@ on:
         options: [bind, lookup, release, snapshot, collect, recover, web-lookup, web-release, web-rollback]
         default: lookup
         required: true
-        description: "管理后端绑定或检查环境（部署请运行 Backend checks）"
+        description: "管理后端绑定或检查环境（部署请运行 Backend build request）"
       frontend_pr:
         type: string
         description: "前端 PR 编号；bind/lookup/release 时填写"
       frontend_branch:
         type: string
-        description: "未发 PR 的分支；与 frontend_pr 二选一；网页部署请运行 Frontend checks"
+        description: "未发 PR 的分支；与 frontend_pr 二选一；网页部署请运行 Frontend build request"
       backend_target:
         type: string
         default: staging
@@ -34,6 +34,7 @@ permissions:
   actions: read
   # Conversation comments target PRs, even through the Issues REST endpoint.
   pull-requests: write
+  statuses: write
 
 # The server lock serializes mutations. A global Actions concurrency group
 # would discard older pending deployment/cleanup events when a third arrives.
@@ -49,6 +50,7 @@ jobs:
           # All deployment code comes from reviewed main, including manual runs.
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
+          sparse-checkout: deploy
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
@@ -77,6 +79,14 @@ jobs:
           LIVELIFE_SSH_KEY_FILE: ${{ runner.temp }}/livelife-key
           LIVELIFE_KNOWN_HOSTS_FILE: ${{ runner.temp }}/livelife-hosts
         run: python deploy/actions-control.py
+      - name: Upload course-host logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: course-build-logs
+          path: ${{ runner.temp }}/livelife-course-*.log
+          retention-days: 7
+          if-no-files-found: ignore
       - name: Remove temporary credentials
         if: always()
         run: rm -f -- "$RUNNER_TEMP/livelife-key" "$RUNNER_TEMP/livelife-hosts"

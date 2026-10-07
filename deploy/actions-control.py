@@ -18,6 +18,7 @@ import zipfile
 
 from livelife.common import sha
 from livelife.web_actions import WebActions, web_environment
+from livelife.remote_actions import RemoteActions, REQUESTS
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -128,7 +129,7 @@ def read_web_artifact(data):
         return manifest, bundle
 
 
-class Controller(WebActions):
+class Controller(RemoteActions, WebActions):
     def __init__(self):
         self.repo = os.environ["GITHUB_REPOSITORY"]
         self.github = GitHub(self.repo, os.environ["GH_TOKEN"])
@@ -306,6 +307,8 @@ class Controller(WebActions):
     def handle(self, event_name, event):
         if event_name == "workflow_run":
             run = event['workflow_run']
+            if run.get('name') in REQUESTS:
+                return self.remote_completed(run)
             try:
                 result = self.build_completed(run)
             except Exception:
