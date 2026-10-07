@@ -6,8 +6,23 @@ import vue from '@vitejs/plugin-vue';
 const root = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
+  // Existing course-host builds set this before invoking npm run build.
+  // Explicit --mode still takes precedence over this compatibility default.
+  mode: process.env.VITE_WEB_PREVIEW === 'true' ? 'preview' : undefined,
   plugins: [
     vue(),
+    {
+      name: 'validate-internal-tools',
+      configResolved(config) {
+        const flag = config.env.VITE_INTERNAL_TOOLS;
+        if (flag !== 'true' && flag !== 'false') {
+          throw new Error('VITE_INTERNAL_TOOLS 必须为字符串 true 或 false。');
+        }
+        if (config.command === 'build' && config.mode === 'production' && flag !== 'false') {
+          throw new Error('production 构建必须关闭 VITE_INTERNAL_TOOLS；接口联调用 --mode preview。');
+        }
+      },
+    },
     {
       name: 'include-offline-licenses',
       generateBundle() {

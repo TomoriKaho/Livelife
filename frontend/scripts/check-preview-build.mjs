@@ -2,8 +2,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
+import { checkInternalToolsBuild } from './check-internal-tools-build.mjs';
 
-const root = path.resolve(import.meta.dirname, '../dist');
+const root = process.argv[2] ? path.resolve(process.argv[2]) : path.resolve(import.meta.dirname, '../dist');
 const ident = process.env.VITE_WEB_BUILD_ID;
 assert.match(ident ?? '', /^fe-[0-9a-f]{40}-[1-9][0-9]*-[1-9][0-9]*$/);
 const prefix = `/__livelife/web-builds/${ident}/`;
@@ -22,3 +23,5 @@ assert.ok(shared >= 3, 'font and images must use shared URLs');
 for (const file of ['assets/maps/campus.json', 'assets/maps/LICENSE.md', 'assets/fonts/Xiaolai-OFL.txt',
   'assets/licenses/Three-MIT.txt']) assert.ok(existsSync(path.join(root, file)), file);
 console.log('Preview build resource URLs and licenses verified.');
+
+checkInternalToolsBuild('true', root);

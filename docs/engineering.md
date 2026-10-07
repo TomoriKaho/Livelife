@@ -100,7 +100,7 @@ uv lock --check
 
 Vite 在开发启动或构建时读取环境变量；修改 `.env` 后重启开发服务，构建预览则重新运行构建。变量会进入浏览器产物，只能保存公开配置，不得放服务端秘密。`.env.example` 的地址是本地配置示例，不代表后端已经运行。
 
-“我的 → 帮助与反馈 → 接口连通性测试”显示当前后端地址。点击“测试连接”发起 `GET /test/hello`，加载期间禁用重复点击；只有 HTTP 200 且 JSON `message` 为字符串 `hello world` 才显示成功。网络不可达、非 200、无效 JSON、字段不符或 10 秒超时均显示原因，允许重试。
+development / preview 构建的“我的 → 帮助与反馈 → 接口连通性测试”显示当前后端地址。点击“测试连接”发起 `GET /test/hello`，加载期间禁用重复点击；只有 HTTP 200 且 JSON `message` 为字符串 `hello world` 才显示成功。网络不可达、非 200、无效 JSON、字段不符或 10 秒超时均显示原因，允许重试。
 
 当前 Vite 未配置 API 代理，网页直接请求配置的基地址。后端须允许实际网页 Origin，例如 `http://127.0.0.1:8765` 或构建预览的 `http://127.0.0.1:8766`；协议、主机或端口不同都属于不同 Origin。页面不可达时先检查前端端口；页面可访问但连接失败时检查后端是否启动、地址及后端 CORS 配置。后端启动方法见上节；默认允许 localhost 或 127.0.0.1 的 5173、8765、8766 端口。自定义网页端口需同步修改 `backend/app/main.py` 中的明确来源白名单，手机局域网和 Android/Capacitor 来源尚未配置。
 
@@ -109,11 +109,11 @@ Vite 在开发启动或构建时读取环境变量；修改 `.env` 后重启开�
 以下命令均在 frontend/ 执行：
 
 ```bash
-npm run build
+npm run build:preview
 npm run preview
 ```
 
-`build` 先运行 `vue-tsc -b` 类型检查，再执行 Vite 生产构建，产物位于 `frontend/dist/`。`preview` 提供本地构建预览 `http://127.0.0.1:8766/`；它要求先构建，不是正式生产服务器。预览端口也为严格端口，可用 `npm run preview -- --port 8776` 指定其他空闲端口。
+`build:preview` 先运行 `vue-tsc -b` 类型检查，再执行开启接口测试工具的 Vite preview 模式构建，产物位于 `frontend/dist/`。`preview` 提供本地构建预览 `http://127.0.0.1:8766/`；它要求先构建，不是正式生产服务器。预览端口也为严格端口，可用 `npm run preview -- --port 8776` 指定其他空闲端口。
 
 现有检查与地图命令：
 
@@ -133,6 +133,54 @@ npm run map:prepare
 ```
 
 地图脚本读写 `src/assets/maps/`；下载会修改快照，普通页面演示和构建无需下载。当前没有独立格式或 lint 脚本，不应报告这些检查已经通过。依赖、dist、`.env` 等忽略规则见 `frontend/.gitignore`；TypeScript 构建可能产生 `tsconfig.tsbuildinfo`，属于本地缓存，不应提交。
+
+### 内部调试工具与构建模式
+
+同一份源码通过构建配置生成不同产物。代码分支负责协作，Vite mode 负责选择客户端构建配置，部署环境负责 API 配对；不为测试按钮维护独立的业务代码分支。
+
+| 模式 | 配置文件 | `VITE_INTERNAL_TOOLS` 默认值 | 操作 |
+| --- | --- | --- | --- |
+| development | frontend/.env.development | true | `npm run dev`，本地开发 |
+| preview | frontend/.env.preview | true | `npm run build:preview`，本地测试构建及服务器预览 |
+| production | frontend/.env.production | false | `npm run build:production`，移除内部工具的候选产物 |
+
+这三个文件只存公开、非敏感的模式配置并提交 Git。`.env` / `.env.local` 留给本机配置。通常只需按 `.env.example` 配置 API 地址，不必手动设置内部工具开关。mode 专属文件优先于通用 `.env`；执行命令时已有的同名环境变量优先级最高。开关按字符串 `true` / `false` 解析，不能用 `Boolean('false')`。
+
+从 frontend/ 执行完整测试构建教程：
+
+```bash
+npm ci
+npm run build:preview
+npm run check:internal-tools -- true
+npm run preview
+```
+
+打开 `http://127.0.0.1:8766/`，进入样例 → 我的 → 帮助与反馈，应显示接口连通性测试。按 API 联调章节启动后端并测试 hello。`npm run preview` 仅提供已生成的文件，不选择构建模式，也不会替你重新构建。
+
+验证移除内部工具的候选产物：
+
+```bash
+npm run build:production
+npm run preview
+```
+
+`build:production` 自动检查输出 JS/CSS/HTML，包括异步 chunk，确认测试组件和 hello 测试请求代码的标记均不在产物中。浏览器刷新后进入帮助页，仍有正常帮助内容，接口测试、内部版本信息和测试按钮均不出现。每次构建会替换 dist；测试报告必须记录模式和提交 SHA，不能把旧浏览器页或上一次构建当成新结果。
+
+普通 `npm run build` 默认使用 production。现有课程机构建在进程环境设置 `VITE_WEB_PREVIEW=true`，Vite 因此默认选择 preview，保留旧构建命令兼容；显式 `--mode` 优先。`VITE_WEB_PREVIEW` 控制网关资源路径与 runtime-config.json，`VITE_INTERNAL_TOOLS` 控制用户可见的内部工具，二者不是同一开关。仅选择 preview mode 不会强制读取服务器配置，便于本地静态联调。
+
+临时隐藏本地工具可运行 `VITE_INTERNAL_TOOLS=false npm run dev`，停止后再次正常启动恢复默认。构建时值为空、拼错或 production 模式强行开启工具会报错，修正配置后重试。不要在通用 `.env` 固定启用工具，避免影响其他模式。
+
+新增调试功能按下面的规则实施：
+
+1. API 探针、后端选择、内部版本面板等开发入口放在独立组件中，不加入普通用户流程。
+2. 在统一开关为 true 时条件动态导入并渲染组件。业务 API 请求与业务权限逻辑独立维护，不能受调试开关影响。
+3. 配套扩展产物检查中的独有标记，分别验证 preview 存在、production 不存在；关闭时调试模块、请求代码与专属样式均应从构建产物移除。
+4. 不使用 CSS 隐藏代替构建剔除，不在运行时网页配置里重新启用正式包已移除的工具。`import.meta.env.PROD` 仅指优化构建，preview 同样可为 true，不能据此区分用户版与测试版。
+5. PR 记录两种构建的真实结果和必要浏览器步骤，成员正式评审按贡献流程执行。
+
+当前 production 只是关闭内部工具的客户端构建，仍含样例业务数据；不代表已接正式 API、已完成业务验收或已建立正式部署。正式 API 配置、版本元数据、签名与发布工作流在对应后续任务接入。未来构建复用必须同时核对 SHA、客户端目标与构建模式，不能把同一 SHA 的 preview 包当成 production 包。
+
+参考：[Vite 环境变量与模式](https://vite.dev/guide/env-and-mode)。
 
 ### 演示范围与移动端
 

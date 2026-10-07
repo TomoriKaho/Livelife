@@ -67,6 +67,18 @@ Actions 若配置了构建附件，可在 Actions → 对应运行 → Artifacts
 
 另一名成员按文档复现网页 Demo；Android 验证任务另提供真机记录，条件具备时由另一名成员复现安装和操作。记录日期、前后端 SHA、安装包标识、实际命令、网络配置、演示数据来源、步骤、结果及未测项。正式运行命令与包入口由实现任务补齐，仅为实际执行的项目填写“已通过”，保留未测项。
 
+## 前端内部工具开关验收
+
+同一个提交分别验证 preview 和 production，模式选择、环境变量优先级及启动教程见[工程规范](engineering.md#内部调试工具与构建模式)。
+
+1. `npm run dev`：帮助页显示接口测试；关闭本地开关并重启后隐藏，正常帮助内容可用。
+2. `npm run build:preview`、`npm run check:internal-tools -- true`、`npm run preview`：帮助页显示测试工具，真实后端启动后 hello 成功；请求失败仍显示可理解的错误。
+3. `npm run build:production`：构建自动确认所有输出 chunk 不含测试组件和 hello 测试代码。刷新预览页，正常帮助内容保留，接口测试入口不出现，访问帮助页也不加载对应异步 chunk。
+4. 尝试 `VITE_INTERNAL_TOOLS=true npm run build:production` 和 `VITE_INTERNAL_TOOLS=invalid npm run build:preview`，预期构建拒绝；不要将这种预期失败报告为 CI 异常。
+5. 服务器预览仍执行原有运行时配置、不可变资源、许可证及后端 SHA 校验，`check-preview-build.mjs` 同时确认内部测试代码存在。
+
+记录提交 SHA、mode、Node/npm、实际步骤和结果。浏览器模拟响应与真实 API 联调分别记录。production 工具检查通过不等于业务就绪或正式部署完成。
+
 ## MVP 验收清单
 
 以下适用于后续完整业务阶段，不是首阶段 hello Demo 的验收范围。
@@ -202,3 +214,9 @@ GitHub CI 成功不能代替完整服务器验收。#24 后端已合入当前分
 Backend build request / Frontend build request 的成功只证明通知已发出，不证明检查通过。验收应查看被测试提交 SHA 的 Backend checks / Frontend checks commit 状态、Preview environments 实际日志及 course-build-logs 附件。任务排队显示 pending；测试/构建失败显示 failure，原预览可能仍可访问，必须核对其版本。检查成功后发布失败是部署故障，不伪称测试失败或新页面已上线。
 
 维护者验证应覆盖：两个全项目槽位及第三个任务排队；push/PR 同 SHA 去重；旧排队提交替换；构建失败/worker 重启；日志分页；SHA/模块不匹配拒绝；源码路径和静态包链接拒绝；沙箱无法读取 ~/.ssh、控制数据库或部署凭证；原成功路由、固定绑定与回滚引用保持。新路径安装和完整 GitHub 链路以[实施状态](deployment.md#当前实施状态)为准。
+
+## 前端内部工具开关本地记录（2026-10-07）
+
+在 `feat/frontend-internal-tools` 分支执行，Node.js 24.13.0 / npm 11.6.2 的 39 项现有行为测试通过；preview / production 类型检查与构建、实际产物组件/请求/样式标记检查通过。课程机原命令设置 `VITE_WEB_PREVIEW=true` 后仍自动选择 preview，不可变资源、共享资源和许可证检查通过。production 强行启用开关、preview 使用非法值均按预期拒绝。
+
+Playwright Chrome 实测本地两种静态构建：preview 的帮助页异步加载测试组件并通过真实 FastAPI hello 返回 `hello world`，production 的帮助页保留普通帮助及反馈内容，未出现测试入口。验证使用当前 backend 源码及已有依赖环境，没有模拟成功响应；控制台仍有原有 favicon.ico 404。正式部署、原生打包与另一名成员评审未在本次执行。
