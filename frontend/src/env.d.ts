@@ -11,6 +11,8 @@ interface ImportMetaEnv {
   readonly VITE_API_BASE_URL: string;
   readonly VITE_WEB_PREVIEW?: string;
   readonly VITE_WEB_BUILD_ID?: string;
+  /** 构建时选择内部调试工具，必须为字符串 true 或 false。 */
+  readonly VITE_INTERNAL_TOOLS?: string;
 }
 
 interface ImportMeta {

@@ -4,7 +4,7 @@
 
 frontend/ 和 backend/ 已提供可构建网页及 FastAPI hello 服务。#29 的 main/分支后端构建、课程机部署和公网 HTTPS API 已接入；课程机直接运行 Python，不使用 Docker。网页静态预览在 #27 分支实现，独立开关 `LIVELIFE_FRONTEND_ENABLED` 在合并及初始化前保持关闭。Android/iOS 工程、APK 分发由 #28 及后续任务处理。
 
-本分支按新的团队决定改为课程机统一拉取、检查及构建，见[课程机统一构建与队列](#课程机统一构建与队列)。新调度工作流尚需合入 main；不能把请求工作流成功当成真实检查通过。
+本分支按新的团队决定改为课程机统一拉取、检查及构建，见[课程机统一构建与队列](#课程机统一构建与队列)。新调度工作流已随 PR #37 合入 main，完整事件链路及网页开关仍需按实施记录验收；不能把请求工作流成功当成真实检查通过。
 
 网页启用步骤、接口契约与本次验证记录见[网页预览实现与维护](#网页预览实现与维护)。服务器配置完成、手动预览通过和完整 GitHub 事件链路通过是不同状态，不能相互替代。
 
@@ -23,6 +23,18 @@ main 是代码分支，staging 是测试环境。生产不会随 main 自动发�
 同一 SHA 共用一个不可变后端实例，使用独立目录、虚拟环境与端口。新 SHA 启动并检查通过后，才切换 main/PR 的最新入口；其他前端仍绑定旧 SHA 时继续保留旧实例。#24 的 uv.lock 锁定依赖。新方案在课程机按锁文件准备和测试独立虚拟环境，发布复用这份已测试环境；旧 CI wheel 包入口保留兼容已有部署与恢复。
 
 默认仅改前端时连接 staging，随 main 更新；**主动指定另一个 PR 时固定其部署 SHA**。同一 PR 同时改前后端时，其自身预览跟随自己的最新成功部署，其他 PR 的固定绑定保持不变。
+
+## 客户端模式与后续正式发布约定
+
+前端内部工具开关已经由源码构建配置控制，配置文件和详细教程见[工程规范](engineering.md#内部调试工具与构建模式)。课程机网页任务设置 `VITE_WEB_PREVIEW=true`，现有 `npm run build` 自动选择 preview；资源及 runtime-config.json 的既有规则保持。无此进程变量的普通 build 默认 production，内部测试入口不进入产物。
+
+后续正式发布遵循：选定 main 提交 → 生成 production 候选产物 → 成员验收该产物 → 固定 Tag → 发布正式 Release → 部署已验收产物。main push/PR 仍用于测试，不自动替换正式环境。正式发布建议由 `release.published` 触发，并过滤 `prerelease=true`；草稿和预发布不执行正式部署。Release 已公开与正式服务部署成功分别记录；部署失败保留上一成功服务并提供重试记录。
+
+未来发布程序需校验候选提交、构建模式、目标平台和校验值，禁止复用同 SHA 的测试产物作为正式包；客户端和 API 配置匹配，生产配置缺失时拒绝发布。正式凭证通过 production 环境配置管理，不进入客户端 `.env` 或产物。
+
+本次仅实现前端开关与文档：没有新增 release/tag 触发工作流，没有实现正式 API 配置、production 服务器部署或原生签名打包。上述发布事件与环境规范是后续实现约定；现有运行时配置仍只服务网页预览，不能仅关闭 `VITE_WEB_PREVIEW` 就宣称正式后端已接入。
+
+参考：[GitHub Release 事件](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#release)、[部署环境](https://docs.github.com/en/actions/concepts/workflows-and-actions/deployment-environments)。
 
 ## 服务器、目录和端口
 

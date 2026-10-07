@@ -12,3 +12,6 @@
 - 地图、推送等能力按 Android、iOS、网页分别验证；网页预览不能代表原生能力通过。
 - 界面改动提供可复现的测试步骤和结果，记录设备、系统和构建版本；有预览环境时提供链接。PR 无需提交界面截图或录屏。
 - 不把服务端密钥打包进客户端；公开 SDK 标识与服务端秘密需明确区分。
+
+- 内部 API 测试、调试面板等使用 `VITE_INTERNAL_TOOLS` 构建开关；development / preview 默认开启，production 必须关闭。新增工具条件动态导入，扩展实际产物检查，验证正式构建剔除模块和请求代码，不以 CSS 隐藏或 `import.meta.env.PROD` 判断代替。
+- 使用 `npm run build:preview` 联调；`npm run build:production` 自动检查内部工具已移除。`npm run preview` 只服务上一次 dist。教程见 docs/engineering.md 的“内部调试工具与构建模式”，正式 API 和部署工作流仍待后续接入。

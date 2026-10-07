@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
+    "build:preview": "vue-tsc -b && vite build --mode preview",
+    "build:production": "vue-tsc -b && vite build --mode production && node scripts/check-internal-tools-build.mjs false",
+    "check:internal-tools": "node scripts/check-internal-tools-build.mjs",
     "preview": "vite preview",
     "preview:phone": "vite preview --host 0.0.0.0",
     "map:prepare": "node scripts/prepare-campus-map.mjs",
