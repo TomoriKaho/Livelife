@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { androidState, loadAndroidConfig } from '../../platform/android-config';
 import { computed, ref } from 'vue';
 import { fetchHello } from '../../api/hello';
 import { getApiBaseUrl } from '../../platform/web';
@@ -40,7 +41,7 @@ async function testConnection() {
       </template>
       <template v-else>
         <p role="alert">{{ previewState.error || '正在读取测试配置…' }}</p>
-        <button type="button" :disabled="previewState.loading" @click="loadPreviewConfig()">重新读取配置</button>
+        <button type="button" :disabled="previewState.loading" @click="androidState.config ? loadAndroidConfig() : loadPreviewConfig()">重新读取配置</button>
       </template>
     </div>
     <button v-sketch class="connection-button sketch" data-pencil="blue" type="button" :disabled="state === 'loading' || !available" @click="testConnection">

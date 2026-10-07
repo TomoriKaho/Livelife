@@ -3,7 +3,8 @@ export const pageMeta = { key: 'map', id: 'D-02', title: '活动地图', placeho
 </script>
 
 <script setup>
-import { computed, defineAsyncComponent, nextTick, onMounted, ref, watch } from 'vue';
+import { registerBackHandler } from '../platform/android-navigation';
+import { computed, defineAsyncComponent, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { saved, toggleSave, activityDetailRoute } from '../data/favorites.js';
 import AppIcon from '../components/AppIcon.vue';
@@ -83,6 +84,13 @@ function openActivity(activity, { expand = true } = {}) {
   drawer.value?.setState(expand ? 'expanded' : 'middle');
   nextTick(() => window.HandDrawn?.refresh());
 }
+const removeBackHandler = registerBackHandler(() => {
+  if (detail.value) { closeDetail(); return true; }
+  if (selected.value) { select(null); return true; }
+  if (search.value) { search.value = ''; return true; }
+  return false;
+});
+onBeforeUnmount(removeBackHandler);
 function closeDetail() {
   detail.value = null;
   drawer.value?.setState(drawer.value?.getState() || 'expanded');

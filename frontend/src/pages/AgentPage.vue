@@ -7,6 +7,7 @@ export const pageMeta = {
 </script>
 
 <script setup>
+import { registerBackHandler } from '../platform/android-navigation';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import AgentIcon from './agent/AgentIcon.vue';
 import LiLiAvatar from './agent/LiLiAvatar.vue';
@@ -150,6 +151,18 @@ onBeforeUnmount(() => {
   window.visualViewport?.removeEventListener('resize', queueLayout); window.visualViewport?.removeEventListener('scroll', queueLayout);
   for (const file of attachments.value) if (file.preview) URL.revokeObjectURL(file.preview);
 });
+
+const removeNativeBack = registerBackHandler(() => {
+  if (historyOpen.value || expanded.value || moreOpen.value || editingId.value !== null) {
+    if (historyOpen.value) historyOpen.value = false;
+    else if (expanded.value) toggleExpanded();
+    else if (moreOpen.value) moreOpen.value = false;
+    else editingId.value = null;
+    return true;
+  }
+  return false;
+});
+onBeforeUnmount(removeNativeBack);
 </script>
 
 <template>

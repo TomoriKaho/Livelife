@@ -19,5 +19,6 @@ export const getApiBaseUrl = (): string => {
     if (!previewState.config) throw new Error('测试配置不可用，请先重新读取配置。');
     return previewState.config.api_base_url;
   }
+  if (isNative() && !import.meta.env.VITE_API_BASE_URL) throw new Error('请配置手机可访问的 VITE_API_BASE_URL。');
   return import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 };
