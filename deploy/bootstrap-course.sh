@@ -7,7 +7,7 @@ task_root=/home/group5/livelife
 umask 077
 mkdir -p "$task_root/control" "$task_root/releases"
 cp -R "$task_source/livelife" "$task_root/control/"
-cp "$task_source/course-entry.py" "$task_source/prepare-backend.py" "$task_source/prepare-frontend.py" "$task_root/control/"
+cp "$task_source/course-entry.py" "$task_source/prepare-backend.py" "$task_source/prepare-frontend.py" "$task_source/android-mirrors.gradle" "$task_root/control/"
 cp "$task_source/install-android-tools.py" "$task_source/install-build-tools.py" "$task_root/control/"
 python3 -m venv "$task_root/control-venv"
 "$task_root/control-venv/bin/python" -m pip install --disable-pip-version-check --index-url https://mirrors.aliyun.com/pypi/simple 'supervisor==4.3.0' || \

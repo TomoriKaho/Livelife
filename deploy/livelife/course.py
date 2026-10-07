@@ -70,6 +70,20 @@ class Course:
 
     def handle(self, request):
         op = request["op"]
+        if op == 'android_tools':
+            # Administrative transfer of verified project tools, never source artifacts.
+            import io
+            out = io.BytesIO()
+            with tarfile.open(fileobj=out, mode='w:gz', dereference=True) as archive:
+                for name in ('jdk', 'android-sdk/build-tools/36.0.0'):
+                    directory = self.root / 'build-tools' / name
+                    if not directory.is_dir():
+                        raise ValueError('Android signing tools are not installed')
+                    archive.add(directory, arcname=name)
+            data = out.getvalue()
+            if len(data) > 256*1024**2:
+                raise ValueError('Android tool transfer exceeds limit')
+            return {'bundle':base64.b64encode(data).decode(), 'digest':hashlib.sha256(data).hexdigest()}
         if op.startswith('build_'):
             from .build_queue import BuildQueue, job_id
             queue = BuildQueue(self.root / 'builds')

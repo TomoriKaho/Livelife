@@ -87,6 +87,8 @@ class BuildQueue:
         with self.db() as db:
             same = db.execute("SELECT * FROM jobs WHERE id=?", (ident,)).fetchone()
             if same:
+                if options is not None and json.loads(same["options"]) != options:
+                    raise ValueError("build request configuration changed")
                 return self.describe(same)
             newer = db.execute(
                 "SELECT 1 FROM jobs WHERE component=? AND branch=? AND generation>? AND sha<>?",
@@ -122,6 +124,7 @@ class BuildQueue:
 
     def claim(self):
         with self.db() as db:
+            db.execute("UPDATE jobs SET status='failure',updated=?,error='queue wait exceeded 30 minutes; rerun the request' WHERE status='queued' AND created<?", (self.clock(), self.clock()-1800))
             if (
                 db.execute(
                     "SELECT COUNT(*) FROM jobs WHERE status='running'"

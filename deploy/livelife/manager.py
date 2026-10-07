@@ -12,6 +12,24 @@ from .common import read_request
 
 def dispatch(registry, request):
     op = request["op"]
+    if op == "apk_reserve":
+        return registry.apks.reserve(request)
+    if op == "apk_lookup":
+        return registry.apks.lookup(request["environment"])
+    if op == "apk_publish_built":
+        try:
+            return registry.apks.publish_built(request)
+        except Exception as error:
+            registry.apks.fail(request["apk_id"], str(error))
+            raise
+    if op == "apk_fail":
+        return registry.apks.fail(
+            request["apk_id"], request.get("error", "build failed")
+        )
+    if op == "apk_release":
+        result = registry.apks.release(request["environment"], request["generation"])
+        registry.apks.prune_files()
+        return result
     if op in ('build_submit', 'build_status'):
         return registry.runtime.rpc(request)
     if op == 'deploy_built':
@@ -49,7 +67,9 @@ def dispatch(registry, request):
     if op == "lookup":
         return registry.lookup(request["owner"])
     if op == "collect":
-        return registry.collect()
+        result = registry.collect()
+        registry.apks.prune_files()
+        return result
     if op == "recover":
         return registry.recover()
     if op == "snapshot":

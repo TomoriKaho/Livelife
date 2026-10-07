@@ -59,7 +59,7 @@ def instance(value):
 
 def owner(value):
     if not isinstance(value, str) or not re.fullmatch(
-        r"main|pr:[1-9][0-9]*|frontend:([1-9][0-9]*|branch-[0-9a-f]{32})|branch:[0-9a-f]{32}|web:[0-9a-f]{32}", value
+        r"main|pr:[1-9][0-9]*|frontend:([1-9][0-9]*|branch-[0-9a-f]{32})|branch:[0-9a-f]{32}|web:[0-9a-f]{32}|apk:[0-9a-f]{32}", value
     ):
         raise ValueError("invalid owner ID")
     return value

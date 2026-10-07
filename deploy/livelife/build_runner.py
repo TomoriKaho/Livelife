@@ -206,7 +206,15 @@ class Runner:
     def checkout(self, job, workspace):
         source = self.root / "builds/source.git"
         with (self.root / "builds/source.lock").open("a") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+            deadline = time.monotonic() + 600
+            while True:
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError('source lock wait exceeded 10 minutes')
+                    time.sleep(0.2)
             if not source.exists():
                 subprocess.run(
                     ["git", "init", "--bare", str(source)],
@@ -474,7 +482,7 @@ class Runner:
                             log,
                         )
                         from importlib.util import spec_from_file_location, module_from_spec
-    
+
                         spec = spec_from_file_location(
                             "prepare_frontend", self.root / "control/prepare-frontend.py"
                         )
