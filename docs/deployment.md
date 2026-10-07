@@ -48,7 +48,7 @@ https://192.144.253.40/api/versions/be-<完整40位SHA>/   不可变版本
 
 请求 hello 时加 `test/hello`。网关去掉部署前缀，后端收到 `/test/hello`，响应仍为 `{"message":"hello world"}`。响应头 `X-Livelife-Backend-SHA` 提供版本，不修改业务 JSON。Uvicorn root-path 指向不可变入口，Swagger/OpenAPI 使用该前缀。
 
-`/__livelife/versions.json` 提供已发布路由和 SHA。网页/API 使用 HTTPS Basic 认证；密码不写入链接、PR、静态前端或构建产物，网关不把基础设施认证头转给后端。控制平面只有专用 SSH JSON 命令，不提供公网 bind/delete 接口。业务登录和 APP 认证另行设计。
+`/__livelife/versions.json` 提供已发布路由和 SHA。网页/API 使用 HTTPS 单 key 测试访问认证；key 不写入链接、PR、静态前端或构建产物，网关不把测试访问头和 Cookie 转给后端。控制平面只有专用 SSH JSON 命令，不提供公网 bind/delete 接口。业务登录和 APP 认证另行设计。
 
 ### 成员如何获得测试链接
 
@@ -158,11 +158,34 @@ ACME_EMAIL=维护者指定的联系邮箱
 ### 4. 设置测试访问认证并启动
 
 ```bash
-openssl passwd -apr1
-sudoedit /opt/livelife/credentials/htpasswd
+cd /opt/livelife/control
+sudo -u livelife /opt/livelife/control-venv/bin/python -m livelife.access
 ```
 
-通过提示输入密码，避免放进命令行。htpasswd 每行 `用户名:摘要`，livelife 拥有、权限 600；可分别创建成员账号。初始化的空文件拒绝所有请求，填入账号前不认为入口可用。
+bootstrap 已生成 256 位随机 key；上述命令可补齐配置，重复执行保留已有 key。私有文件 `credentials/preview-key.txt` 和供 Nginx 使用的 `preview-key.conf` 均由 livelife 拥有、权限 600。不再使用用户名、htpasswd 或浏览器 Basic 弹窗。
+
+维护者从自己有权限的 SSH 连接读取 key，再通过团队私下渠道提供给测试成员：
+
+```bash
+ssh ubuntu@192.144.253.40 'sudo cat /opt/livelife/credentials/preview-key.txt'
+```
+
+成员直接打开原来的网页预览或 API 链接，在“Livelife 测试访问”页面输入 key。页面通过 HTTPS POST 的 `X-Livelife-Preview-Key` 头验证，不把 key 放在 URL 或 localStorage；成功后网关设置有效期 7 天的 `Secure; HttpOnly; SameSite=Lax` Cookie，并刷新回原地址，保留 hash 路由。同一浏览器随后访问静态文件和 API 都使用该 Cookie。无凭证返回带输入页的 401，不发送 `WWW-Authenticate`；错误 key 返回 403。共享 key 不能区分成员身份，不授予业务账号或管理员权限。
+
+自动检查直接发送 `X-Livelife-Preview-Key` 头，key 从公网机私有文件读取，不新增 GitHub Secret。网关转发 API 时移除该头及 `livelife_preview` Cookie，保留业务 `Authorization` 和其他 Cookie，便于后续接入软件登录。测试 Cookie 重复出现时拒绝请求，避免把测试凭证传入业务服务。
+
+需要撤销全部浏览器的测试访问时，轮换 key 并重载项目网关；旧 Cookie 随即失效，成员重新输入新 key。维护者在部署锁内执行：
+
+```bash
+sudo flock /opt/livelife/state/manager.lock bash -c '
+set -e
+cd /opt/livelife/control
+runuser -u livelife -- /opt/livelife/control-venv/bin/python -m livelife.access --rotate
+systemctl reload livelife-gateway.service
+'
+```
+
+重载失败时修复并重试，不把新 key 已写入等同于网关已生效。只需退出某个浏览器时，清除该站点的 Cookie。key 不写入命令参数、仓库、Actions 日志或 PR 评论。Cookie 属性参考 [MDN Set-Cookie](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie)。
 
 ```bash
 sudo systemctl enable --now livelife-gateway.service
@@ -185,7 +208,7 @@ sudo systemctl status livelife-gateway.service --no-pager
 | LIVELIFE_BACKEND_ENABLED | Variable | 后端自动部署开关，现已设 `true` |
 | LIVELIFE_FRONTEND_ENABLED | Variable | 网页独立开关；按下文合并后启用步骤设置 |
 
-第二把私钥和 Basic 密码不进入 GitHub。检查/打包 job 无部署秘密；控制程序从 main checkout，只解析限定的 artifact 文件，不执行其中的脚本。fork 不部署；课程机仅持测试权限，不接正式数据库/凭证。venv 是依赖隔离，不能当成安全沙箱。
+第二把私钥和测试访问 key 不进入 GitHub。检查/打包 job 无部署秘密；控制程序从 main checkout，只解析限定的 artifact 文件，不执行其中的脚本。fork 不部署；课程机仅持测试权限，不接正式数据库/凭证。venv 是依赖隔离，不能当成安全沙箱。
 
 控制工作流的 GitHub token 权限由 `.github/workflows/backend-control.yml` 明确声明：
 
@@ -272,7 +295,7 @@ JSON
 - 前端固定绑定在后端 owner 释放后继续保留该版本；全部引用释放后，临时实例、路由和隧道已清理。未将验证服务登记为 main。
 - 项目网关、恢复 timer 与证书续期 timer 已启用；GitHub 部署密钥、主机公钥和连接变量已配置，LIVELIFE_BACKEND_ENABLED 已设 true。工作流进入 main 前不会因此获得完整自动部署链路。
 
-测试访问凭证由维护者私下提供，初始凭证保存在公网机 `/opt/livelife/credentials/access.txt`，权限 600；不在文档或 PR 中公开密码。尚无正式后端路由时，不把 API 示例当成可用应用入口。
+该阶段最初使用 Basic 测试凭证；#27 后续已替换为单 key，当前私有文件为公网机 `/opt/livelife/credentials/preview-key.txt`，权限 600，由维护者私下提供，不在文档或 PR 中公开。尚无正式后端路由时，不把 API 示例当成可用应用入口。
 
 上述为 #29 合入前的独立服务器验证记录。#29 与真实 hello 后端现已合入 main，后端自动部署已接入；#27 的网页自动事件链路在本分支完成代码后仍需合入、启用并验证。后续记录见文末。
 
@@ -292,7 +315,7 @@ staging 整体验收后记录 SHA，再建立 Tag、Release 与发布说明。Re
 
 ## 网页预览实现与维护
 
-#27 使用已有 HTTPS 443、Basic 认证和 Nginx，静态网页目录为 `/opt/livelife/web`；没有新增预览监听端口。网页通过同源 API 路径访问课程机后端，Basic 密码不进入网页、产物、配置或评论。
+#27 使用已有 HTTPS 443 和 Nginx，静态网页目录为 `/opt/livelife/web`；没有新增预览监听端口。测试访问改为单 key 输入页和 Cookie；网页通过同源 API 路径访问课程机后端，访问 key 不进入网页产物、运行配置或评论。
 
 ### 地址和配对契约
 
@@ -382,3 +405,12 @@ main 合并后可在 Actions → Preview environments → Run workflow 使用 we
 - 课程机新 SSH 连接曾被重置，已有 staging HTTPS hello 持续返回 200；恢复检查及 Backend environments run `37513257959` 重试后成功，验证旧后端控制与新网页注册表兼容。
 
 **尚待合并后验证**：`LIVELIFE_FRONTEND_ENABLED` 仍未开启；main 首次网页构建、Frontend checks → Preview environments 完整事件链路、自动 PR 评论/别名、真实关闭/重开/删除及跨 PR 联调，需要按上文顺序验证。当前分支网页为人工验收发布，并非自动网页开关已上线。另一名成员的正式 PR 评审与独立复现尚未完成；完整成员教程延后到 #28。
+
+
+### 单 key 访问替换实测（2026-10-07）
+
+按维护者要求，现有网关已从 Basic 改为单 key 输入页。服务器私有 key 由工具生成，未进入仓库或 GitHub；原预览、API、分支别名与后端引用保持。迁移在真实部署锁内备份网关/控制代码和注册表，然后重新发布原路由，HTML/config 的 HTTPS 校验通过。
+
+本地部署测试共 76 项：73 项通过，3 项 Linux Nginx 集成测试因本地环境不具备依赖而 skip。这 3 项另在公网机独立临时 Nginx、随机回环端口、自签证书和模拟上游中全部通过，覆盖无认证输入页、无 Basic 弹窗、错误/大小写错误 key、7 天 Cookie、静态资源保护、Cookie 各位置及名称大小写、重复 Cookie 拒绝和业务认证透传。CI 已添加 Nginx 依赖，运行同一组测试。
+
+现网 key 文件由 livelife 拥有、权限 600，网关保持 active。Chrome 实测错误 key 提示、正确 key 进入已有 PR #37 网页、配置读取和真实 hello 均通过；hello 返回 `hello world` 及 staging 后端 SHA `fcb7f9d72454c7061ac140b1d4353ac88bd8579d`。预览前端仍为此前已发布的 `797199c8de20cf09e43ef5ef61d56260258c456e` 产物，本次变更是网关认证，不重新声明网页自动链路已启用。`LIVELIFE_FRONTEND_ENABLED` 保持关闭，成员正式评审仍待完成。

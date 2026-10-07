@@ -13,6 +13,7 @@ import time
 import urllib.parse
 
 from .common import atomic_json, atomic_text, instance
+from .access import read_key
 from .course import check_health
 from .supervisor import Supervisor
 
@@ -109,7 +110,8 @@ class Runtime:
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Proto https;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header Authorization "";
+    proxy_set_header X-Livelife-Preview-Key "";
+    proxy_set_header Cookie $livelife_application_cookie;
     proxy_hide_header X-Livelife-Backend-SHA;
     add_header X-Livelife-Backend-SHA {row['sha']} always;
     add_header Cache-Control no-store always;
@@ -150,19 +152,18 @@ class Runtime:
 
     def check_web_route(self, prefix, config):
         host = urllib.parse.urlparse(self.config['base_url']).hostname
-        credentials = (self.root / 'credentials/access.txt').read_text().strip()
-        authorization = 'Basic ' + base64.b64encode(credentials.encode()).decode()
+        headers = {'X-Livelife-Preview-Key': read_key(self.root)}
         deadline = time.monotonic() + 5
         while True:
             connection = http.client.HTTPConnection(host, timeout=10)
             connection.sock = ssl.create_default_context().wrap_socket(
                 socket.create_connection(('127.0.0.1', 443), timeout=10), server_hostname=host)
             try:
-                connection.request('GET', prefix, headers={'Authorization': authorization})
+                connection.request('GET', prefix, headers=headers)
                 response = connection.getresponse()
                 response.read()
                 valid = response.status == 200 and response.getheader('X-Livelife-Frontend-SHA') == config['frontend_sha']
-                connection.request('GET', prefix + 'runtime-config.json', headers={'Authorization': authorization})
+                connection.request('GET', prefix + 'runtime-config.json', headers=headers)
                 response = connection.getresponse()
                 body = response.read()
                 valid = valid and response.status == 200 and json.loads(body) == config

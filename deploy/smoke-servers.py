@@ -5,7 +5,6 @@ Requires no real instances or pending cleanup, since it uses the real gateway.
 Never assigns fixtures to shared staging.
 No passwords/tokens printed. Temporary backends are removed in finally.
 """
-import base64
 from contextlib import contextmanager
 import http.client
 import json
@@ -18,6 +17,7 @@ import time
 
 from livelife.registry import Registry
 from livelife.runtime import Runtime
+from livelife.access import read_key
 
 
 def request(path, authenticated=True):
@@ -28,8 +28,7 @@ def request(path, authenticated=True):
     connection.sock = sock
     headers = {}
     if authenticated:
-        credentials = Path("/opt/livelife/credentials/access.txt").read_text().strip()
-        headers["Authorization"] = "Basic " + base64.b64encode(credentials.encode()).decode()
+        headers['X-Livelife-Preview-Key'] = read_key('/opt/livelife')
     try:
         connection.request("GET", path, headers=headers)
         response = connection.getresponse()

@@ -134,6 +134,8 @@ OSM 可见署名由 #31 在 v0.1.0 阶段补齐；真实后端 hello 联调、An
 
 ## 后端部署基础设施验证
 
+单 key 测试入口有独立 Nginx 集成测试 `test_access_nginx.py`：使用临时目录、自签测试证书、随机回环端口和模拟上游，验证输入页、错误 key、Cookie 属性、静态资源保护及基础设施凭证剥离，同时保留业务认证。CI 安装 Nginx 后运行；本地缺少 Linux Nginx/OpenSSL 时明确 skip，可在服务器独立候选目录运行，不能记为本地通过。不使用真实 key，也不修改共享网关或后端。
+
 #29 的工具不依赖业务后端即可检查引用与环境管理。先按工程规范安装控制工具依赖，再运行 `python -m unittest discover -s deploy/tests -v`。Supervisor 集成测试需要本地 Unix socket 权限；没有安装 Supervisor 时该项明确 skip，不能当成通过。
 
 #27 同一命令加入网页测试，覆盖双分支及 PR 别名、固定配对、前后端完成顺序、后端-only 复用 main、分支选择迁移、到期/关闭/重开、旧任务晚到、配额、非法产物、候选持久引用及真实 SIGKILL 后恢复。前端执行 `node --test scripts/*.test.mjs`，验证配置校验、加载失败和旧 HTML/新配置不匹配；原有地图与页面行为测试一起运行。测试环境需要 Node 24.13.0。

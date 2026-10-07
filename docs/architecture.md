@@ -38,6 +38,8 @@ flowchart TD
 | 响应类型 | `application/json` |
 | 响应字段 | `message`：字符串，值为 `hello world` |
 
+“无需登录”指 hello 不需要业务账号。公网测试入口另有网关访问 key，浏览器输入一次后用 Cookie 访问；网关剥离测试凭证，并保留未来业务 `Authorization` 与业务 Cookie，二者职责独立。部署配置与访问方式见 [部署说明](deployment.md#4-设置测试访问认证并启动)。管理后台尚未实现；若后续采用 `/admin/` 独立网页，管理 API 仍须由后端逐请求校验账号及权限，不能把测试 key 当成管理员身份。
+
 成功响应示例：
 
 ```json
