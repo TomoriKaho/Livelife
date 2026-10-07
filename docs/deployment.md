@@ -504,3 +504,7 @@ build_artifact 是公网机 → 课程机的内部操作，验证 frontend/sha �
 公开入口迁移已在现网完成，备份位于 `/opt/livelife/backups/public-preview-access-1791380739`。本地 101 项部署测试中 98 项通过、3 项 Linux Nginx 测试跳过；这 3 项另在公网机独立临时网关全部通过。从本机不携带 key/Cookie 验证 `/staging/`、配置、JS/CSS、版本清单和真实 hello 为 200；旧 key 入口和已关闭 PR #38 为 404。业务 Authorization/Cookie 透传与业务 401 使用独立模拟上游验证；当前业务登录尚未实现，不能将其记为真实用户登录通过。自动评论文案需本次代码合入 main 后由后续运行采用。
 
 PR #40 首次自动检查在源码 fetch 超时后遗留 shallow.lock，后续 fetch 返回 128。维护时已确认无活跃 Git 和构建任务，在 source.lock 内将遗留锁移入 `/home/group5/livelife/backups/fetch-recovery-1791381860`，安装拉取修复并只重启 build-worker。遇到既有锁时先检查队列、Git 进程与持有者，不能直接删除正在使用的锁。新增回归使用真实子进程验证超时后的子进程停止、锁清理范围及 stderr 返回。
+
+## Android 测试包分发（#28）
+
+课程机未签名构建、公网机可信签名与二维码分发的增量配置见[维护者说明](deployment/android-apk.md)，成员使用方法见[Android 教程](android-testing.md)。Android 开关与网页开关独立；完整链路是否启用以该说明的实施记录为准。

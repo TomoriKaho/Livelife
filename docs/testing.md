@@ -220,3 +220,7 @@ Backend build request / Frontend build request 的成功只证明通知已发出
 在 `feat/frontend-internal-tools` 分支执行，Node.js 24.13.0 / npm 11.6.2 的 39 项现有行为测试通过；preview / production 类型检查与构建、实际产物组件/请求/样式标记检查通过。课程机原命令设置 `VITE_WEB_PREVIEW=true` 后仍自动选择 preview，不可变资源、共享资源和许可证检查通过。production 强行启用开关、preview 使用非法值均按预期拒绝。
 
 Playwright Chrome 实测本地两种静态构建：preview 的帮助页异步加载测试组件并通过真实 FastAPI hello 返回 `hello world`，production 的帮助页保留普通帮助及反馈内容，未出现测试入口。验证使用当前 backend 源码及已有依赖环境，没有模拟成功响应；控制台仍有原有 favicon.ico 404。正式部署、原生打包与另一名成员评审未在本次执行。
+
+## Android 测试包操作
+
+下载安装、版本切换、PR 联调和真机记录统一见[Android 测试教程](android-testing.md)。记录安装包 SHA-256、versionCode 和实际响应后端 SHA，未测项目保留为未测。

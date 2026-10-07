@@ -92,3 +92,5 @@ Livelife/
 ## 交付路径
 
 功能分支开发 → 推送分支 → 自测或按需预览 → PR 检查与评审 → 合并 main → 部署共享测试服 → 整体验收 → 固定版本 Tag → Release 与正式部署。
+
+Android 开发与下载安装：[成员教程](docs/android-testing.md)；原生构建、签名和启用：[维护者说明](docs/deployment/android-apk.md)。#28 的实际验证及启用状态以维护者实施记录为准。

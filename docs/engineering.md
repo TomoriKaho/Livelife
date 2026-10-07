@@ -350,3 +350,7 @@ feat: (订阅) 调整订阅响应结构
 ## 课程机构建环境
 
 课程机工具链固定 Node 24.13.0、npm 11.6.2、Python 3.12、uv 0.12.23 和 Supervisor 4.3.0。GitHub 上的 build request 只触发调度，真实 Frontend checks / Backend checks 由课程机执行并回传。服务器使用 npm 国内镜像及清华 Python 镜像、锁定版本和缓存；本地开发仍可沿用自己的包源，不需要改锁文件。队列、隔离、工具校验及上线状态见[部署契约](deployment.md#课程机统一构建与队列)。
+
+## Android 本地工程
+
+Capacitor Android 工程已在 frontend/android 提供。工具版本、SDK/IDE 安装、网页同步、手机/模拟器运行和 debug 包隔离见[Android 教程](android-testing.md)。团队签名与自动打包不依赖每位成员的本机环境。
