@@ -152,7 +152,7 @@ def install(root, signing_only=False):
         if not (tools / "gradle/bin/gradle").is_file():
             url = f"https://downloads.gradle.org/distributions/gradle-{GRADLE}-bin.zip"
             checksum = download(url + ".sha256", 1024).decode().strip()
-            data = verified(url, checksum)
+            data = verified(f'https://mirrors.huaweicloud.com/gradle/gradle-{GRADLE}-bin.zip?livelife=android28', checksum)
             with tempfile.TemporaryDirectory(dir=tools) as tmp:
                 extract_zip(data, Path(tmp))
                 (Path(tmp) / f"gradle-{GRADLE}").rename(tools / "gradle")

@@ -79,7 +79,9 @@ class Course:
                     directory = self.root / 'build-tools' / name
                     if not directory.is_dir():
                         raise ValueError('Android signing tools are not installed')
-                    archive.add(directory, arcname=name)
+                    archive.add(directory, arcname=name, filter=lambda item: None
+                        if item.name.startswith('jdk/jmods/') or item.name == 'jdk/jmods' or item.name.endswith('/src.zip')
+                        else item)
             data = out.getvalue()
             if len(data) > 256*1024**2:
                 raise ValueError('Android tool transfer exceeds limit')
