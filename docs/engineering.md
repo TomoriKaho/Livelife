@@ -41,7 +41,7 @@ Capacitor 页面在原生容器的 WebView 中运行，复用代码不代表已�
 
 ### 运行环境与安装
 
-使用符合 `frontend/package.json` 的 Node.js：`^20.19.0 || >=22.12.0`，并使用随 Node.js 提供的 npm。可从 [Node.js 官网](https://nodejs.org/) 安装满足范围的版本。此次本地检查使用 Node.js `25.8.0`、npm `11.11.0`；仓库未固定唯一 npm 版本，依赖精确版本由 package-lock.json 锁定。
+使用符合 `frontend/package.json` 的 Node.js：`^20.19.0 || >=22.12.0`，并使用随 Node.js 提供的 npm。可从 [Node.js 官网](https://nodejs.org/) 安装满足范围的版本。网页检查/构建在 Ubuntu 24.04 课程机执行，固定 Node.js `24.13.0` 和 npm `11.6.2`，按 package-lock.json 安装。建议成员使用同一版本；运行包含 TypeScript 直接导入的全部行为测试需要 Node.js 24.13.0。
 
 从仓库根目录执行：
 
@@ -291,3 +291,14 @@ feat: (订阅) 调整订阅响应结构
 ## AI 辅助开发规范
 
 见 [AI 辅助开发指南](ai-development.md)。
+
+## 网页预览构建边界
+
+本地和后续原生构建继续使用相对资源基路径与 `VITE_API_BASE_URL`。CI 设置 `VITE_WEB_PREVIEW=true`、`VITE_WEB_BUILD_ID=fe-<SHA>-<run_id>-<attempt>`，并把 Vite base 设置为 `/__livelife/web-builds/<build_id>/`。仅网页预览启用字体、图片的共享哈希资源路径；地图 JSON、JS/CSS 及许可证保持不可变构建路径。升级 Vite 时必须检查 `experimental.renderBuiltUrl` 生成的 URL，并验证实际资源请求；实验性 API 依据见 [Vite 文档](https://vite.dev/guide/build#advanced-base-options)。
+
+运行 `cd frontend && node --test scripts/*.test.mjs` 和 `npm run build` 进行前端检查。预览构建不要把本地 `.env` 中的开发地址或任何访问密码打入产物；真实 API 地址由受信控制器生成运行时配置。部署依赖、控制接口和启用步骤见 [部署说明](deployment.md#网页预览实现与维护)。
+
+
+## 课程机构建环境
+
+课程机工具链固定 Node 24.13.0、npm 11.6.2、Python 3.12、uv 0.12.23 和 Supervisor 4.3.0。GitHub 上的 build request 只触发调度，真实 Frontend checks / Backend checks 由课程机执行并回传。服务器使用 npm 国内镜像及清华 Python 镜像、锁定版本和缓存；本地开发仍可沿用自己的包源，不需要改锁文件。队列、隔离、工具校验及上线状态见[部署契约](deployment.md#课程机统一构建与队列)。

@@ -1,11 +1,11 @@
-name: Backend build request
+name: Frontend build request
 
 on:
   push:
-    paths: ["backend/**", "deploy/**", ".github/workflows/backend-*.yml"]
+    paths: ["frontend/**", "deploy/**", ".github/workflows/frontend-*.yml"]
   pull_request:
     types: [opened, synchronize, reopened]
-    paths: ["backend/**", "deploy/**", ".github/workflows/backend-*.yml"]
+    paths: ["frontend/**", "deploy/**", ".github/workflows/frontend-*.yml"]
   workflow_dispatch:
 
 permissions:
@@ -21,4 +21,4 @@ jobs:
       - name: Request course-host checks
         run: |
           echo "Course-host request recorded; this step does not certify that tests passed." >> "$GITHUB_STEP_SUMMARY"
-          echo "Follow the Backend checks commit status and Preview environments for the real result." >> "$GITHUB_STEP_SUMMARY"
+          echo "Follow the Frontend checks commit status and Preview environments for the real result." >> "$GITHUB_STEP_SUMMARY"

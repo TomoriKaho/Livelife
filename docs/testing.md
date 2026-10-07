@@ -134,7 +134,15 @@ OSM 可见署名由 #31 在 v0.1.0 阶段补齐；真实后端 hello 联调、An
 
 ## 后端部署基础设施验证
 
+`test_rpc_input.py` 覆盖 SSH JSON 输入边界：使用真实子进程管道，故意保持写端打开，确认收到完整 JSON 后返回；另外验证嵌套、转义、Unicode 跨块、旧格式/换行格式兼容、大小限制及非法输入。实际服务器验证也仅用受限 SSH 的 snapshot 操作，保持 stdin 打开，不用部署请求代替只读检查。
+
+单 key 测试入口有独立 Nginx 集成测试 `test_access_nginx.py`：使用临时目录、自签测试证书、随机回环端口和模拟上游，验证输入页、错误 key、Cookie 属性、静态资源保护及基础设施凭证剥离，同时保留业务认证。CI 安装 Nginx 后运行；本地缺少 Linux Nginx/OpenSSL 时明确 skip，可在服务器独立候选目录运行，不能记为本地通过。不使用真实 key，也不修改共享网关或后端。
+
 #29 的工具不依赖业务后端即可检查引用与环境管理。先按工程规范安装控制工具依赖，再运行 `python -m unittest discover -s deploy/tests -v`。Supervisor 集成测试需要本地 Unix socket 权限；没有安装 Supervisor 时该项明确 skip，不能当成通过。
+
+#27 同一命令加入网页测试，覆盖双分支及 PR 别名、固定配对、前后端完成顺序、后端-only 复用 main、分支选择迁移、到期/关闭/重开、旧任务晚到、配额、非法产物、候选持久引用及真实 SIGKILL 后恢复。前端执行 `node --test scripts/*.test.mjs`，验证配置校验、加载失败和旧 HTML/新配置不匹配；原有地图与页面行为测试一起运行。测试环境需要 Node 24.13.0。
+
+实际 HTTPS 网页还须检查认证、缓存与 gzip、刷新/哈希路由、2D/3D 地图、字体/图片/许可证，以及 hello 响应的后端 SHA。代码测试通过不代表 main 工作流已启用；本次服务器实测和剩余验收以 [部署记录](deployment.md#网页预览实现与维护) 为准。另一名成员在 PR 记录版本、步骤和结果，AI 自查不替代正式评审。
 
 自动测试覆盖：
 
@@ -187,3 +195,10 @@ deploy/.venv/bin/python -m unittest discover -s deploy/tests -p test_smoke.py -v
 同日根据 PR #34 评审补充故障回归后，完整部署测试增至 43 项并全部通过；新增的真实 SIGKILL、启动前预约提交及验收/部署交错测试覆盖上述两项问题。ruff、actionlint、shell 语法与文档链接/锚点检查通过。这次验证在本机临时环境进行，服务器控制程序需在部署修复版本后生效。
 
 GitHub CI 成功不能代替完整服务器验收。#24 后端已合入当前分支，main 完整工作流、PR 自动说明与重新打开的实际事件链路仍待部署工作流合并后验证；上述独立验收不代表正式应用上线。
+
+
+## 课程机构建结果的判断
+
+Backend build request / Frontend build request 的成功只证明通知已发出，不证明检查通过。验收应查看被测试提交 SHA 的 Backend checks / Frontend checks commit 状态、Preview environments 实际日志及 course-build-logs 附件。任务排队显示 pending；测试/构建失败显示 failure，原预览可能仍可访问，必须核对其版本。检查成功后发布失败是部署故障，不伪称测试失败或新页面已上线。
+
+维护者验证应覆盖：两个全项目槽位及第三个任务排队；push/PR 同 SHA 去重；旧排队提交替换；构建失败/worker 重启；日志分页；SHA/模块不匹配拒绝；源码路径和静态包链接拒绝；沙箱无法读取 ~/.ssh、控制数据库或部署凭证；原成功路由、固定绑定与回滚引用保持。新路径安装和完整 GitHub 链路以[实施状态](deployment.md#当前实施状态)为准。

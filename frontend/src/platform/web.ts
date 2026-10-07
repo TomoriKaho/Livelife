@@ -1,3 +1,5 @@
+import { previewState } from './runtime-config';
+
 /**
  * Web 平台适配
  *
@@ -12,5 +14,9 @@ export const isNative = (): boolean => {
 
 /** 获取 API 基地址 */
 export const getApiBaseUrl = (): string => {
+  if (previewState.enabled) {
+    if (!previewState.config) throw new Error('测试配置不可用，请先重新读取配置。');
+    return previewState.config.api_base_url;
+  }
   return import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 };

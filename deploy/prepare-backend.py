@@ -50,7 +50,8 @@ def main():
         return
     requirements = out.resolve() / "runtime-requirements.txt"
     if mode == "uv":
-        subprocess.run(["uv", "sync", "--locked", "--python", sys.executable], cwd="backend", check=True)
+        if os.environ.get("LIVELIFE_REMOTE_BACKEND_DEPENDENCIES_READY") != "true":
+            subprocess.run(["uv", "sync", "--locked", "--python", sys.executable], cwd="backend", check=True)
         subprocess.run(["uv", "export", "--locked", "--no-dev", "--no-emit-project",
                         "--format", "requirements.txt", "--output-file", str(requirements)],
                        cwd="backend", check=True, stdout=subprocess.DEVNULL)
@@ -87,6 +88,9 @@ def main():
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait()
+    if os.environ.get("LIVELIFE_REMOTE_BACKEND") == "true":
+        requirements.unlink()
+        return  # Reuse this tested venv on the course host; no second install.
     with tempfile.TemporaryDirectory() as wheel_root:
         subprocess.run([sys.executable, "-m", "pip", "download", "--only-binary=:all:",
                         "--disable-pip-version-check", "-r", str(requirements), "-d", wheel_root], check=True)

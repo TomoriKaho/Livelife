@@ -78,6 +78,18 @@ class ActionsTests(unittest.TestCase):
         self.controller.build_completed(self.run)
         self.assertEqual(self.requests[0]["owner"], "pr:40")
         self.assertEqual(self.requests[0]["generation"], 10001)
+        self.assertNotIn('bundle', self.requests[0])
+
+    def test_missing_version_uploads_only_after_server_requests_bundle(self):
+        def rpc(request):
+            self.requests.append(dict(request))
+            return {'status': 'superseded'} if 'bundle' in request else {'status': 'upload_required'}
+        self.controller.rpc = rpc
+        self.controller.build_completed(self.run)
+        self.assertEqual(len(self.requests), 2)
+        self.assertNotIn('bundle', self.requests[0])
+        self.assertIn('bundle', self.requests[1])
+        self.assertEqual(self.requests[0]['generation'], self.requests[1]['generation'])
 
     def test_backend_not_initialized_does_not_advertise_a_link(self):
         self.controller.github.manifest["available"] = False
