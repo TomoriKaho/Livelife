@@ -132,7 +132,7 @@ class WebActions:
         if extra:
             lines += ['', extra]
         if status != 'released':
-            lines += ['', '访问凭证由维护者另行提供；网页测试不表示 Android/iOS 验证通过。']
+            lines += ['', '网页与 API 可直接访问；网页测试不表示 Android/iOS 验证通过。']
         self.github.comment(number, '\n'.join(lines))
 
     def record_check(self, run, component):

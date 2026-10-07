@@ -19,7 +19,6 @@ install -m 755 "$task_source/renew-ip.sh" "$task_root/control/"
 python3 -m venv "$task_root/control-venv"
 "$task_root/control-venv/bin/python" -m pip install --disable-pip-version-check 'supervisor==4.3.0'
 install -m 644 "$task_source/nginx.conf" "$task_root/gateway/nginx.conf"
-install -m 644 "$task_source/preview-access.html" "$task_root/gateway/access.html"
 install -m 644 "$task_source/livelife-logrotate" /etc/logrotate.d/livelife
 if [[ ! -f "$task_root/config.json" ]]; then
   install -m 644 "$task_source/config.example.json" "$task_root/config.json"
@@ -27,8 +26,6 @@ fi
 if [[ ! -f "$task_root/gateway/config/routes.conf" ]]; then
   install -o livelife -g livelife -m 644 /dev/null "$task_root/gateway/config/routes.conf"
 fi
-(cd "$task_root/control" && runuser -u livelife -- "$task_root/control-venv/bin/python" \
-  -m livelife.access --root "$task_root")
 for task_unit in livelife-gateway.service livelife-recover.service livelife-recover.timer \
   livelife-renew-ip.service livelife-renew-ip.timer; do
   install -m 644 "$task_source/$task_unit" /etc/systemd/system/

@@ -17,20 +17,16 @@ import time
 
 from livelife.registry import Registry
 from livelife.runtime import Runtime
-from livelife.access import read_key
 
 
-def request(path, authenticated=True):
+def request(path):
     context = ssl.create_default_context()
     sock = context.wrap_socket(socket.create_connection(("127.0.0.1", 443), timeout=10),
                                server_hostname="192.144.253.40")
     connection = http.client.HTTPConnection("192.144.253.40")
     connection.sock = sock
-    headers = {}
-    if authenticated:
-        headers['X-Livelife-Preview-Key'] = read_key('/opt/livelife')
     try:
-        connection.request("GET", path, headers=headers)
+        connection.request("GET", path)
         response = connection.getresponse()
         return response.status, response.read(), response.getheader("X-Livelife-Backend-SHA")
     finally:
@@ -66,7 +62,6 @@ def run_checks(registry, entries):
         assert status == 200, f"hello returned {status}: {body[:200]!r}"
         assert json.loads(body) == {"message": "hello world"}
         assert commit == entry["sha"]
-        assert request(result["api_path"] + "test/hello", authenticated=False)[0] == 401
         # FastAPI docs must address this immutable root-path correctly.
         status, body, _ = request(result["api_path"] + "docs")
         assert status == 200 and result["api_path"].encode() in body
@@ -81,7 +76,7 @@ def run_checks(registry, entries):
     registry.release("frontend:900000029", 30)
     registry.collect()
     assert not registry.snapshot()["instances"]
-    print("PASS: 3 immutable Git versions, distinct ports, real FastAPI hello/docs, HTTPS auth, fixed binding and cleanup")
+    print("PASS: 3 immutable Git versions, distinct ports, real FastAPI hello/docs, public HTTPS, fixed binding and cleanup")
 
 
 def main():
