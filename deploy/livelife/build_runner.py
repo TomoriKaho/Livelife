@@ -60,6 +60,8 @@ def rewrite_mirrors(workspace, index=PYPI):
 
 
 def sandbox_command(root, workspace, command):
+    root = Path(root).resolve()
+    workspace = Path(workspace).resolve()
     tools = root / "build-tools"
     cache = root / "builds/cache"
     source = root / "builds/source.git"
