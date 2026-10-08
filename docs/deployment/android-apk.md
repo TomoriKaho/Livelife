@@ -101,3 +101,6 @@ Android checks 失败看 Preview environments 的课程日志和错误阶段。�
 | 有效期 | 2026-10-15 11:21:47 CST；释放后可提前失效 |
 
 已验证 APK 校验值、与旧包相同的签名证书、包内客户端配置与 Worker 资源、HTTPS 下载页及 ready 状态、二维码解码。通过 USB 在上述手机覆盖安装成功，系统记录 versionCode 9。前端 43 项行为测试及 preview/production 构建通过；诊断应用验证细节见 [测试说明](../testing.md)。覆盖安装成功不代表地图、返回键和 hello 全项真机验收通过；这些项目及另一名成员正式评审仍待记录。Android 自动部署开关状态仍按上述记录执行。
+
+
+2026-10-08 自动链路启用：#28 已随 PR #41 合入 main；为 #43 / PR #45 验证自动打包，已设置 `LIVELIFE_ANDROID_ENABLED=true`。PR #45 的真实 Frontend checks、Android checks 及控制工作流通过，自动发布 `0.1.0-test.10`（客户端 `362a8ff5741e6a7958a3a4b7af9c7fdb26246105`），统一机器人评论提供网页、staging 后端、APK 下载页及二维码。此记录更新前文“尚未合入/关闭开关”的历史状态。后续提交会按事件规则更新预览；main APK 首次自动发布、关闭/重开清理和完整成员验收仍需另行核对，不把单个 PR 发布成功视为全部生命周期验证通过。
