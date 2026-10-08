@@ -8,6 +8,7 @@ import PageFooter from './components/PageFooter.vue';
 import BottomNav from './components/BottomNav.vue';
 
 const route = useRoute();
+const props = defineProps({ warming: { type: Boolean, default: false } });
 const router = useRouter();
 const page = computed(() => route.meta);
 const focusShell = computed(() => page.value.shell === 'focus');
@@ -27,13 +28,14 @@ function showNotification() {
 }
 function updateTitle() { document.title = `${page.value.title || '手机端设计'} · PKU LiveLife`; }
 watch(() => route.fullPath, async () => {
+  if (props.warming) return;
   updateTitle();
   await nextTick();
   if (main.value) main.value.scrollTop = 0;
   if (heading.value) heading.value.focusTitle();
   else document.getElementById('page-title')?.focus({ preventScroll: true });
 });
-onMounted(updateTitle);
+onMounted(() => { if (!props.warming) updateTitle(); });
 onBeforeUnmount(() => clearTimeout(toastTimer));
 </script>
 

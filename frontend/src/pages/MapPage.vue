@@ -4,7 +4,9 @@ export const pageMeta = { key: 'map', id: 'D-02', title: '活动地图', placeho
 
 <script setup>
 import { registerBackHandler } from '../platform/android-navigation';
-import { computed, defineAsyncComponent, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, inject, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue';
+import { sketchWarmupKey } from '../plugins/sketch-warmup';
+import { sessionShuffle } from '../data/session-style';
 import { RouterLink, useRoute } from 'vue-router';
 import { saved, toggleSave, activityDetailRoute } from '../data/favorites.js';
 import AppIcon from '../components/AppIcon.vue';
@@ -16,6 +18,7 @@ import { profileFor } from './map/model-profiles.mjs';
 const CampusScene = defineAsyncComponent(() => import('./map/CampusScene.vue'));
 const CampusPlan = defineAsyncComponent(() => import('./map/CampusPlan.vue'));
 const route = useRoute(), focusPoint = ref(null), routedActivity = ref(null);
+const warming = inject(sketchWarmupKey, false);
 const mode = ref('3d'), filter = ref('all'), search = ref(''), selected = ref(null), floor = ref(2), scene = ref(null), located = ref(false), detail = ref(null);
 const drawer = ref(null), drawerPeek = ref(180);
 const planView = ref(null);
@@ -41,14 +44,14 @@ const results = computed(() => {
 });
 const venuePage = ref(0), activityPage = ref(0), likedPage = ref(0);
 const showAllLiked = ref(false);
-const likedPreview = [...campusActivities].sort(() => Math.random() - 0.5).slice(0, 3);
+const likedPreview = sessionShuffle('map-demo-liked', campusActivities).slice(0, 3);
 const likedActivities = computed(() => showAllLiked.value ? campusActivities : likedPreview);
 function showAll(section) {
   filter.value = 'all';
   if (section === 'liked') showAllLiked.value = true;
 }
 const buildingPalette = ['pink', 'yellow', 'blue', 'mint'];
-const venuePencil = Object.fromEntries([...venues].sort(() => Math.random() - 0.5).map((venue, index) => [venue.id, buildingPalette[index % buildingPalette.length]]));
+const venuePencil = Object.fromEntries(sessionShuffle('map-demo-venues', venues).map((venue, index) => [venue.id, buildingPalette[index % buildingPalette.length]]));
 const venueCards = computed(() => venues.map(venue => {
   const meters = Math.min(...campusActivities.filter(item => item.building === venue.id).map(item => Number.parseInt(item.distance, 10) || 0));
   const safe = Number.isFinite(meters) ? meters : 0;
@@ -143,8 +146,10 @@ watch(() => route.query.activity, applyActivityRoute);
   <section id="page-title" class="map-page" aria-label="燕园活动探索" tabindex="-1">
     <div class="map-rule" aria-hidden="true"></div>
     <div class="map-stage" :class="{ 'building-focus': selected, 'plan-mode': mode === '2d' }" :style="{ '--drawer-peek': `${drawerPeek}px` }">
-      <CampusScene v-if="mode === '3d'" ref="scene" :focus-inset="drawerPeek" :focus-point="focusPoint" :selected="selected" :floor="floor" :activities="visibleActivities" @select="select" @floor="floor = $event" />
-      <CampusPlan v-else ref="scene" :focus-inset="drawerPeek" :focus-point="focusPoint" :selected="selected" :activities="visibleActivities" :starting-view="planView" @select="select" />
+      <template v-if="!warming">
+        <CampusScene v-if="mode === '3d'" ref="scene" :focus-inset="drawerPeek" :focus-point="focusPoint" :selected="selected" :floor="floor" :activities="visibleActivities" @select="select" @floor="floor = $event" />
+        <CampusPlan v-else ref="scene" :focus-inset="drawerPeek" :focus-point="focusPoint" :selected="selected" :activities="visibleActivities" :starting-view="planView" @select="select" />
+      </template>
         <span v-if="mode === '3d'" class="campus-caption">北京大学 · 燕园</span>
         <div class="map-hint">{{ routedActivity ? `${routedActivity.title}${focusPoint ? ' · 地点示意' : ` · ${floor}F`}` : mode === '2d' ? selected ? '俯视建筑 · 在下方切换楼层查看活动' : '点建筑查看活动 · 拖动平移 · 双指缩放' : currentBuilding?.scenic ? '拖动环绕博雅塔 · 缩小看看未名湖' : selected ? '点楼层查看活动 · 拖动查看另一侧' : '点建筑，看看楼层里正在发生什么' }}</div>
       <a class="map-attribution" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a>
