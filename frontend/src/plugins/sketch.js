@@ -1,10 +1,10 @@
 import { createHandDrawnRenderer } from './handdrawn.js';
 
 // 同一帧的多个组件更新合并绘制，待 Vue 完成 DOM 更新后再测量。
-export function createSketchPlugin() {
+export function createSketchPlugin(bitmaps) {
   return {
     install(app) {
-      const renderer = createHandDrawnRenderer();
+      const renderer = createHandDrawnRenderer(bitmaps);
       let frame = null;
       const schedule = () => {
         if (frame !== null) return;

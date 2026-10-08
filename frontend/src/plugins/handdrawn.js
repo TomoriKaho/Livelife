@@ -1,9 +1,11 @@
+import { createSketchBitmapQueue } from './sketch-bitmap.ts';
+
 /*
  * 本地 SVG 手绘渲染器：轮廓在真实像素坐标中采样，尺寸变化时重画。
  * 彩铅由宽笔触交叠平涂与纸齿透明度组成；SVG 底面透明。
  * 固定随机种子保证同一控件不会在导航或刷新时改变笔迹。
  */
-export function createHandDrawnRenderer() {
+export function createHandDrawnRenderer(sharedBitmaps) {
   const NS = 'http://www.w3.org/2000/svg';
   const palettes = {
     yellow: ['#ffd600', '#ffdf16', '#ffe93d', '#fbd21a'],
@@ -12,9 +14,23 @@ export function createHandDrawnRenderer() {
     pink: ['#e99796', '#f7b4ae', '#ffd6ca', '#dc8289'],
     lavender: ['#ab94de', '#c4afea', '#e4d6ff', '#997fcb'],
   };
-  let nextId = 0;
   const drawings = new WeakMap();
   const tracked = new Set();
+  const bitmaps = sharedBitmaps || createSketchBitmapQueue();
+
+  // A stable DOM slot keeps pencil marks and cached PNGs across page visits.
+  function seedFor(element) {
+    const path = [];
+    for (let item = element; item && path.length < 8; item = item.parentElement) {
+      const siblings = Array.from(item.parentElement?.children || []).filter(child => !child.classList.contains('sketch-render'));
+      const shell = item.classList.contains('phone-shell');
+      path.push(`${item.tagName}:${item.id}:${item.dataset.nav || ''}:${shell ? 0 : siblings.indexOf(item)}`);
+      if (shell) break;
+    }
+    let hash = 2166136261;
+    for (const char of path.join('/')) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
+    return (hash >>> 0) % 1000000000 + 1;
+  }
 
   function random(seed) {
     let value = seed >>> 0;
@@ -140,10 +156,8 @@ export function createHandDrawnRenderer() {
     return group;
   }
 
-  function draw(element) {
-    const record = drawings.get(element);
+  function drawingState(element) {
     const width = element.clientWidth, height = element.clientHeight;
-    if (!record || width < 8 || height < 8) return;
     const color = element.dataset.pencil || '';
     const isBottomNav = element.classList.contains('bottom-nav');
     const whiteCard = element.classList.contains('sketch-white') && !palettes[color];
@@ -152,7 +166,14 @@ export function createHandDrawnRenderer() {
     const castName = element.dataset.cast || color;
     const cast = element.classList.contains('sketch-cast') ? (castColors[castName] || '#9ac8f2') : '';
     const active = isBottomNav ? element.querySelector('[aria-current="page"]') : null;
-    const current = `${width}:${height}:${color}:${whiteCard ? 'white' : ''}:${fillOnly ? 'fill' : ''}:${cast}:${active?.dataset.nav || ''}`;
+    const activeBounds = active ? `${active.clientWidth}:${active.clientHeight}:${active.offsetLeft}:${active.offsetTop}:${drawings.get(active)?.current}` : '';
+    const current = `${width}:${height}:${window.devicePixelRatio}:${color}:${whiteCard ? 'white' : ''}:${fillOnly ? 'fill' : ''}:${cast}:${active?.dataset.nav || ''}:${activeBounds}`;
+    return { width, height, color, isBottomNav, whiteCard, fillOnly, cast, active, current };
+  }
+  function drawVector(element) {
+    const record = drawings.get(element);
+    const { width, height, color, isBottomNav, whiteCard, fillOnly, cast, active, current } = drawingState(element);
+    if (!record || width < 8 || height < 8) return;
     if (record.current === current) return;
     record.current = current;
     const { svg, seed } = record;
@@ -218,6 +239,14 @@ export function createHandDrawnRenderer() {
       fill.append(strokes);
       svg.append(fill);
     }
+    if (active) {
+      // The yellow base, cutout and selected blue tab are one bitmap, so an
+      // async update cannot leave a hole under the previously selected tab.
+      const selected = node('g', { transform: `translate(${active.offsetLeft + active.clientLeft} ${active.offsetTop + active.clientTop})` });
+      const activeSvg = drawings.get(active)?.svg;
+      if (activeSvg) Array.from(activeSvg.children).forEach(child => selected.append(child.cloneNode(true)));
+      svg.append(selected);
+    }
     const faint = element.classList.contains('page-outlet');
     const ink = faint ? '#7f91a3' : '#20304b';
     // 偏移笔迹只沿右缘和底缘，在转入左边框之前停下。
@@ -246,12 +275,39 @@ export function createHandDrawnRenderer() {
     }
   }
 
+  function draw(element) {
+    if (element.classList.contains('nav-item')) { drawVector(element); return; }
+    const record = drawings.get(element);
+    const state = drawingState(element);
+    if (!record || state.width < 8 || state.height < 8 || record.current === state.current) return;
+    record.cancelBitmap?.();
+    const previous = record.current;
+    const current = state.current;
+    const identity = `${record.seed}:${current}`;
+    const publish = (image, release) => {
+      if (drawings.get(element) !== record || record.current !== current) { release(); return; }
+      record.layer?.remove();
+      record.releaseBitmap?.();
+      record.layer = image;
+      record.releaseBitmap = release;
+      element.prepend(image);
+    };
+    record.current = current;
+    const reused = bitmaps.reuse(identity, publish);
+    if (reused) { record.cancelBitmap = reused; return; }
+    record.current = previous;
+    drawVector(element);
+    record.cancelBitmap = bitmaps.render(record.svg, state.width, state.height, publish, identity);
+  }
+
   const observer = new ResizeObserver(entries => entries.forEach(({ target }) => draw(target)));
   function release(element) {
     const record = drawings.get(element);
     if (!record) return;
     observer.unobserve(element);
-    record.svg.remove();
+    record.cancelBitmap?.();
+    record.releaseBitmap?.();
+    record.layer?.remove();
     element.classList.remove('has-sketch');
     drawings.delete(element);
     tracked.delete(element);
@@ -262,21 +318,24 @@ export function createHandDrawnRenderer() {
     elements.forEach(element => {
       if (!drawings.has(element)) {
         const svg = node('svg', { class: 'sketch-render', 'aria-hidden': 'true', focusable: 'false', preserveAspectRatio: 'none' });
-        element.prepend(svg);
-        drawings.set(element, { svg, seed: ++nextId * 127, current: '' });
+        // Build vectors off the live DOM; only decoded PNGs are displayed.
+        drawings.set(element, { svg, layer: null, seed: seedFor(element), current: '', cancelBitmap: null, releaseBitmap: null });
         tracked.add(element);
         observer.observe(element);
       }
       // Vue/RouterLink 可能重写 class 或内容，恢复装饰层而不更换笔迹种子。
       element.classList.add('has-sketch');
-      const { svg } = drawings.get(element);
-      if (svg.parentNode !== element) element.prepend(svg);
+      const { layer } = drawings.get(element);
+      if (layer && layer.parentNode !== element) element.prepend(layer);
     });
+    // Prepare selected-tab vectors before the navigation bar consumes them.
+    elements.forEach(element => { if (element.classList.contains('nav-item')) drawVector(element); });
     elements.forEach(draw);
   }
   function dispose() {
     tracked.forEach(release);
     observer.disconnect();
+    if (!sharedBitmaps) bitmaps.dispose();
   }
   return { refresh, release, dispose };
 }
