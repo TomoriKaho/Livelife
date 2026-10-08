@@ -10,6 +10,7 @@ export const pageMeta = {
 import { computed, defineAsyncComponent, inject, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { sketchWarmupKey, sketchWarmupScenariosKey } from '../plugins/sketch-warmup';
 import { useRoute, useRouter } from 'vue-router';
+import { registerBackHandler } from '../platform/android-navigation';
 import ElasticList from './agent/ElasticList.vue';
 import FavoritesList from './more/FavoritesList.vue';
 import { savedActivities, activityStatus } from '../data/favorites.js';
@@ -57,6 +58,14 @@ function open(id) {
   if (id === 'favorites') router.replace({ path: '/more', query: { pane: 'favorites' } });
 }
 function goBack() { pane.value = paneTrail.pop() || 'home'; if (route.query.pane) router.replace('/more'); }
+if (!warming) {
+  const removeNativeBack = registerBackHandler(() => {
+    if (pane.value === 'home') return false;
+    goBack();
+    return true;
+  });
+  onBeforeUnmount(removeNativeBack);
+}
 function saveProfile() {
   if (!profileDraft.nickname.trim()) return;
   Object.assign(profile, profileDraft, { nickname: profileDraft.nickname.trim(), bio: profileDraft.bio.trim() });
