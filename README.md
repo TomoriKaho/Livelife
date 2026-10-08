@@ -17,7 +17,7 @@
 最终交付目标是 Android/iOS APP，网页用于开发和演示；首阶段同时安排最小 Android 验证包，iOS 后续验证，小程序不纳入当前范围。
 
 后端已实现本地 `GET /test/hello` 演示接口。后端 main/分支自动部署已接入，网页预览由 #27 扩展；课程机统一检查/构建与新的 Actions 调度已随 PR #37 合入 main，完整事件链路与网页启用状态以[部署说明](docs/deployment.md#当前实施状态)为准；数据库、登录和其他业务接口仍属后续工作。
-frontend/ 已从 design 分支 `4d95af0` 迁入 Vue 客户端，包含引导、地图、详情、日历、兴趣、Agent 和个人页，以及依赖锁文件、环境变量样例、构建和行为测试。当前支持本地网页演示；development / preview 构建的“我的 → 帮助与反馈 → 接口连通性测试”可发起真实 hello 请求；production 构建剔除内部工具。模式与操作教程见[工程规范](docs/engineering.md#内部调试工具与构建模式)。backend/ 已提供 FastAPI hello 服务及测试；完整成员验收和 Android/iOS 工程尚未完成；本分支新增网页构建、运行时配置和预览控制，启用状态见部署说明。地图数据是本地 OSM 快照，活动、账户、定位与 Agent 内容为样例。OSM 界面署名由 [#31](https://github.com/TomoriKaho/Livelife/issues/31) 跟进。
+frontend/ 已从 design 分支 `4d95af0` 迁入 Vue 客户端，包含引导、地图、详情、日历、兴趣、Agent 和个人页，以及依赖锁文件、环境变量样例、构建和行为测试。当前支持本地网页演示；development / preview 构建的“我的 → 帮助与反馈 → 接口连通性测试”可发起真实 hello 请求；production 构建剔除内部工具。模式与操作教程见[工程规范](docs/engineering.md#内部调试工具与构建模式)。backend/ 已提供 FastAPI hello 服务及测试；Android 工程及测试包构建分发由 #28 接入，工具、下载和真机步骤见 [Android 教程](docs/testing.md#android-测试包操作)；完整成员验收与 iOS 工程尚未完成，自动化启用状态见部署说明。地图数据是本地 OSM 快照，活动、账户、定位与 Agent 内容为样例。地图已显示 OSM 来源署名，其他地图工程改进由 [#31](https://github.com/TomoriKaho/Livelife/issues/31) 跟进。
 
 首次参与请依次阅读下面的贡献指南、协作流程、工程规范。前后端安装、环境配置、启动及检查入口，以及客户端构建步骤统一放在 [工程规范](docs/engineering.md#目录与启动命令)。
 
@@ -92,3 +92,5 @@ Livelife/
 ## 交付路径
 
 功能分支开发 → 推送分支 → 自测或按需预览 → PR 检查与评审 → 合并 main → 部署共享测试服 → 整体验收 → 固定版本 Tag → Release 与正式部署。
+
+Android 开发与下载安装：[成员教程](docs/testing.md#android-测试包操作)；原生构建、签名和启用：[维护者说明](docs/deployment/android-apk.md)。#28 的实际验证及启用状态以维护者实施记录为准。

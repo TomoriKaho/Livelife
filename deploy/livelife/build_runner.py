@@ -60,6 +60,8 @@ def rewrite_mirrors(workspace, index=PYPI):
 
 
 def sandbox_command(root, workspace, command):
+    root = Path(root).resolve()
+    workspace = Path(workspace).resolve()
     tools = root / "build-tools"
     cache = root / "builds/cache"
     source = root / "builds/source.git"
@@ -98,6 +100,8 @@ def sandbox_command(root, workspace, command):
         if Path(path).exists():
             args += ["--ro-bind", path, path]
     args += [
+        "--ro-bind", str(tools / "sandbox/passwd"), "/etc/passwd",
+        "--ro-bind", str(tools / "sandbox/group"), "/etc/group",
         "--ro-bind",
         str(tools),
         str(tools),
@@ -202,11 +206,23 @@ class Runner:
         self.queue = BuildQueue(self.root / "builds")
         self.tools = self.root / "build-tools"
         self.python = str(self.tools / "venv/bin/python")
+        identity = self.tools / 'sandbox'
+        identity.mkdir(parents=True, exist_ok=True)
+        (identity / 'passwd').write_text(f'sandbox:x:{os.getuid()}:{os.getgid()}::/tmp/home:/bin/sh\n')
+        (identity / 'group').write_text(f'sandbox:x:{os.getgid()}:\n')
 
     def checkout(self, job, workspace):
         source = self.root / "builds/source.git"
         with (self.root / "builds/source.lock").open("a") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+            deadline = time.monotonic() + 600
+            while True:
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError('source lock wait exceeded 10 minutes')
+                    time.sleep(0.2)
             if not source.exists():
                 subprocess.run(
                     ["git", "init", "--bare", str(source)],
@@ -287,7 +303,7 @@ class Runner:
     def environment(self, job):
         cache = self.root / "builds/cache"
         return {
-            "PATH": f"{self.tools}/node/bin:{self.tools}/venv/bin:{self.tools}/ubuntu/usr/sbin:/usr/bin:/bin:/usr/sbin",
+            "PATH": f"{self.tools}/jdk/bin:{self.tools}/gradle/bin:{self.tools}/node/bin:{self.tools}/venv/bin:{self.tools}/ubuntu/usr/sbin:/usr/bin:/bin:/usr/sbin",
             "HOME": "/tmp/home",
             "LANG": "C.UTF-8",
             "PYTHONUNBUFFERED": "1",
@@ -308,7 +324,16 @@ class Runner:
             "LIVELIFE_FRONTEND_SHA": job["sha"],
             "GITHUB_RUN_ID": str(job["run_id"]),
             "GITHUB_RUN_ATTEMPT": str(job["attempt"]),
-            "VITE_WEB_PREVIEW": "true",
+            "VITE_WEB_PREVIEW": "false" if job["component"] == "android" else "true",
+            "VITE_ANDROID_TEST": "true" if job["component"] == "android" else "false",
+            "VITE_TEST_PUBLIC_ORIGIN": "https://192.144.253.40",
+            "JAVA_HOME": str(self.tools / "jdk"),
+            # This host disallows mounting namespace procfs. Preserve the empty
+            # /proc boundary and supply JDK libraries without /proc/self/exe.
+            "LD_LIBRARY_PATH": f"{self.tools}/jdk/lib:{self.tools}/jdk/lib/jli:{self.tools}/jdk/lib/server",
+            "ANDROID_HOME": str(self.tools / "android-sdk"),
+            "GRADLE_USER_HOME": str(cache / "gradle"),
+            "LIVELIFE_ANDROID_VERSION_CODE": str(json.loads(job.get("options") or "{}").get("version_code", 1)),
             "VITE_WEB_BUILD_ID": f"fe-{job['sha']}-{job['run_id']}-{job['attempt']}",
         }
 
@@ -435,6 +460,9 @@ class Runner:
                         ).read_text()
                     )
                 else:
+                    if job["component"] == "android":
+                        from .android_build import prepare
+                        prepare(workspace, json.loads(job["options"]))
                     self.run_command(
                         job,
                         workspace,
@@ -448,30 +476,36 @@ class Runner:
                         ],
                         log,
                     )
-                    self.run_command(
-                        job,
-                        workspace,
-                        [
-                            "/bin/sh",
-                            "-c",
-                            'cd frontend && node --test scripts/*.test.mjs && npm run build -- --base="/__livelife/web-builds/${VITE_WEB_BUILD_ID}/" && node scripts/check-preview-build.mjs',
-                        ],
-                        log,
-                    )
-                    from importlib.util import spec_from_file_location, module_from_spec
+                    if job["component"] == "android":
+                        self.run_command(job, workspace, ["/bin/sh", "-c",
+                            "cd frontend && node --test scripts/*.test.mjs && npm run build:preview && npx --no-install cap sync android && cd android && gradle --init-script /runner/android-mirrors.gradle --no-daemon --max-workers=2 -Dorg.gradle.jvmargs=-Xmx1536m assembleRelease"], log)
+                        from .android_build import package
+                        result = package(workspace / 'frontend/android/app/build/outputs/apk/release/app-release-unsigned.apk', directory / 'artifact', json.loads(job['options']))
+                    else:
+                        self.run_command(
+                            job,
+                            workspace,
+                            [
+                                "/bin/sh",
+                                "-c",
+                                'cd frontend && node --test scripts/*.test.mjs && npm run build -- --base="/__livelife/web-builds/${VITE_WEB_BUILD_ID}/" && node scripts/check-preview-build.mjs',
+                            ],
+                            log,
+                        )
+                        from importlib.util import spec_from_file_location, module_from_spec
 
-                    spec = spec_from_file_location(
-                        "prepare_frontend", self.root / "control/prepare-frontend.py"
-                    )
-                    module = module_from_spec(spec)
-                    spec.loader.exec_module(module)
-                    result = module.package_frontend(
-                        workspace / "frontend/dist",
-                        directory / "artifact",
-                        job["sha"],
-                        job["run_id"],
-                        job["attempt"],
-                    )
+                        spec = spec_from_file_location(
+                            "prepare_frontend", self.root / "control/prepare-frontend.py"
+                        )
+                        module = module_from_spec(spec)
+                        spec.loader.exec_module(module)
+                        result = module.package_frontend(
+                            workspace / "frontend/dist",
+                            directory / "artifact",
+                            job["sha"],
+                            job["run_id"],
+                            job["attempt"],
+                        )
                 self.queue.finish(job["id"], result)
                 log.write(b"\nAll checks passed.\n")
             except Exception as error:

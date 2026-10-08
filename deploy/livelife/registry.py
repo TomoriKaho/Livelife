@@ -12,6 +12,7 @@ import time
 
 from .common import instance, owner, sha
 from .web import WebRegistry
+from .apks import ApkRegistry
 
 
 class Registry:
@@ -40,7 +41,9 @@ class Registry:
                     id TEXT PRIMARY KEY, port INTEGER UNIQUE);
             """)
             WebRegistry.initialize(db)
+            ApkRegistry.initialize(db)
         self.web = WebRegistry(self)
+        self.apks = ApkRegistry(self)
 
     @contextmanager
     def locked(self):
@@ -78,6 +81,7 @@ class Registry:
             elif row["owner"].startswith("pr:"):
                 result[f"/api/pr-{row['owner'].split(':')[1]}/"] = dict(row)
         result.update(self.web.routes(db))
+        result.update(self.apks.routes(db))
         return result
 
     def publish(self, db, previous):
@@ -98,7 +102,7 @@ class Registry:
 
     def deploy(self, key, commit, generation, bundle, build_job=None):
         owner(key)
-        if key.startswith(("frontend:", "web:")):
+        if key.startswith(("frontend:", "web:", "apk:")):
             raise ValueError("frontend owners use bind")
         sha(commit)
         ident = f"be-{commit}"
@@ -197,6 +201,8 @@ class Registry:
 
     def release(self, key, generation):
         owner(key)
+        if key.startswith("apk:"):
+            raise ValueError("APK references must be released through apk_release")
         if key == "main":
             raise ValueError("staging cannot be released")
         with self.locked() as db:
@@ -213,6 +219,7 @@ class Registry:
         with self.locked() as db:
             previous = self.routes(db)
             self.web.collect(db)
+            self.apks.collect(db)
             db.execute("DELETE FROM refs WHERE expires IS NOT NULL AND expires<=?", (self.clock(),))
             self.mark_unused(db)
             rows = db.execute("SELECT * FROM instances WHERE unreferenced IS NOT NULL AND unreferenced<=?",
@@ -250,7 +257,7 @@ class Registry:
 
     def snapshot(self):
         with self.locked() as db:
-            return {**self.web.snapshot(db), "instances": [dict(r) for r in db.execute("SELECT * FROM instances")],
+            return {**self.web.snapshot(db), **self.apks.snapshot(db), "instances": [dict(r) for r in db.execute("SELECT * FROM instances")],
                     "refs": [dict(r) for r in db.execute("SELECT * FROM refs")],
                     "retirements": [dict(r) for r in db.execute("SELECT * FROM retirements")]}
 
@@ -263,6 +270,7 @@ class Registry:
                 except Exception as error:
                     failures.append({"instance": row["id"], "error": str(error)})
             self.web.recover(db)
+            self.apks.recover(db)
         if failures:
             raise RuntimeError(f"unhealthy backend instances: {failures}")
         return {"status": "recovered"}

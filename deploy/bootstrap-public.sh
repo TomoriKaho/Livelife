@@ -8,8 +8,8 @@ if ! id livelife >/dev/null 2>&1; then
   useradd --system --create-home --home-dir /var/lib/livelife --shell /bin/bash livelife
 fi
 install -d -m 755 "$task_root" "$task_root/control" "$task_root/gateway" "$task_root/bin"
-install -d -o livelife -g livelife -m 700 "$task_root/state" "$task_root/tunnels" "$task_root/credentials"
-install -d -o livelife -g livelife -m 750 "$task_root/web"
+install -d -o livelife -g livelife -m 700 "$task_root/state" "$task_root/tunnels" "$task_root/credentials" "$task_root/ssh"
+install -d -o livelife -g livelife -m 750 "$task_root/web" "$task_root/apks"
 install -d -o livelife -g livelife -m 750 "$task_root/gateway/config" "$task_root/gateway/run" \
   "$task_root/gateway/logs" "$task_root/gateway/data"
 install -d -o root -g livelife -m 750 "$task_root/tls"
@@ -17,7 +17,7 @@ cp -R "$task_source/livelife" "$task_root/control/"
 install -m 644 "$task_source/public-entry.py" "$task_root/control/"
 install -m 755 "$task_source/renew-ip.sh" "$task_root/control/"
 python3 -m venv "$task_root/control-venv"
-"$task_root/control-venv/bin/python" -m pip install --disable-pip-version-check 'supervisor==4.3.0'
+"$task_root/control-venv/bin/python" -m pip install --disable-pip-version-check 'supervisor==4.3.0' 'qrcode[pil]==8.2'
 install -m 644 "$task_source/nginx.conf" "$task_root/gateway/nginx.conf"
 install -m 644 "$task_source/livelife-logrotate" /etc/logrotate.d/livelife
 if [[ ! -f "$task_root/config.json" ]]; then

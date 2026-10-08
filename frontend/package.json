@@ -17,7 +17,11 @@
     "test:drawer": "node --test scripts/activity-drawer.test.mjs",
     "test:composer": "node --test scripts/composer-layout.test.mjs",
     "test:favorites": "node --test scripts/favorites.test.mjs",
-    "test:plan": "node --test scripts/campus-plan.test.mjs"
+    "test:plan": "node --test scripts/campus-plan.test.mjs",
+    "android:sync": "npm run build:preview && cap sync android",
+    "android:open": "cap open android",
+    "android:debug": "npm run android:sync && cd android && ./gradlew assembleDebug",
+    "android:unsigned": "cd android && ./gradlew --no-daemon --max-workers=2 assembleRelease"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
@@ -25,11 +29,15 @@
   "dependencies": {
     "@better-scroll/core": "^2.5.1",
     "@better-scroll/mouse-wheel": "^2.5.1",
+    "@capacitor/android": "8.5.2",
+    "@capacitor/app": "8.1.2",
+    "@capacitor/core": "8.5.2",
     "three": "^0.186.1",
     "vue": "^3.5.43",
     "vue-router": "^4.6.4"
   },
   "devDependencies": {
+    "@capacitor/cli": "8.5.2",
     "@types/node": "^22.0.0",
     "@vitejs/plugin-vue": "^6.0.9",
     "typescript": "~5.7.0",

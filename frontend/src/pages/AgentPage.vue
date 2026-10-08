@@ -7,6 +7,8 @@ export const pageMeta = {
 </script>
 
 <script setup>
+import { registerBackHandler } from '../platform/android-navigation';
+import { sessionShuffle } from '../data/session-style';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import AgentIcon from './agent/AgentIcon.vue';
 import LiLiAvatar from './agent/LiLiAvatar.vue';
@@ -21,9 +23,7 @@ const originals = [
   { id: 3, role: 'user', text: '好啊，我对苏协的掼蛋比赛很感兴趣' },
   { id: 4, role: 'agent', text: '', thinking: true },
 ];
-// Randomize the semantic color assignment once, without redrawing the pencil texture on interaction.
-const colors = ['mint', 'blue', 'pink', 'lavender', 'yellow'];
-for (let i = colors.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [colors[i], colors[j]] = [colors[j], colors[i]]; }
+const colors = sessionShuffle('agent-demo-colors', ['mint', 'blue', 'pink', 'lavender', 'yellow']);
 const messages = ref(originals.map((message, i) => ({ ...message, color: colors[i], rating: null, withdrawn: false })));
 const history = [
   { label: '今天', title: '百讲的百团大战', summary: '一起找找感兴趣的社团', current: true },
@@ -150,6 +150,18 @@ onBeforeUnmount(() => {
   window.visualViewport?.removeEventListener('resize', queueLayout); window.visualViewport?.removeEventListener('scroll', queueLayout);
   for (const file of attachments.value) if (file.preview) URL.revokeObjectURL(file.preview);
 });
+
+const removeNativeBack = registerBackHandler(() => {
+  if (historyOpen.value || expanded.value || moreOpen.value || editingId.value !== null) {
+    if (historyOpen.value) historyOpen.value = false;
+    else if (expanded.value) toggleExpanded();
+    else if (moreOpen.value) moreOpen.value = false;
+    else editingId.value = null;
+    return true;
+  }
+  return false;
+});
+onBeforeUnmount(removeNativeBack);
 </script>
 
 <template>

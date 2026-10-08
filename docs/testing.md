@@ -1,5 +1,17 @@
 # 测试与验收教程
 
+## 部署控制的 SSH 复用回归
+
+修改课程机控制传输后，先运行 `python3 -m unittest discover -s deploy/tests -p test_ssh_transport.py -v`，再运行部署工具完整测试 `python3 -m unittest discover -s deploy/tests -v`。Unix socket、Supervisor 和 Nginx 的相关集成测试需要对应操作系统与依赖，跳过须明确记录。
+
+重点验证冷启动只建立一个主连接，多个独立调用者并发复用；主连接空闲退出或失效后恢复；凭证/known_hosts 更换后新建连接；私有目录、socket 和锁不可被其他账号访问，异常文件不被删除。临时认证握手拒绝最多重试四次，认证失败/主机公钥变化立即失败。已发送部署操作后响应丢失时不得自动重放，以免将未确认的提交误当未执行。
+
+实际测试服验证使用只读的 `port_available` 或已存在任务的 `build_status` 查询，记录共享主连接 PID和独立进程并发结果。验证主连接恢复时只关闭确认没有在途请求的项目控制 socket，不能重启 SSH 服务或停止后端；验收步骤及维护命令见[课程机 SSH 控制连接复用](deployment.md#课程机-ssh-控制连接复用)。验证 HTTPS staging hello 仍正常，再重跑原先失败的工作流，以真实检查和产物结果确认恢复。
+
+2026-10-08 本地新增 9 项传输回归通过；完整部署工具测试共 133 项，130 项通过，3 项 Linux Nginx 集成检查在 macOS 跳过。Supervisor 崩溃恢复检查使用现有测试依赖真实通过。ruff、shell 语法和差异空白检查通过。公网候选及实际受限 RPC 已验证，完整 Actions 重跑结果另记。
+
+随后课程机运行 133 项部署测试全部通过，前后端控制工作流成功；#45 main 手动分发流程发布 test.15，下载与签名、摘要、二维码、原生配置和真实 hello 校验通过。手机目前未通过 USB 连接，用户自行下载安装回归返回键；不得将浏览器返回事件验证记为新版 APK 实机通过。
+
 ## 三个层次
 
 | 层次 | 验证内容 | 位置 |
@@ -220,3 +232,211 @@ Backend build request / Frontend build request 的成功只证明通知已发出
 在 `feat/frontend-internal-tools` 分支执行，Node.js 24.13.0 / npm 11.6.2 的 39 项现有行为测试通过；preview / production 类型检查与构建、实际产物组件/请求/样式标记检查通过。课程机原命令设置 `VITE_WEB_PREVIEW=true` 后仍自动选择 preview，不可变资源、共享资源和许可证检查通过。production 强行启用开关、preview 使用非法值均按预期拒绝。
 
 Playwright Chrome 实测本地两种静态构建：preview 的帮助页异步加载测试组件并通过真实 FastAPI hello 返回 `hello world`，production 的帮助页保留普通帮助及反馈内容，未出现测试入口。验证使用当前 backend 源码及已有依赖环境，没有模拟成功响应；控制台仍有原有 favicon.ico 404。正式部署、原生打包与另一名成员评审未在本次执行。
+
+## Android 测试包操作
+
+本文介绍 #28 的 Android 测试包。网页、APK 和后端各有独立版本；网页测试通过不能代替手机验收。完整 Actions 是否已启用，以[维护者实施记录](deployment/android-apk.md#实施记录)为准。
+
+### Android 手绘渲染回归
+
+2026-10-08 在 Redmi Note 12 Turbo、Android 15、Android System WebView `131.0.6778.260` 上发现 PR #41 的 `0.1.0-test.7` 滑动后闪屏、文字和界面元素消失。独立 WebView 诊断应用中，用户确认从加载前关闭手绘效果后恢复正常；软件绘制避免元素消失但仍卡顿。改用页面外生成的透明 PNG 装饰后，用户确认诊断应用中的问题已解决。这是诊断应用验证，不是已经更新、验收了分发 APK，也不代替另一名成员正式评审。
+
+公共手绘渲染变更的复现步骤：
+
+1. 安装包含本次修改的测试 APK，记录客户端 SHA、版本号、手机系统和 WebView 版本；旧 APK 不会随网页更新。
+2. 在“我的”、日历、兴趣和 Agent 页面连续上下拖动、松手回弹，确认文字、图标和按钮始终可见，没有闪屏。
+3. 在“我的”和 Agent 之间反复往返，确认手绘外观保持一致，已缓存的相同装饰不逐个重新生成；Agent 样例气泡颜色在本次应用会话内保持一致，首次进入也应复用启动预热的默认装饰。打开“我的”八个子页面（资料、兴趣、收藏、账户、密码、通知定位、外观、帮助），确认默认装饰不逐个生成；预热不得提交表单或调用 hello。
+4. 切换屏幕尺寸、方向或地图选中状态，确认新纹理尺寸和高亮正确，旧任务不能覆盖新状态；验证地图 2D/3D 与页面切换。首次地图加载期间，拖动下方附近建筑卡片与活动抽屉，再立即离开页面；确认操作有响应，取消后没有旧场景或纹理覆盖新页面。快速切换五个底部入口，确认旧选中项没有遗留白底。
+5. 本地 debug 可通过 Chrome WebView 调试检查 `.sketch-bitmap` 图片已加载，公共装饰没有 `svg.sketch-render`。模拟 PNG 编码失败或快速离开页面，确认文字与点击仍可用、取消的纹理不发布；恢复后重新进入页面应能生成。
+
+缓存只在当前应用进程内复用。启动会限时预热七个页面的默认布局；超时、尺寸变化和未预热交互状态仍需生成纹理，关闭进程后重新准备；不把全部启动时间或 3D 地图性能问题都归为手绘问题。
+
+本次本地验证：43 项前端行为测试通过，包含 Worker 缓冲区传输前后几何、颜色、勾线、庭院和屋顶一致性。预览及 production 构建通过，正式产物内部工具剔除检查通过。浏览器检查页面往返、360px 尺寸、PNG 失败/取消/恢复与打包 Worker 加载。手机诊断中，用户确认 Worker 后加载期间响应好很多；启动预热完成后，首次进入日历、兴趣、Agent、我的、详情和引导页均测得零次 PNG 编码；补充子页面预热后，手机八个“我的”子页面也均为零次，且没有缺失应显示的默认装饰。地图静止时应无连续绘制，拖动、缩放和展开时仍更新；新分发 APK 与成员正式验收结果另行记录。
+
+### 1. 根据分工准备环境
+
+只开发 Vue 页面：安装 Node.js 24.13.0 / npm 11.6.2，按[工程规范](engineering.md#目录与启动命令)启动网页即可。只验收 APK：有 Android 手机和浏览器即可，不需要 Android Studio。
+
+负责原生适配、插件、权限和调试的成员安装 Android Studio 2025.2.1 或更新的稳定版。Mac 选择与 CPU 匹配的 Apple Silicon/Intel 安装包。首次启动完成 SDK 安装向导，再进入 SDK Manager 安装：
+
+- Android SDK Platform 36；
+- Android SDK Build-Tools 36.0.0；
+- Android SDK Platform-Tools（含 adb）；
+- Android SDK Command-line Tools；
+- 没有手机时安装 Android Emulator，并在 Device Manager 创建模拟器，Apple Silicon 选择 ARM64 镜像。
+
+项目使用 JDK 21、Gradle 8.14.3、Android Gradle Plugin 8.13.0。在 Android Studio → Settings → Build, Execution, Deployment → Build Tools → Gradle 中选择 JDK 21；如果自带 JDK 不是 21，通过下载 JDK 或本地路径指定。不要为了本机 IDE 版本随意升级仓库的 Gradle、SDK 或 Capacitor 版本。
+
+Mac 的 SDK 默认位于 `~/Library/Android/sdk`。Android Studio 可生成未提交的 android/local.properties；终端构建需设置 ANDROID_HOME 和 JAVA_HOME，例如：
+
+```bash
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+# 换成你实际安装的 JDK 21 路径；先确认 java -version 为 21。
+export JAVA_HOME="$(/usr/libexec/java_home -v 21)"
+export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$PATH"
+java -version
+adb version
+```
+
+Android Studio 内置 JDK 不一定被 java_home 识别，可直接指定其真实路径。Windows/Linux 从 SDK Manager 查看 SDK 路径，配置相同变量。使用系统 Gradle 无需安装：本地命令使用仓库提交的 Gradle Wrapper。
+
+### 2. 本地运行到手机或模拟器
+
+在 frontend/.env.local 中配置手机可访问的后端，示例：
+
+```dotenv
+VITE_API_BASE_URL=https://192.144.253.40/api/staging/
+```
+
+该地址是共享测试后端，会随 main 更新。APP 内 localhost 指手机自身，不是开发电脑。本地 HTTP 网络例外不在本任务开启；使用项目 HTTPS 入口。业务登录、定位和推送尚未实现，页面大部分是明确标注的样例。
+
+```bash
+cd frontend
+npm ci
+node --test scripts/*.test.mjs
+npm run android:sync
+npm run android:open
+```
+
+android:sync 会构建 preview 网页并执行 Capacitor sync；修改网页后重新同步，Android Studio 里的原生工程才会包含最新页面。不要设置 VITE_WEB_PREVIEW=true，否则资源会指向网页专用的远程构建路径。
+
+在 Android Studio 打开 frontend/android，等待 Gradle 同步完成，选择设备后点击 Run。也可以：
+
+```bash
+npm run android:debug
+adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+真机：在手机“关于手机”连续点击版本号开启开发者选项，打开 USB 调试，用数据线连接并在手机确认电脑的调试授权。`adb devices` 应显示设备为 device；unauthorized 需要在手机确认。模拟器在 Device Manager 点击启动后会出现在设备列表中。
+
+本地 debug 包名为 io.github.tomorikaho.livelife.dev.local，名称“Livelife 本地调试”；团队分发包名为 io.github.tomorikaho.livelife.dev，名称“Livelife 测试”。两者可以共存，签名和数据独立。本地 debug 由 Android 工具自动签名，分发包由腾讯云专用测试密钥签名；开发者不需要索取服务器私钥。
+
+查看原生日志：Android Studio 的 Logcat 选择设备和应用；也可执行 `adb logcat`。在电脑 Chrome 的 chrome://inspect/#devices 调试本地 debug WebView。团队 release 测试包不开放远程 WebView 调试，问题用版本、现象及日志记录。
+
+### 3. PR 的自动测试包
+
+前端/原生相关 PR 创建、更新、重开后，现有 Frontend build request 发出请求；受信控制器在网页检查通过后调度课程机 Android 构建。后端配套未就绪时等待后端完成或定期核对，不占用 Android 构建槽位。
+
+流程：课程机拉取 SHA → 检查前端 → 构建网页 → Capacitor 同步 → Gradle 生成未签名 APK → 腾讯云读取产物并校验 → 签名并验证 → 发布下载页 → 更新 PR 的同一条自动评论。Android checks 表示 APK 检查/签名/发布结果，实际测试日志在 Preview environments 的 course-build-logs 中。
+
+默认配对：
+
+| 代码变化 | 后端 |
+|---|---|
+| 只有前端 | main 共享 staging |
+| 前后端同时变化 | 同分支已成功部署的配套后端，固定 SHA |
+| 已指定联调目标 | 保留所选固定 SHA，另一 PR 更新不会自动改变 APK |
+| 只有后端 | 不自动打包，按下一节手动触发 |
+
+PR 评论显示下载页、二维码、versionCode、客户端 SHA、后端模式/SHA/API 和有效期。前端网页链接与 APK 下载页是两个入口；在手机上扫描二维码，进入下载页再下载 APK。
+
+稳定入口：main 为 `https://192.144.253.40/downloads/android/staging/`，PR 为 `/downloads/android/pr-编号/`。每次构建还有独立的 build-ID 下载页。文件名和校验值对应具体安装包，稳定页更新不会改变已经安装的 APK。
+
+### 4. 手动选择客户端与后端
+
+仓库 → Actions → Preview environments → Run workflow，工作流分支选择 main；operation 选择 android-build。
+
+| 输入 | 填法 |
+|---|---|
+| client_ref | 客户端分支、Tag 或完整 SHA，默认 main |
+| frontend_pr | 希望记录下载入口的 PR 编号；后端-only PR 也可填；留空生成独立临时下载页 |
+| backend_target | default 沿用配对；staging 使用共享后端；pr-42 解析 #42 已部署版本；be-完整SHA 使用已有固定实例 |
+| frontend_branch | Android 手动构建无需填写 |
+
+例如 #42 只有后端改动：client_ref=main、frontend_pr=42、backend_target=pr-42。点击运行，系统确认 #42 是同仓库打开的 PR、其当前后端版本已经部署，再固定该 SHA。结果显示在本次 Actions Summary 及 #42 自动评论里。
+
+指定 pr-42 不意味着跟随 #42：后续 #42 更新后要重新运行，才能得到连接新版后端的新 APK。default 保留已显式指定的目标。staging 跟随 main；实际 hello 响应 SHA 会显示在 APP 内。
+
+不能为 fork 自动取得签名或部署权限；维护者先将要验证的代码导入同仓库分支，再按普通流程构建。
+
+### 5. 下载、安装和覆盖升级
+
+1. 手机扫码或打开 PR 下载页，核对客户端 SHA、后端和有效期。
+2. 点击“下载 APK”。浏览器可能提示安装包风险或需要授权：在系统设置中允许当前浏览器“安装未知应用”。测试结束后可关闭该授权。
+3. 打开下载的文件并安装“Livelife 测试”。Android 7/API 24 是工程最低版本，设备 WebView、根证书和地图性能仍需实际验证。
+4. 在“我的 → 帮助与反馈 → 接口连通性测试”核对 versionCode、客户端 SHA、后端模式及加载时 SHA，再点击测试连接。
+5. 记录实际响应后端 SHA 和测试步骤，避免只依据下载页判断手机里已经更新。
+
+所有 PR 共用一个团队测试应用。新 APK 的 versionCode 全局递增，正常覆盖安装会保留该应用数据。不同 PR 不能作为两个独立测试应用同时安装；本地 .local 调试包可以与它共存。
+
+旧 APK 可能比手机上已有包的 versionCode 小，系统会拒绝降级。需要切回旧代码时，手动选择旧客户端 SHA 重新构建，得到更大的 versionCode。不要把卸载重装当作无损切换：卸载会清除应用数据。若遇到签名不一致，先确认安装的是本地 debug 还是团队包，不要索取或重建团队签名私钥。
+
+默认测试包 7 天到期；main 最新成功包永久保留，被替换的旧 main 包再保留 7 天。PR 关闭/合并会撤销该 PR 的入口并释放包。手机不会自动卸载，到期或关闭后接口测试明确提示失效，重新下载新包；内置样例页面仍可查看。
+
+安装包引用与网页引用独立，不根据访问人数计算。仍有效的包保留固定后端；释放最后一份引用后，后端经过宽限期再清理。
+
+### 6. 失败、重跑与上一成功包
+
+打开 PR 的 Android 状态及 Preview environments 日志，区分排队、依赖安装、Gradle、产物校验、签名与发布失败。本次失败时，页面和评论保留上一成功包，并明确它不代表最新提交。
+
+- 自动请求失败：重跑原 Frontend build request 的全部 jobs，或在该分支手动运行 Frontend build request，再查看 Preview environments。
+- 想强制重新生成 APK：使用上一节 android-build；版本号会递增。
+- 只重跑 Preview environments 的旧自动通知，可能复用原请求/任务；不要把它当作“强制重新构建”。
+- 排队超过 30 分钟会失败；任务命令最多 20 分钟、整体预算 30 分钟；源码锁等待最多 10 分钟。日志会说明原因，确认资源和下载条件后重新发起。
+- 后端没有部署成功时不能默默换成 staging；先修复后端或主动选择可用目标。
+- 下载页不可用或 APK 状态读取失败时，先检查网络、有效期和 PR 是否已关闭，不通过关闭版本校验掩盖问题。
+
+Actions 附件只保存日志和版本/校验记录 7 天；APK 从下载页分发，不作为 GitHub Artifact 副本。本任务不创建正式 Release。
+
+### 7. 真机验收记录
+
+由另一名成员在 PR 评论中填写，未执行项目写“未测”，不要用网页或模拟器结果替代真机结果：
+
+```text
+设备 / Android / WebView：
+测试日期：
+versionCode / APK SHA-256：
+客户端 SHA / 后端模式 / 加载时 SHA / 实际响应 SHA：
+安装、覆盖升级：
+启动、字体、图片、许可证入口：
+地图 2D / 3D、拖动缩放、建筑与活动详情：
+返回键关闭弹层、页面返回、顶层退出：
+安全区、键盘弹出与收起：
+外部署名链接由系统浏览器打开，返回后应用保留原页面：
+真实 hello、断网/错误提示、过期提示：
+结果及未测项：
+```
+
+发现问题附上复现步骤和版本；构建成功和 AI 自查不替代成员正式评审。
+
+
+### 外部网页与地图故障区分
+
+地图使用包内数据，不依赖在线 OpenStreetMap 瓦片。角落的署名链接通向外部版权页；Android 的 Capacitor 默认导航策略把外部地址交给系统浏览器，配置不应把外部域名加入 `server.allowNavigation`。验收时点击署名、返回应用，再检查地图与底部导航。外部网站超时应只影响浏览器，不应替换应用的本地页面。
+
+临时绘制诊断应用使用普通 WebView，与正式测试包的外链策略不同，不能用其外部网页错误认定 APK 地图崩溃。若实际 APK 出现同样问题，记录包版本、完整错误地址和操作步骤，并检查 WebView 错误与进程退出日志；不要仅凭网站超时推断地图渲染进程崩溃。
+
+2026-10-08：用户在 `0.1.0-test.9` 真机确认点击地图署名会打开系统浏览器。返回后的地图状态尚未单独记录，不将这一项计为全地图验收通过。
+
+
+### 手绘磁盘缓存验证（#43）
+
+启动教程见[工程规范](engineering.md#手绘-png-持久化缓存)。自动行为测试包含键兼容性和 IndexedDB 不可用降级；真实 IndexedDB 和绘制链路需在浏览器或调试 WebView 验证：
+
+1. 在 frontend/ 执行 `npm run dev`，打开开发地址。等待界面准备完成，在该页面开发者工具 Console 执行：
+
+   ```js
+   await (await import('/scripts/sketch-cache.browser.mjs')).verifySketchCache()
+   ```
+
+   成功返回检查列表；失败抛出对应原因。此脚本只在开发服务使用，构建产物不包含该脚本。它创建并最终删除独立测试数据库，不清除应用数据库。
+2. 检查涵盖连接关闭后 PNG 仍存在、容量按最近访问淘汰、删除、事务中断不产生候选、磁盘命中不编码、损坏 PNG 重建并再次命中、注入存储拒绝/配额错误后仍显示装饰，以及队列销毁后不发布晚到结果。注入配额错误不等于真实磁盘已填满。
+3. 单独进行应用启动测试：先清理仅装饰数据库，启动并记录 `Livelife sketch preparation` JSON。完全结束进程后重启，比较 generated/diskHits、累计读取/编码时间和准备总时间。不要只在同一进程切页面，或用内存命中代替磁盘命中。
+4. 测试页面尺寸变化、覆盖升级、改变渲染/字体兼容版本和主题命名空间后不会错误复用。Android 完全清除应用存储会删除其他数据，测试时先确认设备上没有需要保留的业务数据。
+5. 测量数据库中 metadata 的 size 合计和条目数（PNG 内容默认最多 32 MiB/512 条），记录其与实际数据库物理占用的区别；不把这个数当作原始像素或进程内存。
+
+2026-10-08 本地检查：46 项行为测试、preview/production 构建和 production 内部工具剔除检查通过。真实浏览器的上述存储与绘制检查通过。电脑浏览器测得第一次默认准备 239 次编码、第二次 239 次磁盘命中/0 次编码；准备总时间约 4.75 秒与 0.85 秒，属于该设备的一次测量，不是跨设备性能承诺。Android 数据另记录；诊断 WebView 不能代替分发 APK 的完整验收和另一名成员正式评审。
+
+同日 Redmi Note 12 Turbo / Android 15 / WebView 131.0.6778.260 的独立诊断 WebView 测量：完全停止并重新启动诊断进程后，首次默认预热 generated=239、diskHits=0、elapsedMs=21294；再次重启 generated=0、diskHits=239、elapsedMs=9813。PNG 内容合计 13,164,722 字节、239 条。此诊断通过 USB 加载开发代码，保留 SVG 参数构造、布局和解码成本；结果不能作为分发 APK 的绝对启动耗时或全项验收。
+
+
+#43 补充修复：最初的磁盘读取仍执行整轮隐藏页面预热，用户在 test.10 真机反馈无明显改善。现增加兼容尺寸下的完整准备记录与语义别名，重启时最多并行解码四张 PNG，整套默认装饰解码并校验完成后一次性显示应用；跳过隐藏页面预热和重型 SVG 构造。数据库升级保留旧 PNG，旧格式首次需补齐别名。验收须同时查看 preparation 与 first page 日志，确认 restored 覆盖全部默认装饰，随后首次进入各页面和子页面不再解码/编码默认装饰；不能只看 generated=0。
+
+整套恢复中的损坏图片必须导致整套候选释放，不能留下已恢复的一部分供界面显示；缺失准备记录或记录不兼容则回退完整准备。字体尚未加载完成时不保存完整成功标记。实际整套加载的最新设备测量与分发 APK 验收另行记录。
+
+
+整套方案诊断（同设备、USB 开发代码）：首次完整准备 generated=238，首屏队列完成约 21.20 秒；结束进程后再次启动 restored=238、diskHits=238、generated=0，整套解码约 1.43 秒，含字体与首屏的准备约 2.21 秒。随后首次进入“我的”八个子页面，测得新增 PNG 解码/编码均为 0，图片完整无破损。此结果属于诊断应用；自动分发 APK 及成员正式验收需单独记录。
+
+同日自动分发的 0.1.0-test.13（608b87f）已通过课程机前端/Android 检查、签名和下载验证，用户反馈整体缓存效果良好。“我的”子页面属于页面内部状态，Android 系统返回应先使用子页面返回栈，再处理路由历史：从日历进入“我的”→账号→密码，系统返回依次到账号、“我的”主页，下一次才到日历。普通子页和 `#/more?pane=favorites` 直接入口也应先回到“我的”。页面左上角返回与系统返回应一致；离开页面后注销回调，隐藏预热不注册回调。
+
+返回修复本地验证：46 项行为测试与 preview 构建通过；真实浏览器通过 Capacitor 返回事件验证嵌套密码/账号、资料页、主页路由回退、左上角返回、收藏直接入口清除查询参数及离页注销。Android 新分发包实机结果另行记录。

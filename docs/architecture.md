@@ -48,7 +48,7 @@ hello 无需业务账号；网页/API 预览入口不再要求额外 key。后�
 
 前端请求期间显示加载状态；收到 HTTP 200 且响应字段符合约定后显示 message。网络失败、非 200 状态或响应格式不符时显示可理解的失败提示并允许重试，不把前端样例 hello 当成请求成功。不为本接口增加业务错误码或统一业务响应包裹；后续业务接口的错误结构另行约定。
 
-后端本地地址为 `http://127.0.0.1:8000`。网页开发与构建预览允许从本机 localhost 或 127.0.0.1 的 5173、8765 和 8766 端口跨域访问；Android/Capacitor 来源与手机局域网访问尚未配置。
+后端本地地址为 `http://127.0.0.1:8000`。网页开发与构建预览允许从本机 localhost 或 127.0.0.1 的 5173、8765 和 8766 端口跨域访问；Android/Capacitor 来源 https://localhost 已允许，并暴露后端版本响应头；手机局域网网页来源仍需另行配置。
 网页通过开发代理或受控跨域配置访问后端；APP 通过可配置 API 地址直连手机可访问的开发服务。原生容器的请求来源与浏览器可能不同，联调配置需分别核对。当前客户端使用 `VITE_API_BASE_URL` 配置基地址；开发/构建预览端口分别为 8765/8766，未配置开发代理。后端需按实际网页 Origin 配置 CORS，安装与联调步骤见 [工程规范](engineering.md#目录与启动命令)。
 
 ## 后续目标架构
@@ -130,3 +130,9 @@ flowchart TD
 ## 课程机构建控制边界
 
 课程机统一拉取指定 SHA、检查、测试与构建，公网机仅管理引用、网关和静态分发；GitHub Runner 不执行分支代码、不传输产物大包。普通无凭证请求工作流通过 workflow_run 进入 main 的受信控制程序。课程机全项目并发最多 2，构建通过命名空间隔离访问范围；后端复用已测试 venv，网页包由公网机通过 SSH 直接读取。固定 SHA 和 main/PR/网页回滚引用规则不变。新调度是否已上线、镜像配置与 RPC 字段见[统一构建契约](deployment.md#课程机统一构建与队列)。
+
+## Android 测试包契约（#28）
+
+分发包内置 schema_version=1 的 native-config.json：apk_id、build_id、frontend_sha、version_code、version_name、environment、api_base_url、backend_mode、backend_sha、status_url、expires。build_id 为 apk-加32位部署ID；versionCode 由公网机单调分配，分发包名固定 io.github.tomorikaho.livelife.dev，本地 debug 使用 .local 后缀。
+
+原生来源为 https://localhost；hello CORS 允许该来源，并暴露 X-Livelife-Backend-SHA。网页配置仍要求同源，原生配置仅接受构建指定的公开 HTTPS origin。staging 跟随 main，own/fixed 固定后端 SHA；没有可用配置时不回退 localhost。启动、恢复前台和接口测试前读取独立安装包状态，失败或过期时停止接口测试，但内置样例页面可用。安装包引用独立于网页和浏览器在线人数。自动打包、分发及真机验收的实际状态以 #28 和部署记录为准。

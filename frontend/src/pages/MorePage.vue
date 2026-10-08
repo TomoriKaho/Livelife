@@ -7,8 +7,10 @@ export const pageMeta = {
 </script>
 
 <script setup>
-import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, inject, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
+import { sketchWarmupKey, sketchWarmupScenariosKey } from '../plugins/sketch-warmup';
 import { useRoute, useRouter } from 'vue-router';
+import { registerBackHandler } from '../platform/android-navigation';
 import ElasticList from './agent/ElasticList.vue';
 import FavoritesList from './more/FavoritesList.vue';
 import { savedActivities, activityStatus } from '../data/favorites.js';
@@ -27,6 +29,16 @@ const HelloConnectionTest = showInternalTools
 
 const router = useRouter(), route = useRoute(), root = ref(null), pane = ref(route.query.pane === 'favorites' ? 'favorites' : 'home');
 const paneTrail = [];
+const warming = inject(sketchWarmupKey, false);
+const registerWarmup = inject(sketchWarmupScenariosKey, null);
+if (warming && registerWarmup) {
+  // Prepare visual states directly; do not click save, permission, or API actions.
+  const unregister = registerWarmup(Object.keys(titles).map(id => async () => {
+    if (id === 'help' && showInternalTools) await import('./more/HelloConnectionTest.vue');
+    pane.value = id;
+  }));
+  onBeforeUnmount(unregister);
+}
 const profile = reactive({ ...initialProfile }), profileDraft = reactive({ ...initialProfile });
 const selectedInterests = ref([...initialInterests]);
 const pickedInterests = computed(() => interests.filter(item => selectedInterests.value.includes(item.id)));
@@ -46,6 +58,14 @@ function open(id) {
   if (id === 'favorites') router.replace({ path: '/more', query: { pane: 'favorites' } });
 }
 function goBack() { pane.value = paneTrail.pop() || 'home'; if (route.query.pane) router.replace('/more'); }
+if (!warming) {
+  const removeNativeBack = registerBackHandler(() => {
+    if (pane.value === 'home') return false;
+    goBack();
+    return true;
+  });
+  onBeforeUnmount(removeNativeBack);
+}
 function saveProfile() {
   if (!profileDraft.nickname.trim()) return;
   Object.assign(profile, profileDraft, { nickname: profileDraft.nickname.trim(), bio: profileDraft.bio.trim() });
@@ -59,6 +79,7 @@ function savePassword() {
 }
 function sendFeedback() { if (feedback.value.trim()) notify('谢谢你的建议！提交功能将在后续开放'); }
 watch(pane, async () => {
+  if (warming) return;
   await nextTick();
   root.value?.querySelector('h1')?.focus({ preventScroll: true });
 });
@@ -137,7 +158,7 @@ onBeforeUnmount(() => { clearTimeout(noticeTimer); password.value = ''; confirmP
         <div class="help-links"><button v-sketch class="sketch" data-pencil="blue" type="button" @click="router.push('/calendar')">去看活动日历</button><button v-sketch class="sketch" data-pencil="mint" type="button" @click="router.push('/agent')">和 LiLi 聊聊</button></div>
         <HelloConnectionTest v-if="showInternalTools" />
         <h2 class="field-heading spaced-heading">想对我们说</h2>
-        <label class="form-field"><span class="sr-only">反馈内容</span><div v-sketch class="field-outline sketch"><textarea v-model="feedback" rows="4" maxlength="500" aria-label="反馈内容" placeholder="遇到了什么问题，或有什么新想法？"></textarea></div></label>
+        <label class="form-field"><span class="sr-only">反馈内容</span><div v-sketch class="field-outline sketch" data-sketch-key="more-feedback"><textarea v-model="feedback" rows="4" maxlength="500" aria-label="反馈内容" placeholder="遇到了什么问题，或有什么新想法？"></textarea></div></label>
         <button v-sketch class="primary-button sketch" data-pencil="yellow" type="button" :disabled="!feedback.trim()" @click="sendFeedback">提交反馈</button>
         <p class="home-note">LiveLife<span>发现校园生活的每一种颜色。<br />界面预览 · v0.1</span></p>
       </section>
