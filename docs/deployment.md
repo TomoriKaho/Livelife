@@ -478,7 +478,7 @@ sudo install -d -o livelife -g livelife -m 700 /opt/livelife/ssh
 排查时先查看 Actions 的具体阶段。`Exceeded MaxStartups` 表示 SSH 入口拒绝了尚未认证的新连接，不表示后端运行数量已达到上限。检查复用主连接时，以服务账号运行（将摘要替换为目录中实际 socket 名）：
 
 ```bash
-sudo -u livelife ssh -p 1021 -S /opt/livelife/ssh/c-<摘要> -O check group5@8.130.213.80
+sudo -u livelife ssh -p 1021 -S '/opt/livelife/ssh/c-<摘要>' -O check group5@8.130.213.80
 ```
 
 重复控制查询应显示同一主连接 PID。关闭主连接只能针对确认空闲的项目控制 socket；会中断该连接上正在执行的会话，不能作为常规清理方式。空闲退出由 OpenSSH 自动完成。不要删除其他服务文件或为了测试重启课程机 SSH。
@@ -486,6 +486,8 @@ sudo -u livelife ssh -p 1021 -S /opt/livelife/ssh/c-<摘要> -O check group5@8.1
 2026-10-08 诊断：公网→课程机三次串行连接成功，三次并行中一次在认证前明确返回 `Exceeded MaxStartups`；两台机器负载低。课程机认证日志与完整生效配置需要管理员读取，未确认具体阈值。候选复用模块实测首次查询约 0.38 秒，三路并行约 0.09–0.10 秒，共用同一个主连接 PID；三个独立 Python 进程也成功复用。这里只记录候选验证，现网接入和 Actions 结果另行记录。
 
 同日已接入公网机 Livelife 控制接口，替换前确认运行模块与 main 完全一致，备份在 `/opt/livelife/backups/ssh-reuse-1791438469`。真实受限 `build_status` 成功返回已完成前端任务，HTTPS staging hello 为 200、版本仍为 `ba9be64`。只退出候选控制主连接后，下一次查询成功创建新主连接；已有后端隧道未重启。客户端 Actions 仍执行 main 控制代码，服务端这一补丁先用于授权测试，仓库 PR 仍需成员评审；之前失败的 #45 自动分发已重跑，结果待回填。
+
+后续实际结果：修复 PR #46 的后端控制 [37734442654](https://github.com/TomoriKaho/Livelife/actions/runs/37734442654) 与前端控制 [37734442730](https://github.com/TomoriKaho/Livelife/actions/runs/37734442730) 均成功，课程机 133 项部署测试全部通过。#45 原控制运行重跑成功后，旧 APK 失败记录仍在；通过 main 上既有 `android-build` 手动入口，保持 `client_ref=43-persistent-sketch-cache`、`frontend_pr=45`、`backend_target=default`，运行 [37734472930](https://github.com/TomoriKaho/Livelife/actions/runs/37734472930) 成功发布 `0.1.0-test.15`。实际前端 SHA 为 `41a76601eed5d3db64862c53365d0e0cc72f59c2`，后端仍是 staging 的 `ba9be64`。HTTPS 下载、APK 摘要/签名、二维码、原生配置、许可证及真实 hello 校验通过；设备已断开 USB，用户选择自行下载安装，返回键回归尚待反馈。
 
 ### 维护者安装与排查教程
 
