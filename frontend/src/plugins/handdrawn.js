@@ -22,6 +22,7 @@ export function createHandDrawnRenderer(sharedBitmaps) {
   function seedFor(element) {
     const path = [];
     for (let item = element; item && path.length < 8; item = item.parentElement) {
+      if (item.dataset.sketchKey) { path.push(`key:${item.dataset.sketchKey}`); break; }
       const siblings = Array.from(item.parentElement?.children || []).filter(child => !child.classList.contains('sketch-render'));
       const shell = item.classList.contains('phone-shell');
       path.push(`${item.tagName}:${item.id}:${item.dataset.nav || ''}:${shell ? 0 : siblings.indexOf(item)}`);

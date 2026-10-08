@@ -14,7 +14,7 @@ export function createSketchBitmapQueue() {
 
   function evict(required: number) {
     for (const [key, bitmap] of cache) {
-      if (pixelsInUse + required <= maxPixels && cache.size < 256) break;
+      if (pixelsInUse + required <= maxPixels && cache.size < 512) break;
       if (bitmap.refs) continue;
       cache.delete(key);
       for (const [identity, target] of identities) if (target === key) identities.delete(identity);
