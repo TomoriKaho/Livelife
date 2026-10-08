@@ -12,7 +12,8 @@ import { createBuilding, profileFor, footprintShape, extrudeFootprint } from './
 import { createVegetation, createWater } from './landscape.mjs';
 import { insideFootprint } from './rings.mjs';
 import { pencilMaterial, pencilEdge } from './pencil-material.mjs';
-import { prepareStoreys, transitionModel, animateModel } from './storeys.mjs';
+import { storeysInput, applyStoreysData, transitionModel, animateModel } from './storeys.mjs';
+import { createStoreysWorker } from './storeys-worker';
 
 const props = defineProps({ selected: String, floor: Number, activities: Array, focusPoint: Array, focusInset: { type: Number, default: 0 } });
 const emit = defineEmits(['select', 'floor', 'ready']);
@@ -20,6 +21,11 @@ const host = ref(null), failed = ref(false), loading = ref(true), labels = ref([
 const modelIdentity = ref(''), modelProgress = ref('0');
 const panTarget = ref(initialView.target.filter((_, i) => i !== 1).join(','));
 let renderer, scene, camera, controls, observer, frame, buildings = [], focusedModel, floorMeshes = [], tween, pointerStart, disposed = false, locationMarker, locationRing, contextBuildings, vegetation;
+let storeysWorker, needsRender = true;
+function invalidate() {
+  needsRender = true;
+  if (!disposed && !loading.value && !frame) frame = requestAnimationFrame(tick);
+}
 const meshes = new Map(), selectable = [], raycaster = new THREE.Raycaster();
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const initialTarget = new THREE.Vector3(...initialView.target);
@@ -31,6 +37,7 @@ function surface(points, color, y) {
 }
 function fly(position, target) {
   tween = { start: performance.now(), from: camera.position.clone(), to: position, targetFrom: controls.target.clone(), targetTo: target, duration: reducedMotion ? 0 : 1050 };
+  invalidate();
 }
 function disposeGroup(group) {
   group.traverse(o => { o.geometry?.dispose(); if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { m.map?.dispose(); m.dispose(); }); });
@@ -83,7 +90,7 @@ function expand() {
   for (const model of meshes.values()) model.visible = !building || scenic || model === focusedModel || !!model.userData.transition;
   contextBuildings.visible = vegetation.visible = !building || !!scenic;
   locationMarker.visible = locationRing.visible = !building;
-  renderer.shadowMap.needsUpdate = true;
+  renderer.shadowMap.needsUpdate = true; invalidate();
   // 收起只合拢模型；终止尚未完成的聚焦，保留当前相机与观察目标。
   // 返回示例位置由显式 locate() 操作负责。
   if (!building) { tween = null; return; }
@@ -102,12 +109,14 @@ function expand() {
   fly(target.clone().add(new THREE.Vector3(.7, .55, 1.2).normalize().multiplyScalar(distance)), target);
 }
 function highlight() {
+  invalidate();
   for (const item of floorMeshes) {
     item.slab.material.color.set(item.floor === props.floor ? '#a9cfe5' : '#f4ecd8');
     item.slab.children[0].material.color.set(item.floor === props.floor ? '#425d70' : '#383d39');
   }
 }
 function updateActivities() {
+  invalidate();
   for (const item of floorMeshes) {
     item.events = props.activities.filter(a => a.building === props.selected && a.floor === item.floor);
     for (const room of item.level.userData.interior.children) if (room.userData.roomIndex !== undefined)
@@ -132,13 +141,14 @@ function coordinate(point) {
 }
 function tick(now) {
   if (disposed) return;
-  frame = requestAnimationFrame(tick);
+  frame = null;
+  if (disposed || loading.value) return;
   if (tween) {
     const t = tween.duration ? Math.min(1, (now - tween.start) / tween.duration) : 1, ease = t * t * (3 - 2 * t);
     camera.position.lerpVectors(tween.from, tween.to, ease); controls.target.lerpVectors(tween.targetFrom, tween.targetTo, ease);
     if (t === 1) tween = null;
   }
-  controls.update();
+  const moved = controls.update();
   // 在 OrbitControls 应用拖动及惯性后约束目标；相机同步平移，避免到校界时视角歪斜。
   const [x, z] = constrainToBoundary([controls.target.x, controls.target.z], campus.boundary);
   camera.position.x += x - controls.target.x; camera.position.z += z - controls.target.z;
@@ -149,14 +159,18 @@ function tick(now) {
     if (props.selected && !focusedModel?.userData.profile.scenic && model !== focusedModel && !model.userData.transition) model.visible = false;
   }
   modelProgress.value = (focusedModel?.userData.progress || 0).toFixed(3);
+  const animating = Boolean(tween) || [...meshes.values()].some(model => model.userData.transition);
+  if (!needsRender && !moved && !animating) return;
+  needsRender = false;
   renderer.render(scene, camera);
   // DOM 标签跟随 3D 相机投影，键盘也能点击；不依赖纹理字体或外网资源。
   labels.value = props.selected ? floorMeshes.map(f => ({ id: String(f.floor), floor: f.floor, title: `${f.floor}F${f.events.length ? ` · ${f.events[0].room}` : ''}`, count: f.events.length, ...coordinate(new THREE.Vector3(f.x, f.level.position.y + 2, f.z)) })) : venues.map(v => {
     const b = buildings.find(b => b.id === v.id), c = center(b.points);
     return { id: v.id, title: v.label, count: props.activities.filter(a => a.building === v.id).length, ...coordinate(new THREE.Vector3(c[0], profileFor(b).height + 7, c[1])) };
   });
+  if (moved || animating) invalidate();
 }
-function zoom(scale) { if (!camera) return; tween = null; camera.position.sub(controls.target).multiplyScalar(scale).add(controls.target); }
+function zoom(scale) { if (!camera) return; tween = null; camera.position.sub(controls.target).multiplyScalar(scale).add(controls.target); invalidate(); }
 function locate() { if (!scene) return; fly(initialCamera.clone(), initialTarget.clone()); }
 function focusPlace() {
   if (!scene || loading.value || !props.focusPoint) return;
@@ -171,6 +185,7 @@ function resizeViewport() {
   // 聚焦中心仍在默认抽屉上方，但完整画布延伸到 Tab，隐藏抽屉后不露空白。
   // 抽屉换档不改变该视口或相机，避免动画中地图跳动。
   camera.setViewOffset(width, Math.max(1, height - props.focusInset), 0, 0, width, height);
+  invalidate();
 }
 watch(() => props.selected, expand);
 watch(() => props.focusPoint, focusPlace);
@@ -179,6 +194,12 @@ watch(() => props.floor, highlight);
 watch(() => props.activities, updateActivities);
 onMounted(async () => {
   try {
+    let sliceStarted = performance.now();
+    async function yieldToPage() {
+      if (performance.now() - sliceStarted < 5) return;
+      await new Promise(resolve => setTimeout(resolve, 0));
+      sliceStarted = performance.now();
+    }
     scene = new THREE.Scene(); scene.background = new THREE.Color(mapPalette.sky); scene.fog = new THREE.Fog(mapPalette.sky, 650, 2000);
     camera = new THREE.PerspectiveCamera(42, 1, 1, 7000); camera.position.copy(initialCamera);
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false }); renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -190,13 +211,19 @@ onMounted(async () => {
     controls.minDistance = 65; controls.maxDistance = 2350; controls.minPolarAngle = .25; controls.maxPolarAngle = Math.PI * .46; controls.enablePan = true;
     controls.screenSpacePanning = false;
     controls.addEventListener('start', () => { tween = null; });
+    controls.addEventListener('change', invalidate);
     scene.add(new THREE.HemisphereLight(0xfffdf4, 0xeee8c7, 1.05));
     const sun = new THREE.DirectionalLight(0xffffff, .65); sun.position.set(-450, 800, 450); sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -1250, right: 1250, top: 1250, bottom: -1250, near: 10, far: 2400 }); sun.shadow.bias = -.0002; sun.shadow.normalBias = .5; scene.add(sun);
     // 校界只用于交互范围；连续地面跨过校界，远处以同色雾自然淡出。
     surface([[-4000, -4000], [4000, -4000], [4000, 4000], [-4000, 4000]], mapPalette.ground, 0);
-    [...campus.green, ...campus.context.green].forEach(g => surface(g.points, g.kind === 'pitch' ? mapPalette.pitch : mapPalette.green, .07));
-    [...campus.water, ...campus.context.water].forEach(w => scene.add(createWater(w)));
+    for (const g of [...campus.green, ...campus.context.green]) {
+      surface(g.points, g.kind === 'pitch' ? mapPalette.pitch : mapPalette.green, .07);
+      await yieldToPage(); if (disposed) return;
+    }
+    for (const w of [...campus.water, ...campus.context.water]) {
+      scene.add(createWater(w)); await yieldToPage(); if (disposed) return;
+    }
     const roadVertices = [];
     for (const road of campus.context.roads) {
       const [a, b] = road.points, dx = b[0] - a[0], dz = b[1] - a[1], length = Math.hypot(dx, dz);
@@ -204,26 +231,37 @@ onMounted(async () => {
       const nx = -dz / length * road.width / 2, nz = dx / length * road.width / 2;
       const p = [[a[0] + nx, .23, a[1] + nz], [b[0] + nx, .23, b[1] + nz], [b[0] - nx, .23, b[1] - nz], [a[0] - nx, .23, a[1] - nz]];
       [0, 1, 2, 0, 2, 3].forEach(i => roadVertices.push(...p[i]));
+      await yieldToPage(); if (disposed) return;
     }
     const roads = new THREE.BufferGeometry(); roads.setAttribute('position', new THREE.Float32BufferAttribute(roadVertices, 3)); roads.computeVertexNormals();
     const roadMesh = new THREE.Mesh(roads, pencilMaterial({ color: mapPalette.road, side: THREE.DoubleSide, scale: .5 })); roadMesh.receiveShadow = true; scene.add(roadMesh);
     buildings = campus.buildings;
-    let preparedCount = 0;
+    storeysWorker = createStoreysWorker();
     for (const b of buildings) {
-      const mesh = prepareStoreys(createBuilding(b), b, venues.find(v => v.id === b.id)?.floors || Math.min(6, profileFor(b).floors)); scene.add(mesh); meshes.set(b.id, mesh); selectable.push(mesh);
-      if (++preparedCount % 16 === 0) {
-        await new Promise(resolve => setTimeout(resolve, 0));
+      const mesh = createBuilding(b); scene.add(mesh);
+      if (!mesh.userData.profile.scenic) {
+        const data = await storeysWorker.prepare(storeysInput(mesh, b, venues.find(v => v.id === b.id)?.floors || Math.min(6, profileFor(b).floors)));
         if (disposed) return;
+        applyStoreysData(mesh, b, data);
       }
+      meshes.set(b.id, mesh); selectable.push(mesh);
+      await yieldToPage(); if (disposed) return;
     }
+    storeysWorker.dispose(); storeysWorker = null;
     // 四栋活动入口提前缓存室内，首点也无需临时创建这一批几何。
-    for (const venue of venues) cacheInterior(meshes.get(venue.id), buildings.find(b => b.id === venue.id));
+    for (const venue of venues) {
+      cacheInterior(meshes.get(venue.id), buildings.find(b => b.id === venue.id));
+      await yieldToPage(); if (disposed) return;
+    }
     // 周边是实际轮廓的背景模型，合并绘制，避免增加数百次绘制调用。
-    const contextGeometry = campus.context.buildings.map(b => {
+    const contextGeometry = [];
+    for (const b of campus.context.buildings) {
       const g = extrudeFootprint(b, profileFor(b).height), color = new THREE.Color(profileFor(b).wall), colors = [];
       for (let i = 0; i < g.attributes.position.count; i++) colors.push(color.r, color.g, color.b);
-      g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3)); return g;
-    });
+      g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3)); contextGeometry.push(g);
+      await yieldToPage();
+      if (disposed) { contextGeometry.forEach(part => part.dispose()); return; }
+    }
     if (contextGeometry.length) {
       contextBuildings = new THREE.Mesh(mergeGeometries(contextGeometry), pencilMaterial({ vertexColors: true })); contextBuildings.castShadow = true; contextBuildings.receiveShadow = true;
       contextGeometry.forEach(g => g.dispose()); pencilEdge(contextBuildings, { opacity: .18, threshold: 42 }); scene.add(contextBuildings);
@@ -239,10 +277,13 @@ onMounted(async () => {
     loading.value = false;
     if (props.selected) expand();
     else if (props.focusPoint) focusPlace();
-    emit('ready'); tick(performance.now());
-  } catch (error) { if (!disposed) { console.error('校园 3D 地图初始化失败', error); failed.value = true; loading.value = false; } }
+    emit('ready'); invalidate();
+  } catch (error) {
+    storeysWorker?.dispose(); storeysWorker = null;
+    if (!disposed) { console.error('校园 3D 地图初始化失败', error); failed.value = true; loading.value = false; }
+  }
 });
-onBeforeUnmount(() => { disposed = true; cancelAnimationFrame(frame); observer?.disconnect(); controls?.dispose(); if (scene) disposeGroup(scene); renderer?.dispose(); });
+onBeforeUnmount(() => { disposed = true; storeysWorker?.dispose(); cancelAnimationFrame(frame); observer?.disconnect(); controls?.dispose(); if (scene) disposeGroup(scene); renderer?.dispose(); });
 </script>
 
 <template>

@@ -8,7 +8,7 @@ import { joinRings, insideFootprint } from '../src/pages/map/rings.mjs';
 import { createBuilding, extrudeFootprint, profileFor } from '../src/pages/map/architecture.mjs';
 import { treeLayout } from '../src/pages/map/landscape.mjs';
 import * as THREE from 'three';
-import { prepareStoreys, sliceGeometry, transitionModel, animateModel } from '../src/pages/map/storeys.mjs';
+import { prepareStoreys, sliceGeometry, transitionModel, animateModel, storeysInput, buildStoreysData, applyStoreysData, storeysBuffers } from '../src/pages/map/storeys.mjs';
 const campus = JSON.parse(await readFile(new URL('../src/assets/maps/campus.json', import.meta.url), 'utf8'));
 test('多面建筑拼接反向成员并保留开放折线失败状态', () => {
   const segments = [[[0, 0], [10, 0]], [[0, 10], [10, 10]], [[10, 0], [10, 10]], [[0, 10], [0, 0]]];
@@ -171,5 +171,30 @@ test('本地校区资源完整，演示活动映射到实际 OSM 建筑且楼层
     const venue = venues.find(v => v.id === a.building);
     const floors = venue?.floors || Math.min(6, profileFor(building).floors);
     assert.ok(a.floor > 0 && a.floor <= floors, a.title);
+  }
+});
+
+
+test('Worker 楼层缓冲区往返保留庭院、颜色、勾线及原屋顶，输入传输不分离现场模型', () => {
+  for (const id of ['r3249649', '444991872']) {
+    const building = campus.buildings.find(b => b.id === id);
+    const reference = prepareStoreys(createBuilding(building), building, 4);
+    const model = createBuilding(building), roof = model.children.find(o => o.userData.role === 'roof');
+    const live = model.children.find(o => o.isMesh).geometry.attributes.position.array;
+    const input = storeysInput(model, building, 4);
+    const transferred = structuredClone(input, { transfer: storeysBuffers(input) });
+    assert.ok(live.byteLength > 0, '传输的是副本，不能分离现场几何');
+    const data = buildStoreysData(transferred);
+    applyStoreysData(model, building, structuredClone(data, { transfer: storeysBuffers(data) }));
+    assert.equal(model.userData.parts.at(-1), roof);
+    for (const [index, level] of model.userData.storeys.entries()) {
+      const shell = level.userData.shell, expected = reference.userData.storeys[index].userData.shell;
+      for (const name of ['position', 'normal', 'color'])
+        assert.deepEqual(shell.geometry.attributes[name].array, expected.geometry.attributes[name].array);
+      assert.deepEqual(shell.children[0].geometry.attributes.position.array, expected.children[0].geometry.attributes.position.array);
+      assert.equal(shell.userData.building, id);
+      assert.equal(shell.userData.floor, index + 1);
+    }
+    for (const group of [model, reference]) group.traverse(o => { o.geometry?.dispose(); o.material?.dispose(); });
   }
 });
