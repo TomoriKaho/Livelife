@@ -8,6 +8,7 @@ app = FastAPI(title="Livelife API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "https://localhost",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:8765",
@@ -17,6 +18,7 @@ app.add_middleware(
     ],
     allow_methods=["GET"],
     allow_headers=["Accept"],
+    expose_headers=["X-Livelife-Backend-SHA"],
 )
 
 app.include_router(test_router, prefix="/test", tags=["demo"])

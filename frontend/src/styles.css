@@ -109,3 +109,7 @@ h1 { font-size: 28px; letter-spacing: .5px; margin: 0; font-weight: 400; line-he
   .placeholder { animation: arrive .22s ease-out; }
   @keyframes arrive { from { opacity: .3; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 }
+
+/* Capacitor 8 exposes native system-bar insets as CSS variables. */
+html { --safe-top: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)); --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)); }
+body { padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); box-sizing: border-box; }

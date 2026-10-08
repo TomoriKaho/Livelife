@@ -78,6 +78,35 @@ class Runtime:
         gateway = self.root / "gateway"
         blocks = []
         for prefix, row in sorted(routes.items()):
+            if row.get("kind") == "apk":
+                from .apks import apk_id
+
+                ident = apk_id(row["apk_id"])
+                if not re.fullmatch(
+                    r"/downloads/android/(staging|pr-[1-9][0-9]*|manual-[a-f0-9]{32}|build-[a-f0-9]{32})/",
+                    prefix,
+                ):
+                    raise ValueError("invalid APK route")
+                directory = self.root / "apks" / ident
+                blocks.append(f"location = {prefix[:-1]} {{ return 308 {prefix}; }}")
+                for suffix, mime in [
+                    ("", "text/html"),
+                    ("index.html", "text/html"),
+                    ("status.json", "application/json"),
+                    ("qr.png", "image/png"),
+                ]:
+                    alias = (
+                        str(directory) + "/" if not suffix else str(directory / suffix)
+                    )
+                    blocks.append(f"""location = {prefix}{suffix} {{
+    alias {alias};
+    index index.html;
+    default_type {mime};
+    add_header Cache-Control no-store always;
+    add_header Access-Control-Allow-Origin \"https://localhost\" always;
+    add_header X-Content-Type-Options nosniff always;
+}}""")
+                continue
             if row.get('kind') == 'web':
                 from .web import build_id, environment
                 build_id(row['build_id'])
@@ -151,7 +180,7 @@ class Runtime:
             atomic_text(routes_path, previous)
             raise
         atomic_json(gateway / "data/versions.json", {prefix: (row['config'] if row.get('kind') == 'web' else
-                                                {"instance": row["id"], "backend_sha": row["sha"]})
+                                                (row if row.get("kind") == "apk" else {"instance": row["id"], "backend_sha": row["sha"]}))
                                                 for prefix, row in routes.items()})
 
     def check_web_route(self, prefix, config):

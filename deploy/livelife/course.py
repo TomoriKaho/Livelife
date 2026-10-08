@@ -70,6 +70,22 @@ class Course:
 
     def handle(self, request):
         op = request["op"]
+        if op == 'android_tools':
+            # Administrative transfer of verified project tools, never source artifacts.
+            import io
+            out = io.BytesIO()
+            with tarfile.open(fileobj=out, mode='w:gz', dereference=True) as archive:
+                for name in ('jdk', 'android-sdk/build-tools/36.0.0'):
+                    directory = self.root / 'build-tools' / name
+                    if not directory.is_dir():
+                        raise ValueError('Android signing tools are not installed')
+                    archive.add(directory, arcname=name, filter=lambda item: None
+                        if item.name.startswith('jdk/jmods/') or item.name == 'jdk/jmods' or item.name.endswith('/src.zip')
+                        else item)
+            data = out.getvalue()
+            if len(data) > 256*1024**2:
+                raise ValueError('Android tool transfer exceeds limit')
+            return {'bundle':base64.b64encode(data).decode(), 'digest':hashlib.sha256(data).hexdigest()}
         if op.startswith('build_'):
             from .build_queue import BuildQueue, job_id
             queue = BuildQueue(self.root / 'builds')
@@ -80,9 +96,12 @@ class Course:
             if op == 'build_status':
                 return queue.lookup(request['job'], request.get('offset', 0))
             if op == 'build_artifact':
-                result = queue.completed(request['job'], 'frontend', request['sha'])
+                component = request.get('component', 'frontend')
+                if component not in ('frontend', 'android'):
+                    raise ValueError('unsupported artifact component')
+                result = queue.completed(request['job'], component, request['sha'])
                 manifest = result['result']
-                payload = (queue.jobs / job_id(request['job']) / 'artifact/frontend.tgz').read_bytes()
+                payload = (queue.jobs / job_id(request['job']) / ('artifact/android-unsigned.apk' if component == 'android' else 'artifact/frontend.tgz')).read_bytes()
                 if len(payload) > 64 * 1024**2 or hashlib.sha256(payload).hexdigest() != manifest['digest']:
                     raise ValueError('stored frontend artifact mismatch')
                 return {'manifest': manifest, 'bundle': base64.b64encode(payload).decode()}

@@ -37,6 +37,8 @@ class BuildQueue:
                 status TEXT NOT NULL, created REAL NOT NULL, updated REAL NOT NULL,
                 error TEXT NOT NULL DEFAULT '', result TEXT);
                 CREATE INDEX IF NOT EXISTS jobs_pending ON jobs(status,created);""")
+            if "options" not in {r[1] for r in db.execute("PRAGMA table_info(jobs)")}:
+                db.execute("ALTER TABLE jobs ADD COLUMN options TEXT")
 
     @contextmanager
     def db(self):
@@ -54,9 +56,13 @@ class BuildQueue:
 
     def submit(self, request):
         component = request["component"]
-        if component not in ("frontend", "backend"):
+        if component not in ("frontend", "backend", "android"):
             raise ValueError("unsupported build component")
         commit = sha(request["sha"])
+        options = None
+        if component == "android":
+            from .android_build import validate_config
+            options = validate_config(request["config"], commit)
         branch = request["branch"]
         if (
             not isinstance(branch, str)
@@ -81,6 +87,8 @@ class BuildQueue:
         with self.db() as db:
             same = db.execute("SELECT * FROM jobs WHERE id=?", (ident,)).fetchone()
             if same:
+                if options is not None and json.loads(same["options"]) != options:
+                    raise ValueError("build request configuration changed")
                 return self.describe(same)
             newer = db.execute(
                 "SELECT 1 FROM jobs WHERE component=? AND branch=? AND generation>? AND sha<>?",
@@ -93,7 +101,7 @@ class BuildQueue:
                 }
             # First-attempt push/PR notifications share one physical build.
             # Explicit reruns may rebuild a failed or already completed version.
-            if attempt == 1:
+            if attempt == 1 and component != "android":
                 reused = db.execute(
                     "SELECT * FROM jobs WHERE component=? AND sha=? AND status IN ('queued','running','success') ORDER BY created LIMIT 1",
                     (component, commit),
@@ -108,12 +116,15 @@ class BuildQueue:
                 "INSERT INTO jobs(id,component,sha,branch,generation,run_id,attempt,status,created,updated) VALUES(?,?,?,?,?,?,?,'queued',?,?)",
                 (ident, component, commit, branch, generation, run, attempt, now, now),
             )
+            if options is not None:
+                db.execute("UPDATE jobs SET options=? WHERE id=?", (json.dumps(options), ident))
             return self.describe(
                 db.execute("SELECT * FROM jobs WHERE id=?", (ident,)).fetchone()
             )
 
     def claim(self):
         with self.db() as db:
+            db.execute("UPDATE jobs SET status='failure',updated=?,error='queue wait exceeded 30 minutes; rerun the request' WHERE status='queued' AND created<?", (self.clock(), self.clock()-1800))
             if (
                 db.execute(
                     "SELECT COUNT(*) FROM jobs WHERE status='running'"
@@ -175,6 +186,8 @@ class BuildQueue:
                 "error",
             )
         }
+        if "options" in row.keys() and row["options"]:
+            result["config"] = json.loads(row["options"])
         if row["result"]:
             result["result"] = json.loads(row["result"])
         return result

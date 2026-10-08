@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core';
 import { previewState } from './runtime-config';
 
 /**
@@ -9,7 +10,7 @@ import { previewState } from './runtime-config';
 
 /** 是否为 Capacitor 原生环境 */
 export const isNative = (): boolean => {
-  return false; // 首阶段均为 Web
+  return Capacitor.isNativePlatform();
 };
 
 /** 获取 API 基地址 */
@@ -18,5 +19,6 @@ export const getApiBaseUrl = (): string => {
     if (!previewState.config) throw new Error('测试配置不可用，请先重新读取配置。');
     return previewState.config.api_base_url;
   }
+  if (isNative() && !import.meta.env.VITE_API_BASE_URL) throw new Error('请配置手机可访问的 VITE_API_BASE_URL。');
   return import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 };

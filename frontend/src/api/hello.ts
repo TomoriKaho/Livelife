@@ -2,6 +2,7 @@
  * 首阶段唯一的真实后端接口：GET /test/hello
  * 接口契约见 docs/architecture.md#首阶段接口契约。
  */
+import { checkAndroidStatus } from '../platform/android-config';
 import type { HelloResponse } from '../types';
 import { getApiBaseUrl } from '../platform/web';
 import { previewState } from '../platform/runtime-config';
@@ -14,6 +15,7 @@ export async function fetchHello(): Promise<
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
   try {
+    await checkAndroidStatus();
     const baseUrl = getApiBaseUrl().replace(/\/+$/, '');
     const resp = await fetch(`${baseUrl}/test/hello`, {
       method: 'GET',
