@@ -15,7 +15,9 @@ const configReady = Capacitor.isNativePlatform() && import.meta.env.VITE_ANDROID
   ? loadAndroidConfig() : loadPreviewConfig();
 configReady.then(async () => {
   const bitmaps = createSketchBitmapQueue();
+  const started = performance.now();
   await warmSketchLayouts(App, router.options.routes, bitmaps);
+  console.info('Livelife sketch preparation', JSON.stringify({ ...bitmaps.stats, elapsedMs: Math.round(performance.now() - started) }));
   const app = createApp(App).use(router).use(createSketchPlugin(bitmaps));
   app.onUnmount(() => bitmaps.dispose());
   app.mount('#app');

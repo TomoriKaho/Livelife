@@ -10,3 +10,10 @@ test('recreating a demo page keeps its palette and cannot mutate the session ass
   first.reverse();
   assert.deepEqual(sessionShuffle('palette-test', palette), expected);
 });
+
+
+test('cold application instances keep demo palettes and order stable', async () => {
+  const cold = await import('../src/data/session-style.ts?cold');
+  const values = ['yellow', 'blue', 'pink', 'mint', 'lavender'];
+  assert.deepEqual(sessionShuffle('cold-palette', values), cold.sessionShuffle('cold-palette', values));
+});

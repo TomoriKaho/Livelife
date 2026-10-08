@@ -1,6 +1,8 @@
+import { createSketchStore, sketchCacheKey, sketchCacheNamespace, type SketchStore } from '../platform/sketch-cache';
+
 // Complex SVG filters are evaluated off the live DOM, once per drawing.
 // Scrolling pages display reusable transparent PNGs instead of SVG filters.
-export function createSketchBitmapQueue() {
+export function createSketchBitmapQueue(store: SketchStore = createSketchStore(), namespace = sketchCacheNamespace) {
   type Bitmap = { image: HTMLImageElement; url: string; pixels: number; refs: number };
   type Job = { cancelled: boolean; run: () => Promise<void> };
   const jobs: Job[] = [];
@@ -8,7 +10,8 @@ export function createSketchBitmapQueue() {
   const cache = new Map<string, Bitmap>();
   const identities = new Map<string, string>();
   const idle: Array<() => void> = [];
-  let busy = false, pixelsInUse = 0;
+  let busy = false, pixelsInUse = 0, disposed = false;
+  const stats = { generated: 0, diskHits: 0, memoryHits: 0, readMs: 0, encodeMs: 0 };
   const maxPixels = 32 * 1024 * 1024;
   const padding = 6; // Include the pencil outline displaced outside the box.
 
@@ -28,7 +31,7 @@ export function createSketchBitmapQueue() {
     try {
       while (jobs.length) {
         const job = jobs.shift()!;
-        if (!job.cancelled) await job.run();
+        if (!job.cancelled && !disposed) await job.run();
       }
     } finally {
       busy = false;
@@ -57,7 +60,7 @@ export function createSketchBitmapQueue() {
       if (identity) identities.set(identity, key);
     }
     function display() {
-      if (job.cancelled) { release(); return; }
+      if (job.cancelled || disposed) { release(); return; }
       const image = held!.image.cloneNode() as HTMLImageElement;
       published = true;
       publish(image, release);
@@ -68,7 +71,7 @@ export function createSketchBitmapQueue() {
         let sourceUrl = '', bitmapUrl = '', reserved = 0;
         try {
           const existing = cache.get(key);
-          if (existing) { retain(existing); ready.push(display); return; }
+          if (existing) { stats.memoryHits++; retain(existing); ready.push(display); return; }
           const area = (width + padding * 2) * (height + padding * 2);
           let ratio = Math.min(window.devicePixelRatio || 1, 3, Math.sqrt(4 * 1024 * 1024 / area));
           evict(Math.ceil(area * ratio * ratio) + 8192);
@@ -79,23 +82,51 @@ export function createSketchBitmapQueue() {
           canvas.height = Math.ceil((height + padding * 2) * ratio);
           reserved = canvas.width * canvas.height;
           pixelsInUse += reserved;
-          sourceUrl = URL.createObjectURL(new Blob([source], { type: 'image/svg+xml' }));
-          const input = new Image();
-          input.src = sourceUrl;
-          await input.decode();
-          if (job.cancelled) return;
-          const context = canvas.getContext('2d');
-          if (!context) throw new Error('Canvas 2D unavailable');
-          context.drawImage(input, 0, 0, canvas.width, canvas.height);
-          const blob = await new Promise<Blob>((resolve, reject) => {
-            canvas.toBlob(result => result ? resolve(result) : reject(new Error('PNG encoding failed')), 'image/png');
-          });
-          if (job.cancelled) return;
-          bitmapUrl = URL.createObjectURL(blob);
-          const image = new Image();
-          image.src = bitmapUrl;
-          await image.decode();
-          if (job.cancelled) return;
+          const started = performance.now();
+          let diskKey: string | undefined;
+          try { diskKey = await sketchCacheKey(source, window.devicePixelRatio || 1, namespace); } catch { /* Optional storage/hash. */ }
+          let stored = diskKey ? await store.get(diskKey).catch(() => undefined) : undefined;
+          stats.readMs += performance.now() - started;
+          if (job.cancelled || disposed) return;
+          // Lower resolution caused by memory pressure must never be reused as a full-size drawing.
+          if (stored && (stored.width !== canvas.width || stored.height !== canvas.height)) stored = undefined;
+          let blob: Blob | undefined, decoded: HTMLImageElement | undefined;
+          if (stored) {
+            bitmapUrl = URL.createObjectURL(stored.blob);
+            const probe = new Image(); probe.src = bitmapUrl;
+            try {
+              await probe.decode();
+              if (probe.naturalWidth !== stored.width || probe.naturalHeight !== stored.height) throw new Error('Invalid dimensions');
+              blob = stored.blob; decoded = probe; stats.diskHits++;
+            } catch {
+              URL.revokeObjectURL(bitmapUrl); bitmapUrl = '';
+              if (diskKey) await store.remove(diskKey).catch(() => {});
+            }
+          }
+          if (job.cancelled || disposed) return;
+          if (!blob) {
+            const encodeStarted = performance.now();
+            sourceUrl = URL.createObjectURL(new Blob([source], { type: 'image/svg+xml' }));
+            const input = new Image();
+            input.src = sourceUrl;
+            await input.decode();
+            if (job.cancelled || disposed) return;
+            const context = canvas.getContext('2d');
+            if (!context) throw new Error('Canvas 2D unavailable');
+            context.drawImage(input, 0, 0, canvas.width, canvas.height);
+            blob = await new Promise<Blob>((resolve, reject) => {
+              canvas.toBlob(result => result ? resolve(result) : reject(new Error('PNG encoding failed')), 'image/png');
+            });
+            if (job.cancelled || disposed) return;
+            stats.generated++;
+            stats.encodeMs += performance.now() - encodeStarted;
+            if (diskKey) await store.put({ key: diskKey, blob, width: canvas.width, height: canvas.height, touched: Date.now() }).catch(() => {});
+          }
+          if (job.cancelled || disposed) return;
+          if (!bitmapUrl) bitmapUrl = URL.createObjectURL(blob);
+          const image = decoded || new Image();
+          if (!decoded) { image.src = bitmapUrl; await image.decode(); }
+          if (job.cancelled || disposed) return;
           image.className = 'sketch-render sketch-bitmap';
           image.alt = '';
           image.setAttribute('aria-hidden', 'true');
@@ -115,13 +146,14 @@ export function createSketchBitmapQueue() {
       },
     };
     const existing = cache.get(key);
-    if (existing) { retain(existing); display(); }
+    if (existing) { stats.memoryHits++; retain(existing); display(); }
     else { jobs.push(job); void drain(); }
     return () => { job.cancelled = true; if (!published) release(); };
   }
   function reuse(identity: string, publish: (image: HTMLImageElement, release: () => void) => void) {
     const key = identities.get(identity), bitmap = key ? cache.get(key) : undefined;
     if (!key || !bitmap) return undefined;
+    stats.memoryHits++;
     cache.delete(key); cache.set(key, bitmap);
     bitmap.refs++;
     let held = true;
@@ -129,6 +161,7 @@ export function createSketchBitmapQueue() {
     return () => {};
   }
   function dispose() {
+    disposed = true; store.close();
     jobs.forEach(job => { job.cancelled = true; });
     jobs.length = 0;
     for (const bitmap of cache.values()) URL.revokeObjectURL(bitmap.url);
@@ -139,5 +172,5 @@ export function createSketchBitmapQueue() {
   function whenIdle() {
     return busy ? new Promise<void>(resolve => idle.push(resolve)) : Promise.resolve();
   }
-  return { render, reuse, dispose, whenIdle };
+  return { render, reuse, dispose, whenIdle, stats };
 }
