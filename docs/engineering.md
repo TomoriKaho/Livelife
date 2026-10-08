@@ -353,4 +353,4 @@ feat: (订阅) 调整订阅响应结构
 
 ## Android 本地工程
 
-Capacitor Android 工程已在 frontend/android 提供。工具版本、SDK/IDE 安装、网页同步、手机/模拟器运行和 debug 包隔离见[Android 教程](android-testing.md)。团队签名与自动打包不依赖每位成员的本机环境。
+Capacitor Android 工程已在 frontend/android 提供。工具版本、SDK/IDE 安装、网页同步、手机/模拟器运行和 debug 包隔离见[Android 教程](testing.md#android-测试包操作)。团队签名与自动打包不依赖每位成员的本机环境。

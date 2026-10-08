@@ -1,6 +1,6 @@
 # Android 测试包部署与维护（#28）
 
-成员操作见[Android 开发与测试教程](../android-testing.md)，网页/后端的既有部署见[部署说明](../deployment.md)。这里只维护 Android 增量配置，不包含正式发布或 iOS。
+成员操作见[Android 开发与测试教程](../testing.md#android-测试包操作)，网页/后端的既有部署见[部署说明](../deployment.md)。这里只维护 Android 增量配置，不包含正式发布或 iOS。
 
 ## 工具和权限
 

@@ -507,4 +507,4 @@ PR #40 首次自动检查在源码 fetch 超时后遗留 shallow.lock，后续 f
 
 ## Android 测试包分发（#28）
 
-课程机未签名构建、公网机可信签名与二维码分发的增量配置见[维护者说明](deployment/android-apk.md)，成员使用方法见[Android 教程](android-testing.md)。Android 开关与网页开关独立；完整链路是否启用以该说明的实施记录为准。
+课程机未签名构建、公网机可信签名与二维码分发的增量配置见[维护者说明](deployment/android-apk.md)，成员使用方法见[Android 教程](testing.md#android-测试包操作)。Android 开关与网页开关独立；完整链路是否启用以该说明的实施记录为准。
