@@ -88,3 +88,16 @@ Android checks 失败看 Preview environments 的课程日志和错误阶段。�
 本地部署测试 124 项通过（本地跳过 3 项 Linux/Nginx 检查），前端 41 项行为测试、preview/production 构建、后端 12 项测试、actionlint、ruff 和 shell 检查通过。初次工具安装中断导致历史 android-tools.json 只记录了 Gradle；安装器现已按工具立即保存，已有工具不会被虚构为重新校验过。
 
 尚未合入 main，LIVELIFE_ANDROID_ENABLED 尚未开启；自动事件、main APK 入口和 Android PR 关闭/重开链路需在合并并启用后验证。候选下载页和 PR 正文已可使用，统一自动评论的 APK 信息由启用后的 main 控制器维护。成员 Android 真机安装、覆盖升级、2D/3D 地图、返回键及 hello 验收待执行，不将自动构建通过记为真机通过。
+
+
+2026-10-08：根据 Redmi Note 12 Turbo（Android 15 / WebView 131.0.6778.260）诊断结果，补充手绘 PNG 缓存、默认页面及个人设置子页面启动预热、稳定会话配色、地图楼层 Worker 和空闲停止绘制、导航选中底色同步。已发布新的受限 RPC 候选：
+
+| 项目 | 实际记录 |
+| --- | --- |
+| 安装包 | 0.1.0-test.9，versionCode 9，20,530,353 字节 |
+| 客户端 SHA | `d78a5b16b24df866ee5fc4139c82c04f824165c0` |
+| 固定后端 SHA | `9ce6d52190f48de388331f49705e70641015fe83` |
+| SHA-256 | `b37debc80a0e3302149490262f4bee44aaa41a6121e0a4242a416acd46244ed0` |
+| 有效期 | 2026-10-15 11:21:47 CST；释放后可提前失效 |
+
+已验证 APK 校验值、与旧包相同的签名证书、包内客户端配置与 Worker 资源、HTTPS 下载页及 ready 状态、二维码解码。通过 USB 在上述手机覆盖安装成功，系统记录 versionCode 9。前端 43 项行为测试及 preview/production 构建通过；诊断应用验证细节见 [测试说明](../testing.md)。覆盖安装成功不代表地图、返回键和 hello 全项真机验收通过；这些项目及另一名成员正式评审仍待记录。Android 自动部署开关状态仍按上述记录执行。
