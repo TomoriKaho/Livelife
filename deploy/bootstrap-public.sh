@@ -8,7 +8,7 @@ if ! id livelife >/dev/null 2>&1; then
   useradd --system --create-home --home-dir /var/lib/livelife --shell /bin/bash livelife
 fi
 install -d -m 755 "$task_root" "$task_root/control" "$task_root/gateway" "$task_root/bin"
-install -d -o livelife -g livelife -m 700 "$task_root/state" "$task_root/tunnels" "$task_root/credentials"
+install -d -o livelife -g livelife -m 700 "$task_root/state" "$task_root/tunnels" "$task_root/credentials" "$task_root/ssh"
 install -d -o livelife -g livelife -m 750 "$task_root/web" "$task_root/apks"
 install -d -o livelife -g livelife -m 750 "$task_root/gateway/config" "$task_root/gateway/run" \
   "$task_root/gateway/logs" "$task_root/gateway/data"

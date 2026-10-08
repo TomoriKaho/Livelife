@@ -459,6 +459,36 @@ main 合并后可在 Actions → Preview environments → Run workflow 使用 we
 
 课程机任务记录和网页包默认保留 7 天。后端 release.json 中仍指向的任务目录永久保留到实例真正清理，避免回收正在运行或固定绑定/回滚使用的 venv。公网网页仍按自身当前/上一版本及容量规则保存，不跟随课程机包到期删除。磁盘不足 1 GiB 时拒绝新构建。下载缓存和 source.git 是项目级缓存；长期磁盘配额与缓存淘汰需要根据实际增长维护，不将 1.4 TiB 共享磁盘视为本组独占。
 
+### 课程机 SSH 控制连接复用
+
+公网机通过 OpenSSH ControlMaster 共用一条已认证的课程机控制连接。不同 Actions/RPC 进程在该连接上打开独立会话；构建状态查询、产物传输和部署控制不再每次重新进行 TCP/SSH 握手。主连接空闲 120 秒自动退出，后续请求重新建立；现有各后端的长期转发隧道继续独立运行。
+
+`/opt/livelife/ssh` 归 `livelife` 所有、权限必须为 0700，内部控制 socket 及创建锁不向其他用户开放。socket 名称包含连接参数和密钥/known_hosts 文件身份；凭证文件更换后使用新连接。复用仍保留固定密钥、BatchMode 和 StrictHostKeyChecking；不绕过主机公钥校验。
+
+首次创建用文件锁协调并发请求，只串行化连接建立，正常 RPC 会话可并发。主连接失效后下次请求重新建立，并移除属于本账号的失效 socket；不删除其他文件或未知 socket。调用禁止在复用失败时偷偷回退新 TCP 连接。仅新主连接建立时的临时握手拒绝可重试，最多四次，等待约 1/2/4 秒加随机延迟；密钥拒绝和主机公钥变化立即报错。主连接建立使用 `-N`，重试阶段没有发送业务操作；已发送 RPC 的响应丢失不会自动重放，需按已有部署记录确认结果后重跑。
+
+新安装由 `bootstrap-public.sh` 创建私有目录。已有安装更新受信控制模块时，先执行：
+
+```bash
+sudo install -d -o livelife -g livelife -m 700 /opt/livelife/ssh
+```
+
+更新 `control/livelife/runtime.py` 和 `control/livelife/ssh_transport.py` 前保存备份，原子替换模块。下一次受限 RPC 即生效，不需重启 Nginx、后端或已有隧道。GitHub 特权控制程序继续来自 main；构建 SHA、产物校验、引用与发布 generation 规则不变。
+
+排查时先查看 Actions 的具体阶段。`Exceeded MaxStartups` 表示 SSH 入口拒绝了尚未认证的新连接，不表示后端运行数量已达到上限。检查复用主连接时，以服务账号运行（将摘要替换为目录中实际 socket 名）：
+
+```bash
+sudo -u livelife ssh -p 1021 -S '/opt/livelife/ssh/c-<摘要>' -O check group5@8.130.213.80
+```
+
+重复控制查询应显示同一主连接 PID。关闭主连接只能针对确认空闲的项目控制 socket；会中断该连接上正在执行的会话，不能作为常规清理方式。空闲退出由 OpenSSH 自动完成。不要删除其他服务文件或为了测试重启课程机 SSH。
+
+2026-10-08 诊断：公网→课程机三次串行连接成功，三次并行中一次在认证前明确返回 `Exceeded MaxStartups`；两台机器负载低。课程机认证日志与完整生效配置需要管理员读取，未确认具体阈值。候选复用模块实测首次查询约 0.38 秒，三路并行约 0.09–0.10 秒，共用同一个主连接 PID；三个独立 Python 进程也成功复用。这里只记录候选验证，现网接入和 Actions 结果另行记录。
+
+同日已接入公网机 Livelife 控制接口，替换前确认运行模块与 main 完全一致，备份在 `/opt/livelife/backups/ssh-reuse-1791438469`。真实受限 `build_status` 成功返回已完成前端任务，HTTPS staging hello 为 200、版本仍为 `ba9be64`。只退出候选控制主连接后，下一次查询成功创建新主连接；已有后端隧道未重启。客户端 Actions 仍执行 main 控制代码，服务端这一补丁先用于授权测试，仓库 PR 仍需成员评审；之前失败的 #45 自动分发已重跑，结果待回填。
+
+后续实际结果：修复 PR #46 的后端控制 [37734442654](https://github.com/TomoriKaho/Livelife/actions/runs/37734442654) 与前端控制 [37734442730](https://github.com/TomoriKaho/Livelife/actions/runs/37734442730) 均成功，课程机 133 项部署测试全部通过。#45 原控制运行重跑成功后，旧 APK 失败记录仍在；通过 main 上既有 `android-build` 手动入口，保持 `client_ref=43-persistent-sketch-cache`、`frontend_pr=45`、`backend_target=default`，运行 [37734472930](https://github.com/TomoriKaho/Livelife/actions/runs/37734472930) 成功发布 `0.1.0-test.15`。实际前端 SHA 为 `41a76601eed5d3db64862c53365d0e0cc72f59c2`，后端仍是 staging 的 `ba9be64`。HTTPS 下载、APK 摘要/签名、二维码、原生配置、许可证及真实 hello 校验通过；设备已断开 USB，用户选择自行下载安装，返回键回归尚待反馈。
+
 ### 维护者安装与排查教程
 
 先在课程机以 group5 使用已审查部署文件，运行 bootstrap-course.sh。脚本只更新 `/home/group5/livelife`，将固定工具安装到 build-tools，不需 Docker/sudo，不修改系统 APT/Python/npm。若 APT 镜像缺少本机缓存元数据中的版本，核对并刷新项目工具使用的元数据或使用有相同官方 SHA-256 的备用来源；不要绕过校验。

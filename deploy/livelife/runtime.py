@@ -15,6 +15,7 @@ import urllib.parse
 from .common import atomic_json, atomic_text, instance
 from .course import check_health
 from .supervisor import Supervisor
+from .ssh_transport import CourseSSH
 
 
 class Runtime:
@@ -32,11 +33,7 @@ class Runtime:
 
     def rpc(self, request):
         remote = f"{self.config['course_user']}@{self.config['course_host']}"
-        result = subprocess.run(self.ssh() + [remote], input=json.dumps(request) + '\n',
-                                text=True, capture_output=True, timeout=780)
-        if result.returncode:
-            raise RuntimeError(f"course RPC failed: {result.stdout[-2000:]} {result.stderr[-1000:]}")
-        return json.loads(result.stdout)
+        return CourseSSH(self.root, self.ssh(), remote).rpc(request)
 
     def tunnel_port(self, port):
         return port + 10000
