@@ -1,6 +1,0 @@
-node_modules/
-dist/
-*.local
-.env
-public/fonts/
-*.tsbuildinfo

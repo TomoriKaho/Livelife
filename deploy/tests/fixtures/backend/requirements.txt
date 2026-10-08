@@ -1,3 +1,0 @@
-# Only the disposable infrastructure smoke fixture, not business dependencies.
-fastapi==0.142.2
-uvicorn==0.54.0
