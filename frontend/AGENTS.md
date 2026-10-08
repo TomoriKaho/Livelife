@@ -15,3 +15,5 @@
 
 - 内部 API 测试、调试面板等使用 `VITE_INTERNAL_TOOLS` 构建开关；development / preview 默认开启，production 必须关闭。新增工具条件动态导入，扩展实际产物检查，验证正式构建剔除模块和请求代码，不以 CSS 隐藏或 `import.meta.env.PROD` 判断代替。
 - 使用 `npm run build:preview` 联调；`npm run build:production` 自动检查内部工具已移除。`npm run preview` 只服务上一次 dist。教程见 docs/engineering.md 的“内部调试工具与构建模式”，正式 API 和部署工作流仍待后续接入。
+
+- 手绘磁盘别名可跳过 SVG 构造。修改笔触算法、调色板、字体或默认主题视觉时，同步更新 `platform/sketch-cache.ts` 的兼容命名空间；不能仅更新应用版本号而保留不兼容别名。验证冷启动与旧缓存迁移，细节见工程规范。
