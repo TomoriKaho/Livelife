@@ -67,6 +67,6 @@ JS/CSS、地图及许可证使用 `/__livelife/web-builds/<build_id>/`；字体�
 3. 工作流合入 main 后设置 Repository Variable `LIVELIFE_FRONTEND_ENABLED=true`。后端开关保持现状；网页开关关闭不删除已部署页面，只停止自动网页管理。
 4. 手动运行 Frontend build request，选择 main；等待 Preview environments 成功，检查 `/staging/` 配置/版本、直接访问、真实 hello。
 5. 用两个开发分支和各类 PR 验证自动链接、单条评论、同分支配对、跨 PR 固定绑定、失败保留、关闭/重开与资源清理。尚未发 PR 的信息由控制 Actions Summary 给出。
-6. 记录实际 SHA、构建 run、访问及测试结果。成员步骤见[测试说明](../docs/testing.md#android-测试包操作)。
+6. 记录实际 SHA、构建 run、访问及测试结果。成员步骤见[预览验证](../docs/testing.md#预览链接与测试包)，网页与部署工具回归见[专项检查](tests/README.md#后端与网页环境回归)。
 
 单条 PR 自动评论使用 `<!-- livelife-preview -->`，兼容升级旧后端评论，提供页面/版本/模式/API/状态；不包含认证信息。安装包由独立 Android 开关控制，正式发布另行安排。

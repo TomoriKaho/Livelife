@@ -79,6 +79,8 @@ adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 | backend_target | default 沿用配对；staging 使用共享后端；pr-42 解析 #42 已部署版本；be-完整SHA 使用已有固定实例 |
 | frontend_branch | Android 手动构建无需填写 |
 
+页面中的 backend_target 初始值是 staging；希望沿用已有配对时，手动改为 default。
+
 例如 #42 只有后端改动：client_ref=main、frontend_pr=42、backend_target=pr-42。点击运行，系统确认 #42 是同仓库打开的 PR、其当前后端版本已经部署，再固定该 SHA。结果显示在本次 Actions Summary 及 #42 自动评论里。
 
 指定 pr-42 不意味着跟随 #42：后续 #42 更新后要重新运行，才能得到连接新版后端的新 APK。default 保留已显式指定的目标。staging 跟随 main；实际 hello 响应 SHA 会显示在 APP 内。
