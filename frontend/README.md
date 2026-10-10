@@ -7,7 +7,7 @@
 - [构建、预览与检查](#构建预览与检查)
 - [内部调试工具与构建模式](#内部调试工具与构建模式)
 - [手绘 UI 渲染](src/plugins/README.md)与[装饰缓存](src/platform/SKETCH_CACHE.md)
-- [Android 开发与测试](../docs/testing.md#android-测试包操作)
+- [Android 开发与测试](android/README.md)
 
 ## 运行环境与安装
 
@@ -28,13 +28,13 @@ npm run dev
 
 ## API 地址与联调
 
-在 `.env` 或 `.env.local` 中设置公开配置 `VITE_API_BASE_URL`；本地默认 `http://localhost:8000`。后端的安装、监听和 CORS 见[后端 README](../backend/README.md#cors-与浏览器联调)。接口字段及客户端成功/失败判断见 [API 文档](../docs/api.md)。
+在 `.env` 或 `.env.local` 中设置公开配置 `VITE_API_BASE_URL`；本地默认 `http://localhost:8000`。后端的安装、监听和 CORS 见[后端 README](../backend/README.md#cors-与浏览器联调)。服务端契约见[API 文档](../docs/api.md)，客户端失败处理见[请求模块](src/api/README.md)。
 
 Vite 在启动或构建时读取变量；修改后重启开发服务，或重新构建。变量会进入浏览器产物，只能保存公开配置。当前没有 Vite API 代理，浏览器直接请求基地址。
 
 开发及 preview 构建的“我的 → 帮助与反馈 → 接口连通性测试”显示后端地址。点击“测试连接”发起真实 hello 请求，加载期间禁用重复点击。页面不可达先检查前端端口；页面可访问但连接失败时检查后端监听、API 地址和实际网页 Origin。自定义前端端口需同步后端 CORS 白名单。
 
-手机中的 localhost 指向手机自身。手机浏览器的局域网 Origin 需另外配置，Android 本地同步及 HTTPS 地址配置见[Android 教程](../docs/testing.md#2-本地运行到手机或模拟器)。
+手机中的 localhost 指向手机自身。手机浏览器的局域网 Origin 需另外配置，Android 本地同步及 HTTPS 地址配置见[Android 教程](android/README.md#2-本地运行到手机或模拟器)。
 
 ## 构建、预览与检查
 
@@ -132,8 +132,8 @@ npm run preview
 
 新增业务、接口和平台代码使用 TypeScript，既有 JS/MJS 逐批迁移。页面专属组件留在对应页面目录。资源迁移同步导入、许可证输出和处理脚本，移除个人机器路径；地图分发保留可见 OSM 署名。
 
-模块说明：[手绘 UI](src/plugins/README.md)、[装饰缓存](src/platform/SKETCH_CACHE.md)、[地图](src/pages/map/README.md)、[建模](src/pages/map/MODELING.md)、[Agent 页面](src/pages/agent/README.md)、[个人页](src/pages/more/README.md)、[字体](src/assets/fonts/README.md)、[地图许可](src/assets/maps/LICENSE.md)。
+模块说明：[API 调用](src/api/README.md)、[Android 工程](android/README.md)、[手绘 UI](src/plugins/README.md)、[装饰缓存](src/platform/SKETCH_CACHE.md)、[地图](src/pages/map/README.md)、[建模](src/pages/map/MODELING.md)、[Agent 页面](src/pages/agent/README.md)、[个人页](src/pages/more/README.md)、[字体](src/assets/fonts/README.md)、[地图许可](src/assets/maps/LICENSE.md)。
 
 ## 手机网页与原生工程
 
-手机浏览器预览先构建，再执行 `npm run preview:phone`，使用电脑局域网 IP 和 8766 端口访问；网络与防火墙需允许连接。Android 工程位于 android/，SDK、IDE、本地 debug 和分发包步骤见[Android 教程](../docs/testing.md#android-测试包操作)。网页演示的数据边界见[架构说明](../docs/architecture.md#首阶段结构与数据边界)。
+手机浏览器预览先构建，再执行 `npm run preview:phone`，使用电脑局域网 IP 和 8766 端口访问；网络与防火墙需允许连接。Android 工程位于 android/，SDK、IDE、本地 debug 和分发包步骤见[Android 教程](android/README.md)。网页演示的数据边界见[架构说明](../docs/architecture.md#首阶段结构与数据边界)。

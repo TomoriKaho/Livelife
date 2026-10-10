@@ -89,6 +89,8 @@ Issue编号-简短任务名
 30-deployment-guide
 ```
 
+新建任务分支不加 `codex/` 等工具前缀；没有关联 Issue 时使用简短任务名，例如 `docs-cleanup`。
+
 同一个任务的后续修改继续提交到原分支。本地创建的分支推送后，在 Issue 的 Development 区域关联对应分支。已有分支继续使用，不必为了新约定改名。分支名用于识别任务；commit 和 PR 标题另按下文的格式填写。
 
 ## 4. 开发与协作
@@ -250,8 +252,9 @@ Milestone 用来组织一个阶段的交付范围，例如“实现 MVP 版本�
 
 ### 文档结构与拆分
 
-- 模块说明就近放在对应 README 或已有专属文件；共享架构、API、部署和测试说明放在 docs。入口见[文档导航](README.md#开发与协作导航)。
-- 按独立职责和持续并行维护需要细化文件；连贯流程保留章节。API、部署和测试默认各用一个文件，不按每个 Issue 建文件，也不预建分类目录。
+- 根 README 提供统一入口，docs 维护跨模块约定与导航；模块的实现、操作和专项测试就近维护，上级 README 保留通用开发流程与模块入口。
+- 按读者、变更范围和维护职责拆分，连贯流程保留章节。API、部署和测试各保留一个入口，独立模块维护细节；不要求每个目录有 README，不按每个 Issue 建文件，也不预建空目录。
+- 跨模块业务需求与设计集中维护，模块说明引用它；API 的组织及写法见[接口指南](docs/api.md#模块契约怎么组织)。
 - 成员文档讲操作、原因和排错，保留有效限制；AGENTS 讲 AI 阅读与执行要求。拆分时完整迁移教程、更新引用和锚点，删除重复内容。
 
 ### 任务范围与冲突处理
@@ -266,9 +269,9 @@ Milestone 用来组织一个阶段的交付范围，例如“实现 MVP 版本�
 
 | 任务 | 文档范围 | 共同内容 |
 | --- | --- | --- |
-| 地图 | frontend/src/pages/map/README.md 的交互章节 | 公共手绘变化才更新前端 README |
-| API 与页面 | docs/api.md 的对应接口、双方模块说明 | 契约由一个 PR 维护，双方按契约实现 |
-| Android | docs/deployment.md 的分发维护、docs/testing.md 的安装验收 | 控制字段在部署文档维护，成员教程引用它 |
+| 地图 | frontend/src/pages/map/README.md 的交互章节 | 手绘变化更新 plugins 说明，持久化变化更新 platform/SKETCH_CACHE.md |
+| API 与页面 | 实际后端模块的 API.md（尚未拆分时用 docs/api.md 章节）、双方实现说明 | 一个契约 PR 确认后并行实现；公共入口只更新共享约定和模块链接 |
+| Android | frontend/android/README.md 的操作、deploy/ANDROID.md 的分发、docs/testing.md 的真机验收 | RPC 字段集中在 deploy/CONTROL_API.md，其他文档链接引用 |
 
 AI 遵守相同范围约定，见 [AGENTS.md](AGENTS.md)。
 

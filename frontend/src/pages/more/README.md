@@ -52,8 +52,26 @@ Issue #8/#12 的细节未指定完整字段或排版。本次身份选项、推�
 
 `npm run build:preview` 验证测试构建；`npm run test:favorites` 验证时间边界、共享收藏增删与所有活动的详情路由/地图目标。浏览器检查 390px 与 320px 手机布局、滚动回弹、禁用/重新启用兴趣配置、保存与取消、三类列表、空状态、地图楼层定位、详情路由和返回路径。
 
-development / preview 默认启用 `VITE_INTERNAL_TOOLS`，“我的 → 帮助与反馈 → 接口连通性测试”提供真实的 `GET /test/hello` 请求入口。显示当前配置的后端地址，点击后显示连接中状态并禁用重复请求；仅 HTTP 200 且 `message` 为字符串 `hello world` 时展示成功；其他状态、无效 JSON、响应字段不符或网络失败均显示原因并允许重试，10 秒未完成则终止请求并显示超时。后端地址来自 `VITE_API_BASE_URL`，未配置时使用 `http://localhost:8000`。浏览器按加载、成功、后端不可达和重试步骤验证；模拟响应验证需与真实后端联调记录区分。
+development / preview 默认启用 `VITE_INTERNAL_TOOLS`，“我的 → 帮助与反馈 → 接口连通性测试”显示当前后端地址和版本，发起真实 hello 请求。请求时显示连接中并禁用重复点击，成功展示 message，失败显示原因并允许重试；超时与响应校验见[请求模块](../../api/README.md#hello-调用与失败处理)。浏览器按加载、成功、后端不可达和重试步骤验证；模拟响应与真实联调分别记录。
 
 production 默认关闭该开关，通过条件动态导入从产物移除组件及 hello 测试请求。正常帮助内容继续保留。模式配置、测试构建与候选构建教程见[前端 README](../../../README.md#内部调试工具与构建模式)。
 
 启动准备通过页面注册的预热步骤覆盖八个子页面的默认布局，直接切换隔离实例的显示状态；不会点击保存、请求系统权限或执行接口测试。子页面新增或默认布局改变时同步维护预热清单，再检查首次进入时装饰是否已准备好。
+
+## 前端内部工具开关验收
+
+同一个提交分别验证 preview 和 production，模式选择、环境变量优先级及启动教程见[前端 README](../../../README.md#内部调试工具与构建模式)。
+
+1. `npm run dev`：帮助页显示接口测试；关闭本地开关并重启后隐藏，正常帮助内容可用。
+2. `npm run build:preview`、`npm run check:internal-tools -- true`、`npm run preview`：帮助页显示测试工具，真实后端启动后 hello 成功；请求失败仍显示可理解的错误。
+3. `npm run build:production`：构建自动确认所有输出 chunk 不含测试组件和 hello 测试代码。刷新预览页，正常帮助内容保留，接口测试入口不出现，访问帮助页也不加载对应异步 chunk。
+4. 尝试 `VITE_INTERNAL_TOOLS=true npm run build:production` 和 `VITE_INTERNAL_TOOLS=invalid npm run build:preview`，预期构建拒绝；不要将这种预期失败报告为 CI 异常。
+5. 服务器预览仍执行原有运行时配置、不可变资源、许可证及后端 SHA 校验，`check-preview-build.mjs` 同时确认内部测试代码存在。
+
+记录提交 SHA、mode、Node/npm、实际步骤和结果。浏览器模拟响应与真实 API 联调分别记录。production 工具检查通过不等于业务就绪或正式部署完成。
+
+## Android 个人页返回回归
+
+1. 从日历进入“我的”→账号→密码，Android 系统返回应依次到账号、“我的”主页，再到日历。普通子页及 `#/more?pane=favorites` 直接入口先回“我的”。
+2. 对比页面左上角返回与系统返回；离开页面后不保留回调，隐藏预热不注册原生返回监听。
+3. 浏览器模拟 Capacitor 返回事件、诊断 WebView 和分发 APK 的结果分别记录。最新分发 APK 需另做真机回归。

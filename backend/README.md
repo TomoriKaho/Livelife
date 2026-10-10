@@ -1,6 +1,6 @@
 # 后端开发
 
-后端使用 FastAPI 和 Pydantic，采用模块化单体。当前演示接口的契约见 [API 文档](../docs/api.md)，整体技术路线见[架构说明](../docs/architecture.md)。
+后端使用 FastAPI 和 Pydantic，采用模块化单体。当前只提供 `GET /test/hello` 连通性接口，无业务登录、数据库或业务服务。契约与后续接口文档组织见[API 文档](../docs/api.md)，整体技术路线见[架构说明](../docs/architecture.md)。
 
 ## 后端安装、启动与检查
 
@@ -52,7 +52,7 @@ uv lock --check
 ## 目录职责
 
 - `app/main.py`：FastAPI 入口及中间件配置。
-- `app/api/`：路由；`app/schemas/`：Pydantic 请求和响应；`app/core/`：公共配置。
+- `app/api/`：路由；`app/schemas/`：Pydantic 请求和响应。
 - `tests/`：接口及 CORS 行为测试。
 
-业务持久化阶段再创建 services、db 和 migrations，采集与推荐通过独立 worker 运行。接口契约与客户端协作先在[共享 API 文档](../docs/api.md#接口契约协作)确定。
+公共配置和业务持久化阶段再按需创建 core、services、db 和 migrations，采集与推荐通过独立 worker 运行。新增业务先按[契约协作流程](../docs/api.md#接口契约协作)确认接口；形成独立模块后，将契约放在该模块的 API.md 并从公共入口链接，组织方法见[接口指南](../docs/api.md#模块契约怎么组织)。
