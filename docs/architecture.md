@@ -1,4 +1,4 @@
-# 架构与接口协作
+# 系统架构
 
 ## 产品范围
 
@@ -6,9 +6,33 @@
 
 典型场景包括兴趣活动提醒、领域文章摘要与原文、地图上的地点活动查询，以及 Agent 基于信息库回答问题。不能把“某教室正在发生什么”的推断当成已核实事实，应展示时间、依据和不确定性。
 
+## 技术栈与实施阶段
+
+技术路线由 [Issue #19](https://github.com/TomoriKaho/Livelife/issues/19) 确认。前后端运行方法分别见[前端 README](../frontend/README.md)和[后端 README](../backend/README.md)。
+
+| 层次 | 确定方案 | 实施阶段与用途 |
+| --- | --- | --- |
+| 客户端 | Vue 3 + TypeScript + Vite + Vue Router | 首阶段网页与移动布局；npm 管理依赖并提交 package-lock.json |
+| 地图 | Canvas 2D + Three.js | 首阶段复用离线校园地图；2D 作为低性能设备的可选入口 |
+| APP | Capacitor | 同一前端支持 Android/iOS；首阶段最小 Android 包，iOS 后续 |
+| API | Python + FastAPI + Pydantic | 已实现本地 hello 接口及响应校验；业务接口后续引入 |
+| 数据库 | PostgreSQL + SQLAlchemy + Alembic | 业务持久化阶段引入；首阶段不启动数据库 |
+| 后台任务 | 独立 Python worker | 后续采集与推荐；不依赖手机后台运行 |
+| 部署 | Python venv + Supervisor；Nginx + SSH 隧道 | 课程机普通用户直接运行后端，公网机提供 HTTPS；#29 实施 |
+
+检索先基于真实中文校园内容验证分词与召回；pgvector、Redis + Celery、LLM 服务、登录及推送供应商待专项确认。当前采用组件状态和模块化单体，地图使用离线快照。
+
+### 客户端选择依据
+
+最终目标为 APP，网页是开发和演示入口。design 原型采用标准 Vue 页面、Vue Router、DOM/SVG 手绘效果、Canvas 2D 和 Three.js。Vue + Capacitor 可继续沿用 Web 实现，再通过原生插件接入系统能力；uni-app 和 Flutter 不作为本次实施路线，小程序需求如进入范围需另行评估。
+
+Capacitor 页面在原生容器的 WebView 中运行，复用代码不代表已经验证原生体验。地图性能、键盘、安全区、返回键、定位和通知必须在对应设备验证。国内 Android 厂商推送通道另行调研，不能把生成安装包当成推送已经可用。
+
+参考：[Capacitor 介绍](https://capacitorjs.com/docs)、[构建流程](https://capacitorjs.com/docs/basics/workflow)、[FastAPI 特性](https://fastapi.tiangolo.com/features/)。
+
 ## 首阶段结构与数据边界
 
-客户端网页已在 frontend/ 实现，包含离线地图与样例页面；hello 测试区已接入请求。backend/ 已实现 FastAPI hello 服务；整体联调及另一名成员复现仍需按验收清单完成。技术栈见 [工程规范](engineering.md#技术栈与实施阶段)。
+客户端网页已在 frontend/ 实现，包含离线地图与样例页面；hello 测试区已接入请求。backend/ 提供 FastAPI hello 服务。网页及真机验收方法见[测试说明](testing.md)。
 
 ```mermaid
 flowchart TD
@@ -25,31 +49,10 @@ flowchart TD
 
 资源迁移保留 OSM 来源、数据快照和许可证；公众分发需有可见的 OSM 署名及许可入口。Three.js、字体和图片同样保留适用许可证，不能因目录迁移丢失。
 
-## 首阶段接口契约
+## 接口协作
 
-后端已实现此本地演示接口。
+请求、响应和客户端失败处理统一见 [API 契约](api.md)。前后端按同一契约开发，变更时同步调用方与测试。
 
-| 项目 | 约定 |
-| --- | --- |
-| 方法与路径 | `GET /test/hello` |
-| 身份要求 | 无需登录，仅用于演示连通性 |
-| 请求 | 无请求体，无必需查询参数 |
-| 成功状态 | HTTP 200 |
-| 响应类型 | `application/json` |
-| 响应字段 | `message`：字符串，值为 `hello world` |
-
-hello 无需业务账号；网页/API 预览入口不再要求额外 key。后续业务登录和权限由后端逐请求校验；网关保留业务 `Authorization` 与 Cookie，剥离遗留预览凭证，业务 401 原样返回。配置与访问方式见 [部署说明](deployment.md#4-启动公开测试入口)。管理后台尚未实现；后续 `/admin/` 的管理 API 也须校验账号及权限。
-
-成功响应示例：
-
-```json
-{"message":"hello world"}
-```
-
-前端请求期间显示加载状态；收到 HTTP 200 且响应字段符合约定后显示 message。网络失败、非 200 状态或响应格式不符时显示可理解的失败提示并允许重试，不把前端样例 hello 当成请求成功。不为本接口增加业务错误码或统一业务响应包裹；后续业务接口的错误结构另行约定。
-
-后端本地地址为 `http://127.0.0.1:8000`。网页开发与构建预览允许从本机 localhost 或 127.0.0.1 的 5173、8765 和 8766 端口跨域访问；Android/Capacitor 来源 https://localhost 已允许，并暴露后端版本响应头；手机局域网网页来源仍需另行配置。
-网页通过开发代理或受控跨域配置访问后端；APP 通过可配置 API 地址直连手机可访问的开发服务。原生容器的请求来源与浏览器可能不同，联调配置需分别核对。当前客户端使用 `VITE_API_BASE_URL` 配置基地址；开发/构建预览端口分别为 8765/8766，未配置开发代理。后端需按实际网页 Origin 配置 CORS，安装与联调步骤见 [工程规范](engineering.md#目录与启动命令)。
 
 ## 后续目标架构
 
@@ -72,7 +75,7 @@ flowchart TD
     PUSH --> APP
 ```
 
-后端采用模块化单体，共用 API 和 PostgreSQL；SQLAlchemy 负责数据访问，Alembic 管理表结构迁移。采集和推荐后续通过独立 Python worker 运行，复用业务服务与数据库访问，不在请求内执行长时间任务。数据库表及业务接口在对应任务中确认，本次不预设完整 schema。
+后端采用模块化单体，共用 API 和 PostgreSQL；SQLAlchemy 负责数据访问，Alembic 管理表结构迁移。采集和推荐后续通过独立 Python worker 运行，复用业务服务与数据库访问，不在请求内执行长时间任务。数据库表及业务接口在对应任务中确认，完整 schema 随业务契约确定。
 
 ## 模块边界
 
@@ -93,20 +96,6 @@ flowchart TD
 
 这些是概念实体，不是已批准的数据库表结构：用户、兴趣标签、订阅、信源、信息、活动、地点、设备、推送记录。信息保留原文链接、来源、发布时间、采集时间、处理时间；活动保留开始/结束时间、截止时间和地点。用户私有信息与公开信息明确区分，采集权限和内容使用条件逐项确认。
 
-## 接口契约教程
-
-以兴趣订阅为例：
-
-1. 创建“确定订阅数据结构与接口契约”子 Issue。
-2. 前后端一起确定请求字段、响应字段、鉴权、校验规则和错误状态。
-3. 将契约提交到仓库，经 PR 评审；选择 OpenAPI 等机器可读格式时，同时保留易读说明。
-4. 前端根据契约制作 Mock，后端并行实现，不等待对方完整结束。
-5. 双方交付各自 PR，按照同一契约联调。
-6. 如需改契约，先说明兼容性和影响，再同步调用方与测试。
-
-接口文档至少包含方法与路径、身份要求、请求示例、响应示例、错误示例、分页和时间格式（适用时）。时间建议使用带时区的标准格式；页面展示时显式转换。
-
-地图同样先决定坐标系、地点标识及活动关联，避免前后端和地图 SDK 使用不同坐标。复杂地点推断另设任务与验收条件。
 
 ## 未决事项
 
@@ -116,23 +105,21 @@ flowchart TD
 - 推荐规则、LLM 服务、中文检索质量与成本控制；pgvector、Redis + Celery 是否需要。
 - 后续系统推送供应商、签名与国内 Android 厂商通道；iOS 构建和真机分发条件。首阶段不包含系统推送。
 
-每项选型形成 Issue，输出比较、结论和验证证据，再更新本文与工程规范。
+每项选型形成 Issue，输出比较、结论和验证证据，再更新本文及相关模块文档。
 
 ## 后端测试部署边界
 
 #29 使用课程机上的独立 Python 虚拟环境/进程运行后端，公网 Nginx 经 loopback SSH 隧道转发。环境与前端绑定由公网机 SQLite 管理，控制接口仅通过受限 SSH JSON RPC 调用，不进入业务 FastAPI。
 
-#27 网页同样由公网 Nginx 分发静态文件，不运行额外前端进程。浏览器先读取当前入口的 runtime-config.json，再请求同源 API；build_id 及真实后端响应 SHA 防止版本混淆。main/分支/PR 路由是部署别名，前端构建和后端实例分别按版本保存；网页当前与回滚记录独立持有后端引用。具体配置字段、安全边界及受限控制接口见 [网页预览契约](deployment.md#网页预览实现与维护)。
+#27 网页同样由公网 Nginx 分发静态文件，不运行额外前端进程。浏览器先读取当前入口的 runtime-config.json，再请求同源 API；build_id 及真实后端响应 SHA 防止版本混淆。main/分支/PR 路由是部署别名，前端构建和后端实例分别按版本保存；网页当前与回滚记录独立持有后端引用。具体配置和资源发布见[网页预览](../deploy/WEB_PREVIEW.md)，受限请求字段见[控制接口](../deploy/CONTROL_API.md)。
 
-普通前端默认连接 main 共享测试后端；跨 PR 联调解析为固定 SHA 实例。后端 PR 的最新入口与不可变版本入口分开，main、打开的后端 PR 与前端绑定分别记录保留依据。引用与浏览器在线人数无关。路径前缀由网关去除，GET /test/hello 契约不变。具体端口、生命周期、返回字段与 #27 接入方式见 [部署教程](deployment.md)。
+普通前端默认连接 main 共享测试后端；跨 PR 联调解析为固定 SHA 实例。后端 PR 的最新入口与不可变版本入口分开，main、打开的后端 PR 与前端绑定分别记录保留依据。引用与浏览器在线人数无关。路径前缀由网关去除，GET /test/hello 契约不变。端口与生命周期见[部署工具](../deploy/README.md)，成员配对操作见[部署入口](deployment.md)。
 
 
 ## 课程机构建控制边界
 
-课程机统一拉取指定 SHA、检查、测试与构建，公网机仅管理引用、网关和静态分发；GitHub Runner 不执行分支代码、不传输产物大包。普通无凭证请求工作流通过 workflow_run 进入 main 的受信控制程序。课程机全项目并发最多 2，构建通过命名空间隔离访问范围；后端复用已测试 venv，网页包由公网机通过 SSH 直接读取。固定 SHA 和 main/PR/网页回滚引用规则不变。新调度是否已上线、镜像配置与 RPC 字段见[统一构建契约](deployment.md#课程机统一构建与队列)。
+课程机统一拉取指定 SHA、检查、测试与构建，公网机仅管理引用、网关和静态分发；GitHub Runner 不执行分支代码、不传输产物大包。普通无凭证请求工作流通过 workflow_run 进入 main 的受信控制程序。课程机全项目并发最多 2，构建通过命名空间隔离访问范围；后端复用已测试 venv，网页包由公网机通过 SSH 直接读取。固定 SHA 和 main/PR/网页回滚引用规则不变。启用证据见[部署入口](deployment.md#当前实施状态)，镜像和队列见[构建维护](../deploy/BUILDING.md)，RPC 字段见[控制接口](../deploy/CONTROL_API.md#构建控制接口)。
 
-## Android 测试包契约（#28）
+## Android 测试包边界
 
-分发包内置 schema_version=1 的 native-config.json：apk_id、build_id、frontend_sha、version_code、version_name、environment、api_base_url、backend_mode、backend_sha、status_url、expires。build_id 为 apk-加32位部署ID；versionCode 由公网机单调分配，分发包名固定 io.github.tomorikaho.livelife.dev，本地 debug 使用 .local 后缀。
-
-原生来源为 https://localhost；hello CORS 允许该来源，并暴露 X-Livelife-Backend-SHA。网页配置仍要求同源，原生配置仅接受构建指定的公开 HTTPS origin。staging 跟随 main，own/fixed 固定后端 SHA；没有可用配置时不回退 localhost。启动、恢复前台和接口测试前读取独立安装包状态，失败或过期时停止接口测试，但内置样例页面可用。安装包引用独立于网页和浏览器在线人数。自动打包、分发及真机验收的实际状态以 #28 和部署记录为准。
+Android 复用客户端页面，通过包内原生配置选择公开 HTTPS 后端，并读取安装包状态。配置失败或包过期时停用接口测试，样例页面仍可查看；安装包的后端引用独立于网页。字段和校验约定见[部署说明](../deploy/ANDROID.md#原生配置契约)，成员安装操作见[Android 教程](../frontend/android/README.md)，真机验收见[测试入口](testing.md#android-测试包操作)。
