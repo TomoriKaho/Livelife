@@ -1,6 +1,6 @@
 # API 契约与文档入口
 
-本文维护前后端共享约定、接口索引及契约协作方法。模块接口的业务规则就近维护；当前 hello 和健康检查的完整契约直接保留在本文。
+本文维护前后端共享约定、接口索引及契约协作方法。具体接口契约在实际后端模块附近维护，本文通过索引链接到主要来源。
 
 后端启动与 CORS 见[后端 README](../backend/README.md)，客户端配置见[前端 README](../frontend/README.md#api-地址与联调)，调用实现见[客户端请求模块](../frontend/src/api/README.md)。环境地址和版本配对见[部署入口](deployment.md#api-地址与前端关联)；内部部署 RPC 见[控制接口](../deploy/CONTROL_API.md)，不属于业务 API。
 
@@ -10,8 +10,8 @@
 
 | 范围 | 主要说明 | 实现 |
 | --- | --- | --- |
-| 连通性检查 | [GET /test/hello](#get-testhello) | [路由](../backend/app/api/test.py)、[响应模型](../backend/app/schemas/hello.py) |
-| 健康检查 | [存活与数据库就绪检查](#健康检查) | [路由](../backend/app/api/health.py)、[响应模型](../backend/app/schemas/health.py) |
+| 连通性检查 | [GET /test/hello](../backend/app/api/API.md#get-testhello) | [路由](../backend/app/api/test.py)、[响应模型](../backend/app/schemas/hello.py) |
+| 健康检查 | [存活与数据库就绪检查](../backend/app/api/API.md#健康检查) | [路由](../backend/app/api/health.py)、[响应模型](../backend/app/schemas/health.py) |
 
 新业务模块确定后，在此表增加模块契约链接；不为尚未确定的接口预建目录或空文档。
 
@@ -22,48 +22,9 @@
 - 模块契约说明资源权限、字段含义、成功及失败行为；Pydantic 模型和路由声明生成当前实现的 OpenAPI，提供字段类型、必填项及已声明的响应。已有实现的完整字段表优先引用 OpenAPI，Markdown 补充业务含义和示例。
 - OpenAPI 描述当前实现。已确认但尚未实现的契约在对应模块说明中明确标注，并关联任务；任务进度仍放 Issue/Project。
 
-## GET /test/hello
-
-用于检查客户端与后端连通性。
-
-| 项目 | 约定 |
-| --- | --- |
-| 方法与路径 | `GET /test/hello` |
-| 身份要求 | 无需登录 |
-| 请求 | 无请求体，无必需查询参数 |
-| 成功状态 | HTTP 200，`application/json` |
-| 响应字段 | `message`：字符串，值为 `hello world` |
-
-请求与成功响应：
-
-```bash
-curl -i http://127.0.0.1:8000/test/hello
-```
-
-```json
-{"message":"hello world"}
-```
-
-未知路径返回 HTTP 404、`{"detail":"Not Found"}`；对 hello 使用 POST 返回 HTTP 405、`{"detail":"Method Not Allowed"}`。沿用 FastAPI 的 `detail` 响应，不为演示接口增加业务错误包裹。
-
-网络不可达、客户端超时及无效响应的处理见[客户端调用说明](../frontend/src/api/README.md#hello-调用与失败处理)。测试网关提供 `X-Livelife-Backend-SHA` 版本头，本地 Uvicorn 不自动生成；配对规则见[部署入口](deployment.md#api-地址与前端关联)。
-
-## 健康检查
-
-两个接口均为 GET，无请求体或必需查询参数，无需登录，返回 `application/json`。字段类型和可选值由 `HealthResponse` 定义，可从 OpenAPI 查看；接口不返回数据库地址、凭证或底层连接异常。
-
-| 方法与路径 | 条件 | 状态码 | 响应 |
-| --- | --- | --- | --- |
-| `GET /health/live` | 应用可响应，不访问数据库 | 200 | `{"status":"ok","database":null}` |
-| `GET /health/ready` | 未配置数据库 | 503 | `{"status":"not_ready","database":"not_configured"}` |
-| `GET /health/ready` | 数据库连接或查询触发 SQLAlchemy 异常 | 503 | `{"status":"not_ready","database":"unavailable"}` |
-| `GET /health/ready` | 数据库 `SELECT 1` 成功 | 200 | `{"status":"ok","database":"connected"}` |
-
-就绪成功仅表示连接可用，不代表业务表、迁移或业务功能就绪。未配置数据库时 hello 仍可调用；当前部署探针仍使用 hello。配置、调用命令和迁移限制见[后端说明](../backend/README.md#数据库配置与健康检查)。
-
 ## 模块契约怎么组织
 
-模块需要独立维护接口时，在实际后端模块目录放一份 `API.md`，由本文提供入口；多个相关接口共用该模块文档，不按每个端点或 Issue 建文件。模块尚未形成独立目录时，先保留本文中的对应章节，拆分随真实代码组织调整。
+模块需要独立维护接口时，在实际后端模块目录放一份 `API.md`，由本文提供入口；多个相关接口共用该模块文档，不按每个端点或 Issue 建文件。当前 hello 和健康检查共用路由目录中的 `backend/app/api/API.md`；后续业务模块形成独立目录时，将对应契约就近维护，并更新此处索引。未确定的接口不预建文档。
 
 跨模块的业务需求或设计放在共享文档，模块契约链接过去。客户端超时、提示文案和页面状态在前端模块维护；部署控制、运行时配置及签名规则在 deploy 维护。
 

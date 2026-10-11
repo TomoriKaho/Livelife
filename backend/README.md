@@ -1,6 +1,6 @@
 # 后端开发
 
-后端使用 FastAPI 和 Pydantic，采用模块化单体。当前提供 `GET /test/hello` 连通性接口、存活与数据库就绪检查，以及可选 SQLAlchemy 连接和 Session 基座；无业务登录、业务表或业务服务用例。契约与后续接口文档组织见[API 文档](../docs/api.md)，整体技术路线见[架构说明](../docs/architecture.md)。
+后端使用 FastAPI 和 Pydantic，采用模块化单体。当前提供 `GET /test/hello` 连通性接口、存活与数据库就绪检查，以及可选 SQLAlchemy 连接和 Session 基座；无业务登录、业务表或业务服务用例。当前契约见[路由 API 文档](app/api/API.md)，共享约定与接口索引见[API 入口](../docs/api.md)，整体技术路线见[架构说明](../docs/architecture.md)。
 
 ## 后端安装、启动与检查
 
@@ -69,7 +69,7 @@ curl -i http://127.0.0.1:8000/health/live
 curl -i http://127.0.0.1:8000/health/ready
 ```
 
-存活检查不访问数据库；就绪检查执行 `SELECT 1`，仅验证连接，不验证业务表或迁移状态。响应和失败行为见[健康检查契约](../docs/api.md#健康检查)。现有自动部署仍通过 hello 检查服务，部署启用状态见[部署入口](../docs/deployment.md#当前实施状态)。
+存活检查不访问数据库；就绪检查执行 `SELECT 1`，仅验证连接，不验证业务表或迁移状态。响应和失败行为见[健康检查契约](app/api/API.md#健康检查)。现有自动部署仍通过 hello 检查服务，部署启用状态见[部署入口](../docs/deployment.md#当前实施状态)。
 
 已添加 Alembic 依赖和 `alembic.ini`，但配置指向的 `migrations/`、迁移环境及版本脚本尚未提供，因此当前不能运行 `alembic upgrade head` 或 `alembic current`，也没有可用的空迁移基线。应用不会自动创建业务表或执行迁移；后续持久化任务需补齐环境、注册模型 metadata，并提供迁移、验证与回滚说明。
 
