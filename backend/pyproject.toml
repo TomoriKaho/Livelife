@@ -17,6 +17,9 @@ dev = [
     "pytest>=8.3,<9.0",
     "ruff>=0.11,<1.0",
 ]
+local-db = [
+    "pgembed==0.2.0",
+]
 
 [tool.uv]
 package = false
