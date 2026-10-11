@@ -22,7 +22,7 @@
 
 ## 目录结构
 
-以下为当前主要目录；数据库、worker 和 iOS 工程在相应任务中创建。
+以下为当前主要目录；后端已包含可选数据库连接，业务表、worker 和 iOS 工程在相应任务中创建。
 
 ```text
 Livelife/
@@ -38,7 +38,7 @@ Livelife/
 ├── backend/
 │   ├── README.md
 │   ├── AGENTS.md
-│   ├── app/             # FastAPI 入口、路由、响应模型及配置
+│   ├── app/             # FastAPI 入口、路由、响应模型、配置及数据库连接
 │   └── tests/
 ├── docs/                # 架构、协作、API、部署和测试说明
 ├── deploy/              # 构建、部署及环境管理工具
