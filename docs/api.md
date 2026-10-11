@@ -1,6 +1,6 @@
 # API 契约与文档入口
 
-本文维护前后端共享约定、接口索引及契约协作方法。模块接口的业务规则就近维护；当前只有 hello 接口，完整契约直接保留在本文。
+本文维护前后端共享约定、接口索引及契约协作方法。模块接口的业务规则就近维护；当前 hello 和健康检查的完整契约直接保留在本文。
 
 后端启动与 CORS 见[后端 README](../backend/README.md)，客户端配置见[前端 README](../frontend/README.md#api-地址与联调)，调用实现见[客户端请求模块](../frontend/src/api/README.md)。环境地址和版本配对见[部署入口](deployment.md#api-地址与前端关联)；内部部署 RPC 见[控制接口](../deploy/CONTROL_API.md)，不属于业务 API。
 
@@ -11,13 +11,14 @@
 | 范围 | 主要说明 | 实现 |
 | --- | --- | --- |
 | 连通性检查 | [GET /test/hello](#get-testhello) | [路由](../backend/app/api/test.py)、[响应模型](../backend/app/schemas/hello.py) |
+| 健康检查 | [存活与数据库就绪检查](#健康检查) | [路由](../backend/app/api/health.py)、[响应模型](../backend/app/schemas/health.py) |
 
 新业务模块确定后，在此表增加模块契约链接；不为尚未确定的接口预建目录或空文档。
 
 ## 共享约定
 
 - 本文中的路径是后端路由，不包含 `/api/staging/` 等部署前缀。调用方以当前环境的 API 基地址拼接路径。
-- 现有 hello 无需登录，使用 JSON 响应。目前没有统一业务响应包裹、错误码、认证、分页或业务时间格式；新模块先确认需要的约定。多模块共同使用的规则在本文集中维护。
+- 现有 hello 和健康检查无需登录，使用 JSON 响应。目前没有统一业务响应包裹、错误码、认证、分页或业务时间格式；新模块先确认需要的约定。多模块共同使用的规则在本文集中维护。
 - 模块契约说明资源权限、字段含义、成功及失败行为；Pydantic 模型和路由声明生成当前实现的 OpenAPI，提供字段类型、必填项及已声明的响应。已有实现的完整字段表优先引用 OpenAPI，Markdown 补充业务含义和示例。
 - OpenAPI 描述当前实现。已确认但尚未实现的契约在对应模块说明中明确标注，并关联任务；任务进度仍放 Issue/Project。
 
@@ -46,6 +47,19 @@ curl -i http://127.0.0.1:8000/test/hello
 未知路径返回 HTTP 404、`{"detail":"Not Found"}`；对 hello 使用 POST 返回 HTTP 405、`{"detail":"Method Not Allowed"}`。沿用 FastAPI 的 `detail` 响应，不为演示接口增加业务错误包裹。
 
 网络不可达、客户端超时及无效响应的处理见[客户端调用说明](../frontend/src/api/README.md#hello-调用与失败处理)。测试网关提供 `X-Livelife-Backend-SHA` 版本头，本地 Uvicorn 不自动生成；配对规则见[部署入口](deployment.md#api-地址与前端关联)。
+
+## 健康检查
+
+两个接口均为 GET，无请求体或必需查询参数，无需登录，返回 `application/json`。字段类型和可选值由 `HealthResponse` 定义，可从 OpenAPI 查看；接口不返回数据库地址、凭证或底层连接异常。
+
+| 方法与路径 | 条件 | 状态码 | 响应 |
+| --- | --- | --- | --- |
+| `GET /health/live` | 应用可响应，不访问数据库 | 200 | `{"status":"ok","database":null}` |
+| `GET /health/ready` | 未配置数据库 | 503 | `{"status":"not_ready","database":"not_configured"}` |
+| `GET /health/ready` | 数据库连接或查询触发 SQLAlchemy 异常 | 503 | `{"status":"not_ready","database":"unavailable"}` |
+| `GET /health/ready` | 数据库 `SELECT 1` 成功 | 200 | `{"status":"ok","database":"connected"}` |
+
+就绪成功仅表示连接可用，不代表业务表、迁移或业务功能就绪。未配置数据库时 hello 仍可调用；当前部署探针仍使用 hello。配置、调用命令和迁移限制见[后端说明](../backend/README.md#数据库配置与健康检查)。
 
 ## 模块契约怎么组织
 

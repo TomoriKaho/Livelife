@@ -15,8 +15,8 @@
 | 客户端 | Vue 3 + TypeScript + Vite + Vue Router | 首阶段网页与移动布局；npm 管理依赖并提交 package-lock.json |
 | 地图 | Canvas 2D + Three.js | 首阶段复用离线校园地图；2D 作为低性能设备的可选入口 |
 | APP | Capacitor | 同一前端支持 Android/iOS；首阶段最小 Android 包，iOS 后续 |
-| API | Python + FastAPI + Pydantic | 已实现本地 hello 接口及响应校验；业务接口后续引入 |
-| 数据库 | PostgreSQL + SQLAlchemy + Alembic | 业务持久化阶段引入；首阶段不启动数据库 |
+| API | Python + FastAPI + Pydantic | 已实现 hello、健康检查及响应校验；业务接口后续引入 |
+| 数据库 | PostgreSQL + SQLAlchemy + Alembic | 已提供可选连接与 Session；无业务表，Alembic 迁移环境待补齐 |
 | 后台任务 | 独立 Python worker | 后续采集与推荐；不依赖手机后台运行 |
 | 部署 | Python venv + Supervisor；Nginx + SSH 隧道 | 课程机普通用户直接运行后端，公网机提供 HTTPS；#29 实施 |
 
@@ -32,7 +32,7 @@ Capacitor 页面在原生容器的 WebView 中运行，复用代码不代表已�
 
 ## 首阶段结构与数据边界
 
-客户端网页已在 frontend/ 实现，包含离线地图与样例页面；hello 测试区已接入请求。backend/ 提供 FastAPI hello 服务。网页及真机验收方法见[测试说明](testing.md)。
+客户端网页已在 frontend/ 实现，包含离线地图与样例页面；hello 测试区已接入请求。backend/ 提供 FastAPI hello、健康检查和可选数据库连接；hello 不依赖数据库。网页及真机验收方法见[测试说明](testing.md)。
 
 ```mermaid
 flowchart TD
@@ -43,7 +43,7 @@ flowchart TD
     HELLO --> RESULT[显示 hello world 或失败提示]
 ```
 
-地图、日历、详情、兴趣、账户与 Agent 使用前端样例数据；仅 hello 调用真实后端。不引入活动接口、登录、数据库或模型服务。界面状态不等于用户数据已经保存，原型附件只在本地预览，Agent 文案不是模型实际回答。
+地图、日历、详情、兴趣、账户与 Agent 使用前端样例数据；仅 hello 调用真实后端。未接入活动接口、登录、业务数据库或模型服务；后端数据库基座不改变前端样例数据边界。界面状态不等于用户数据已经保存，原型附件只在本地预览，Agent 文案不是模型实际回答。
 
 沿用 design 的地图快照和米制坐标转换，以地图原点 `[116.304, 39.9915]`、x 向东、z 向南组织原型显示。迁移保留同一几何工具与数据来源，不混用在线 SDK 坐标。二维和三维共用校园数据、建筑选择及活动样例；示意楼层、室内布局、活动时间和示例定位不表示真实测绘、占用或实时位置。后续接入设备定位或在线底图时，另行确认坐标转换契约。
 
@@ -56,7 +56,7 @@ flowchart TD
 
 ## 后续目标架构
 
-以下模块与数据库是持久化、采集、推荐和 Agent 阶段的目标，不属于首阶段已经实现的能力。
+以下业务模块与数据库是持久化、采集、推荐和 Agent 阶段的目标。当前只有数据库连接与 Session 基座，尚未实现业务表、持久化用例或后台任务。
 
 ```mermaid
 flowchart TD
@@ -75,7 +75,7 @@ flowchart TD
     PUSH --> APP
 ```
 
-后端采用模块化单体，共用 API 和 PostgreSQL；SQLAlchemy 负责数据访问，Alembic 管理表结构迁移。采集和推荐后续通过独立 Python worker 运行，复用业务服务与数据库访问，不在请求内执行长时间任务。数据库表及业务接口在对应任务中确认，完整 schema 随业务契约确定。
+后端采用模块化单体，共用 API 和 PostgreSQL；SQLAlchemy 负责数据访问，Alembic 管理表结构迁移。采集和推荐后续通过独立 Python worker 运行，复用业务服务与数据库访问，不在请求内执行长时间任务。数据库表及业务接口在对应任务中确认，完整 schema 随业务契约确定。当前已预留服务职责包与持久化访问边界，具体组织和事务职责见[后端说明](../backend/README.md#目录职责与请求处理)。
 
 ## 模块边界
 
