@@ -22,3 +22,11 @@
 本地查看可以直接用浏览器打开 `contributing/index.html`；所有截图均已内嵌。
 
 网站根目录的 `index.html` 是导航首页，协作教程放在 `contributing/`，后续其他静态页面可放在各自目录。
+
+## 团队测试入口
+
+固定页面：https://tomorikaho.github.io/Livelife/testing/ 。源码为 `testing/index.html`，提供 main 共享网页、Android 下载页、安装步骤和相关文档链接。
+
+`testing/web-qr.png` 编码 `https://192.144.253.40/staging/`，`testing/android-qr.png` 编码 `https://192.144.253.40/downloads/android/staging/`。二维码直接包含稳定地址，没有第三方短链或到期机制，不指向某次构建的 APK。发布新包不需要修改二维码；测试服务器域名或路径改变时，更新链接并重新生成相应二维码。
+
+本页不保存具体包版本或 SHA，下载页负责展示实时状态。更新后检查相对链接、手机窄屏布局，以及扫描二维码所得地址。

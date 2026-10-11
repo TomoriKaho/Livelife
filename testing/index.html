@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#255acc">
+  <title>Livelife · 团队测试入口</title>
+  <style>
+    :root{color-scheme:light;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#24304a;background:#f5f7fb}
+    *{box-sizing:border-box}body{margin:0}main{max-width:1000px;margin:auto;padding:32px 24px 56px}
+    nav{display:flex;gap:20px;flex-wrap:wrap;font-size:14px}a{color:#255acc;text-underline-offset:4px}
+    header{padding:44px 0 24px}.eyebrow{font-size:13px;font-weight:700;color:#255acc;letter-spacing:.08em}
+    h1{font-size:clamp(30px,5vw,42px);letter-spacing:-.03em;margin:12px 0}h2{font-size:22px;margin:0 0 12px}
+    p,li{line-height:1.8}header p{max-width:680px;color:#56637b}.cards{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+    .card,.guide{background:white;border:1px solid #e1e7f0;border-radius:20px;padding:28px}.card{display:flex;flex-direction:column;align-items:flex-start}
+    .badge{display:inline-block;background:#eaf0ff;color:#255acc;border-radius:20px;padding:5px 12px;font-size:13px;margin-bottom:16px}
+    .card p{margin:0 0 16px}.button{display:inline-block;background:#255acc;color:white;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:600}
+    .button:hover{background:#1947aa}.button:focus-visible,a:focus-visible{outline:3px solid #efab35;outline-offset:4px}
+    figure{margin:24px 0 0;width:100%;text-align:center}figure img{width:224px;height:224px;max-width:100%;object-fit:contain}figcaption{font-size:14px;color:#56637b;margin-top:8px}
+    .address{font-size:13px;overflow-wrap:anywhere;margin-top:16px!important;color:#56637b}.guide{margin-top:20px}.guide h2{font-size:20px}
+    .links{display:flex;gap:16px;flex-wrap:wrap}footer{padding-top:24px;font-size:14px;color:#56637b}
+    @media(max-width:640px){main{padding:24px 16px 40px}.cards{grid-template-columns:1fr}.card,.guide{padding:24px}header{padding-top:32px}}
+  </style>
+</head>
+<body>
+<main>
+  <nav aria-label="网站导航"><a href="../">项目首页</a><a href="../contributing/">协作指南</a><a href="https://github.com/TomoriKaho/Livelife">GitHub 仓库</a></nav>
+  <header>
+    <span class="eyebrow">LIVELIFE / TEAM TESTING</span>
+    <h1>团队测试入口</h1>
+    <p>从这里打开 main 的共享测试网页，或在 Android 手机上安装团队测试包。保存本页，后续版本继续从同一个入口访问。</p>
+  </header>
+  <div class="cards">
+    <section class="card" aria-labelledby="web-title">
+      <span class="badge">网页 · main / staging</span>
+      <h2 id="web-title">打开测试网页</h2>
+      <p>电脑和手机浏览器都可访问，用于体验页面、地图和当前演示功能。</p>
+      <a class="button" href="https://192.144.253.40/staging/">进入网页预览 →</a>
+      <figure><img src="web-qr.png" alt="main 共享测试网页的二维码" width="224" height="224"><figcaption>手机扫码打开网页</figcaption></figure>
+      <p class="address">https://192.144.253.40/staging/</p>
+    </section>
+    <section class="card" aria-labelledby="android-title">
+      <span class="badge">Android · 团队测试包</span>
+      <h2 id="android-title">下载 Android 安装包</h2>
+      <p>下载页提供 main 最新成功发布的 APK、版本、客户端与后端信息，以及文件校验值。</p>
+      <a class="button" href="https://192.144.253.40/downloads/android/staging/">进入安装包下载页 →</a>
+      <figure><img src="android-qr.png" alt="main Android 稳定下载页的二维码" width="224" height="224"><figcaption>Android 手机扫码下载安装</figcaption></figure>
+      <p class="address">https://192.144.253.40/downloads/android/staging/</p>
+    </section>
+  </div>
+  <section class="guide" aria-labelledby="install-title">
+    <h2 id="install-title">第一次安装怎么做？</h2>
+    <ol>
+      <li>用 Android 手机打开下载页，查看版本信息，点击“下载 APK”。</li>
+      <li>按系统提示允许当前浏览器“安装未知应用”，打开下载文件安装“Livelife 测试”。</li>
+      <li>已有团队测试包时，安装新版进行覆盖升级；应用不会自动更新，需要重新下载并安装。</li>
+      <li>在应用“我的 → 帮助与反馈 → 接口连通性测试”查看版本并测试后端连接。</li>
+    </ol>
+    <p>工程最低支持 Android 7；具体设备兼容性以实际测试为准。iOS 测试分发正在调研，当前没有 iOS 安装包。</p>
+    <a href="https://github.com/TomoriKaho/Livelife/blob/main/frontend/android/README.md">查看完整安装与排错教程 →</a>
+  </section>
+  <section class="guide" aria-labelledby="environment-title">
+    <h2 id="environment-title">入口和版本如何更新？</h2>
+    <p>main 成功构建并部署后，稳定入口切换到新版本；若失败，保留上一成功版本。二维码编码的是稳定页面地址，不绑定某次构建，也没有二维码服务的到期限制。最新版 APK 的信息以下载页为准，页面保持可用仍依赖测试服务器运行。</p>
+    <p>本页用于团队共享测试。测试某个 PR 时，从该 PR 的自动评论进入它自己的预览和安装包。当前应用包含演示数据，正式版本发布另行安排。</p>
+    <div class="links">
+      <a href="https://192.144.253.40/api/staging/test/hello">后端连通性测试</a>
+      <a href="https://github.com/TomoriKaho/Livelife/actions">构建与部署记录</a>
+      <a href="https://github.com/TomoriKaho/Livelife/blob/main/docs/deployment.md">测试环境说明</a>
+      <a href="https://github.com/TomoriKaho/Livelife/issues">反馈问题</a>
+    </div>
+  </section>
+  <footer>本页由 github-pages 分支维护。版本、有效期和安装包状态请查看实时下载页。</footer>
+</main>
+</body>
+</html>
