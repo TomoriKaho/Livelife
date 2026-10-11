@@ -22,7 +22,7 @@
 
 ## 目录结构
 
-以下为当前主要目录；后端已包含可选数据库连接，业务表、worker 和 iOS 工程在相应任务中创建。
+以下为当前主要目录；后端已包含可选数据库连接与[通用信息存储和内部查询服务](backend/app/services/content/README.md)，真实采集渠道、worker 和 iOS 工程后续接入。
 
 ```text
 Livelife/

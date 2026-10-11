@@ -1,6 +1,6 @@
 # 后端开发
 
-后端使用 FastAPI 和 Pydantic，采用模块化单体。当前提供 `GET /test/hello` 连通性接口、存活与数据库就绪检查，以及可选 SQLAlchemy 连接和 Session 基座；无业务登录、业务表或业务服务用例。当前契约见[连通性检查 API](app/api/demo/API.md)和[健康检查 API](app/api/health/API.md)，共享约定与接口索引见[API 入口](../docs/api.md)，整体技术路线见[架构说明](../docs/architecture.md)。
+后端使用 FastAPI 和 Pydantic，采用模块化单体。当前提供 `GET /test/hello` 连通性接口、存活与数据库就绪检查，以及[通用信息系统](app/services/content/README.md)的内部采集协议、持久化与查询服务。信息系统尚未接入真实平台或前端；无业务登录。HTTP 契约见[连通性检查 API](app/api/demo/API.md)和[健康检查 API](app/api/health/API.md)，共享约定与接口索引见[API 入口](../docs/api.md)，整体技术路线见[架构说明](../docs/architecture.md)。
 
 ## 后端安装、启动与检查
 
@@ -36,7 +36,9 @@ uv run ruff format --check .
 uv lock --check
 ```
 
-测试覆盖 hello 响应、允许及拒绝的 CORS 来源、未知路径、不支持的方法，以及存活和数据库就绪检查。数据库连接成功测试使用内存 SQLite；连接失败测试模拟 SQLAlchemy 异常，不代表真实 PostgreSQL 连接或迁移已验证。
+测试默认把临时数据库放在 `backend/.pytest_cache/tmp/` 下，每次运行使用独立子目录，避免 Windows 全局 `Temp/pytest-of-<用户名>` 的权限问题及并行运行互相清理。该目录已被 Git 忽略，测试产物会保留在对应子目录中供排查。显式传入 `--basetemp` 或设置 `PYTEST_DEBUG_TEMPROOT` 时沿用调用方的配置。
+
+测试覆盖 hello、CORS、健康检查，以及信息系统的迁移、持久化、批次回滚、幂等和查询。数据库连接成功测试使用内存 SQLite，信息持久化使用临时 SQLite 文件；连接失败测试模拟 SQLAlchemy 异常。PostgreSQL 离线迁移 SQL 有自动检查，真实 PostgreSQL 连接及并发仍需独立环境验证。专项步骤见[信息系统](app/services/content/README.md#迁移验证与回滚)。
 
 ## CORS 与浏览器联调
 
@@ -71,16 +73,16 @@ curl -i http://127.0.0.1:8000/health/ready
 
 存活检查不访问数据库；就绪检查执行 `SELECT 1`，仅验证连接，不验证业务表或迁移状态。响应和失败行为见[健康检查契约](app/api/health/API.md#健康检查)。现有自动部署仍通过 hello 检查服务，部署启用状态见[部署入口](../docs/deployment.md#当前实施状态)。
 
-已添加 Alembic 依赖和 `alembic.ini`，但配置指向的 `migrations/`、迁移环境及版本脚本尚未提供，因此当前不能运行 `alembic upgrade head` 或 `alembic current`，也没有可用的空迁移基线。应用不会自动创建业务表或执行迁移；后续持久化任务需补齐环境、注册模型 metadata，并提供迁移、验证与回滚说明。
+已提供 `migrations/`、Alembic 环境和首个信息表迁移。设置开发数据库的 `DATABASE_URL` 后，在 backend 目录执行 `uv run alembic upgrade head` 和 `uv run alembic current`。应用不会自动创建表或执行迁移；信息系统使用前需要手动升级。迁移、使用和会删除信息数据的回退操作见[信息系统说明](app/services/content/README.md#迁移验证与回滚)。连接就绪检查仍只执行 `SELECT 1`，不验证迁移版本。
 
 ## 目录职责与请求处理
 
 - `app/main.py`：创建应用、生命周期和 CORS；`app/api/router.py`：统一注册 hello 和健康检查 router。
 - `app/api/`：按模块组织路由包，模块内的 `router.py` 处理 HTTP 路径、参数校验、依赖注入和响应映射，`API.md` 维护契约；`app/schemas/`：Pydantic 请求与响应模型。
-- `app/core/`：配置；`app/db/`：Engine、Session 工厂及请求依赖；`app/db/models/`：共享 ORM Base，业务模型加入后在包入口导入。
-- `app/services/`：按业务域组织服务用例；`app/repositories/sql/`：集中 SQLAlchemy 查询与写入，目前只有职责说明。
-- `alembic.ini`：迁移配置，所需迁移环境尚未提供。
-- `tests/`：接口、CORS 和健康检查行为测试。
+- `app/core/`：配置；`app/db/`：Engine、Session 工厂、UTC 时间类型及请求依赖；`app/db/models/`：共享 ORM Base 与信息模型。
+- `app/services/`：按业务域组织服务用例，`content/` 实现信息汇总和提供，`ingestion/` 定义信源适配协议；`app/repositories/sql/`：集中信息查询与原子写入。
+- `alembic.ini`、`migrations/`：迁移配置、环境与版本脚本，导入完整模型 metadata。
+- `tests/`：接口、CORS、健康检查、信息服务与迁移行为测试。
 
 当前已实现的路由模块如下；`demo` 是代码模块名，对外路径仍为 `/test/hello`：
 
@@ -102,18 +104,18 @@ app/api/
 
 ### 服务职责
 
-以下包目前只有职责说明，没有业务用例或已确认接口。划分用于组织后续开发，不代表业务已实现；跨模块产品规则以[架构说明](../docs/architecture.md#模块边界)和已确认契约为准。
+`content/` 和 `ingestion/` 已实现[信息系统内部契约](app/services/content/README.md)，其他包目前只有职责说明。跨模块产品规则以[架构说明](../docs/architecture.md#模块边界)和模块契约为准。
 
 | 服务包 | 职责方向 |
 | --- | --- |
 | `accounts/` | 账户、登录凭据校验、会话生命周期和身份查询 |
 | `preferences/` | 用户资料、兴趣标签、个性化设置及通知偏好 |
-| `content/` | 信息与活动查询、详情、分类及来源 |
+| `content/` | 已实现通用信息汇总、持久化和查询；分类及摘要后续接入 |
 | `locations/` | 地点查询及附近活动检索 |
 | `favorites/` | 活动收藏、取消收藏和列表查询 |
 | `reactions/` | 表情表态、表情与分数映射及聚合结果 |
 | `agent/` | 问题处理、基于资料的回答、来源引用和历史对话 |
-| `ingestion/` | 信源采集、去重、分类及内容提取 |
+| `ingestion/` | 已实现信源适配协议与批次导入入口；真实渠道、调度及自动提取后续接入 |
 | `recommendations/` | 按偏好筛选内容及生成可解释候选 |
 | `notifications/` | 提醒计划、设备关联、推送请求及送达记录 |
 
