@@ -8,12 +8,11 @@
 
 启动本地后端后，可打开 [Swagger UI](http://127.0.0.1:8000/docs)、[ReDoc](http://127.0.0.1:8000/redoc) 或 [OpenAPI JSON](http://127.0.0.1:8000/openapi.json)。修改监听端口时同步地址；测试部署在对应 API 基地址后访问 `docs`、`redoc` 和 `openapi.json`。
 
-| 范围 | 主要说明 | 实现 |
+| 模块 | 契约 | 说明 |
 | --- | --- | --- |
-| 连通性检查 | [GET /test/hello](../backend/app/api/API.md#get-testhello) | [路由](../backend/app/api/test.py)、[响应模型](../backend/app/schemas/hello.py) |
-| 健康检查 | [存活与数据库就绪检查](../backend/app/api/API.md#健康检查) | [路由](../backend/app/api/health.py)、[响应模型](../backend/app/schemas/health.py) |
+| 连通性与健康检查 | [模块 API 文档](../backend/app/api/API.md) | 当前基础路由模块，提供客户端连通性及服务健康检查 |
 
-新业务模块确定后，在此表增加模块契约链接；不为尚未确定的接口预建目录或空文档。
+此表按模块提供入口，具体端点、请求和响应由对应模块契约及 OpenAPI 维护。新业务模块确定后，在此表增加模块契约链接；不为尚未确定的接口预建目录或空文档。
 
 ## 共享约定
 
