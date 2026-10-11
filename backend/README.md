@@ -14,12 +14,12 @@ cd backend
 uv python install 3.12
 uv sync --locked
 uv run python --version
-uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
+uv run --locked --group local-db python -m app.dev --port 8000 --reload
 ```
 
-`uv sync --locked` 创建 `backend/.venv` 并安装锁定的运行及开发依赖；无需手动激活虚拟环境。已有可用 Python 3.12 时可跳过 `uv python install 3.12`。安装依赖或下载 Python 需要访问对应下载源。当前 hello 服务无需数据库、凭证或后端 `.env` 配置。
+`uv sync --locked` 创建 `backend/.venv` 并安装锁定的运行及开发依赖；无需手动激活虚拟环境。已有可用 Python 3.12 时可跳过 `uv python install 3.12`。上面的开发启动命令还会安装 `local-db` 依赖组中的 PostgreSQL 程序，自动初始化数据库、启动数据库、执行 Alembic 升级，然后启动 API；无需 Docker、管理员权限或手填 `DATABASE_URL`。首次安装依赖、数据库程序或 Python 需要访问下载源。详情见[本地数据库自动准备](#本地数据库自动准备)。
 
-服务监听 `http://127.0.0.1:8000`；8000 被占用时先检查占用者，或使用其他空闲端口并同步前端 `VITE_API_BASE_URL`。启动后保持此终端运行，按 Ctrl+C 停止。在另一个终端验证：
+服务监听 `http://127.0.0.1:8000`；8000 被占用或出现 Windows `WinError 10013` 时可将命令的 `--port 8000` 改为 `--port 18000`，并同步前端 `VITE_API_BASE_URL`。启动后保持此终端运行，按 Ctrl+C 停止 API 和本次使用的本地数据库进程，数据继续保留。在另一个终端验证：
 
 ```bash
 curl -i http://127.0.0.1:8000/test/hello
@@ -38,7 +38,7 @@ uv lock --check
 
 测试默认把临时数据库放在 `backend/.pytest_cache/tmp/` 下，每次运行使用独立子目录，避免 Windows 全局 `Temp/pytest-of-<用户名>` 的权限问题及并行运行互相清理。该目录已被 Git 忽略，测试产物会保留在对应子目录中供排查。显式传入 `--basetemp` 或设置 `PYTEST_DEBUG_TEMPROOT` 时沿用调用方的配置。
 
-测试覆盖 hello、CORS、健康检查，以及信息系统的迁移、持久化、批次回滚、幂等和查询。数据库连接成功测试使用内存 SQLite，信息持久化使用临时 SQLite 文件；连接失败测试模拟 SQLAlchemy 异常。PostgreSQL 离线迁移 SQL 有自动检查，真实 PostgreSQL 连接及并发仍需独立环境验证。专项步骤见[信息系统](app/services/content/README.md#迁移验证与回滚)。
+测试覆盖 hello、CORS、健康检查、开发启动流程，以及信息系统的迁移、持久化、批次回滚、幂等和查询。默认测试使用 SQLite 和模拟异常，不启动 PostgreSQL；另检查 PostgreSQL 离线迁移 SQL。可用 `uv run --locked --group local-db pytest --local-postgres` 验证真实本地 PostgreSQL 的迁移、写入、重启保留与进程停止；真实并发和渠道接入另行验证。专项步骤见[信息系统](app/services/content/README.md#迁移验证与回滚)。
 
 ## CORS 与浏览器联调
 
@@ -53,7 +53,27 @@ uv lock --check
 
 ## 数据库配置与健康检查
 
-`DATABASE_URL` 是可选服务端环境变量，由 `app/core/config.py` 从进程环境读取；当前代码不自动加载后端 `.env` 文件。未设置或值为空时应用仍可启动，hello 和存活检查可用，就绪检查返回 HTTP 503。
+### 本地数据库自动准备
+
+在 backend 目录使用开发入口：
+
+```powershell
+# 若此前手动设置过连接串，先移除，以选择自动本地数据库。
+Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue
+uv run --locked --group local-db python -m app.dev --port 18000 --reload
+```
+
+`local-db` 依赖组固定 `pgembed==0.2.0`，由 uv 下载并校验锁文件中的平台安装包；包内带真正的 PostgreSQL 程序，不替换为 SQLite，也不安装 Windows 系统服务。普通 API 和部署依赖不包含该组。当前安装包覆盖 Python 3.12 的 Windows x64、Linux x64/ARM64 和 macOS 15+ ARM64；其他平台使用下节的独立 PostgreSQL。安装包来源与平台列表见 [pgembed](https://pypi.org/project/pgembed/0.2.0/)。
+
+首次启动创建独立 PostgreSQL 集群及 `livelife` 数据库，自动执行 `alembic upgrade head`；之后复用已有数据并补齐新迁移。程序位于 `.venv` 的依赖包内，数据和数据库日志位于 `backend/.local/postgres/`，均已被 Git 忽略。迁移失败会中止 API 启动并清理数据库进程，不报告虚假的就绪状态。`--reload` 只重启 API 子进程，父进程保持数据库运行。
+
+数据库由 pgembed 选择可用地址：Windows 仅监听 `127.0.0.1` 的空闲端口，Linux/macOS 使用本地 Unix socket。此开发库使用本机 trust 认证，仅用于自己的开发数据；不要用它承载正式或共享服务。控制台打印实际 `DATABASE_URL`，如需在另一个终端运行 worker 或检查迁移，复制该值到该终端的环境变量，并保持开发入口运行；不要照抄固定的 5432 端口。开发入口只为自身及子进程设置连接串，不修改系统环境变量或 `.env` 文件。
+
+`--data-dir <目录>` 可指定其他本地数据目录；路径相对当前终端，默认路径始终相对 backend。停止后保留该目录即可保留数据，不要把数据放进 `.venv`。正常 Ctrl+C 或 API 启动失败会关闭数据库；多个开发入口共用同一数据目录时，由最后一个使用者退出时停止数据库。强制杀死父进程可能留下数据库进程，下次启动会复用；不要在数据库运行时直接删除数据目录。需要重置时先停止所有使用它的进程，再备份或重命名该目录。
+
+### 使用已有数据库或部署入口
+
+`DATABASE_URL` 是可选服务端环境变量，由 `app/core/config.py` 从进程环境读取；当前代码不自动加载后端 `.env` 文件。标准入口 `uv run uvicorn app.main:app --host 127.0.0.1 --port 8000` 不安装、启动或迁移数据库；未设置连接串时 hello 和存活检查可用，就绪检查返回 HTTP 503。开发入口发现已有非空 `DATABASE_URL` 时拒绝自动准备，提示切换标准入口，避免迁移错误目标。
 
 需要测试已有本地 PostgreSQL 时，在启动服务的同一终端设置 SQLAlchemy URL：
 
@@ -73,11 +93,12 @@ curl -i http://127.0.0.1:8000/health/ready
 
 存活检查不访问数据库；就绪检查执行 `SELECT 1`，仅验证连接，不验证业务表或迁移状态。响应和失败行为见[健康检查契约](app/api/health/API.md#健康检查)。现有自动部署仍通过 hello 检查服务，部署启用状态见[部署入口](../docs/deployment.md#当前实施状态)。
 
-已提供 `migrations/`、Alembic 环境和首个信息表迁移。设置开发数据库的 `DATABASE_URL` 后，在 backend 目录执行 `uv run alembic upgrade head` 和 `uv run alembic current`。应用不会自动创建表或执行迁移；信息系统使用前需要手动升级。迁移、使用和会删除信息数据的回退操作见[信息系统说明](app/services/content/README.md#迁移验证与回滚)。连接就绪检查仍只执行 `SELECT 1`，不验证迁移版本。
+已提供 `migrations/`、Alembic 环境和首个信息表迁移。独立数据库需要设置 `DATABASE_URL` 后，在 backend 目录手动执行 `uv run alembic upgrade head` 和 `uv run alembic current`；开发入口只对自动管理的本地库执行升级。迁移、使用和会删除信息数据的回退操作见[信息系统说明](app/services/content/README.md#迁移验证与回滚)。连接就绪检查仍只执行 `SELECT 1`，不验证迁移版本。
 
 ## 目录职责与请求处理
 
 - `app/main.py`：创建应用、生命周期和 CORS；`app/api/router.py`：统一注册 hello 和健康检查 router。
+- `app/dev.py`、`app/db/local.py`：本地开发启动入口、专属 PostgreSQL 生命周期和自动迁移；部署仍使用 `app.main:app`。
 - `app/api/`：按模块组织路由包，模块内的 `router.py` 处理 HTTP 路径、参数校验、依赖注入和响应映射，`API.md` 维护契约；`app/schemas/`：Pydantic 请求与响应模型。
 - `app/core/`：配置；`app/db/`：Engine、Session 工厂、UTC 时间类型及请求依赖；`app/db/models/`：共享 ORM Base 与信息模型。
 - `app/services/`：按业务域组织服务用例，`content/` 实现信息汇总和提供，`ingestion/` 定义信源适配协议；`app/repositories/sql/`：集中信息查询与原子写入。

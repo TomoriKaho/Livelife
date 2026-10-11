@@ -6,6 +6,12 @@ from uuid import uuid4
 import pytest
 
 
+def pytest_addoption(parser):
+    parser.addoption(
+        "--local-postgres", action="store_true", help="Run real local PostgreSQL tests"
+    )
+
+
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config: pytest.Config) -> None:
     if config.option.basetemp is not None or os.environ.get("PYTEST_DEBUG_TEMPROOT"):

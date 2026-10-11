@@ -16,7 +16,7 @@
 | 地图 | Canvas 2D + Three.js | 首阶段复用离线校园地图；2D 作为低性能设备的可选入口 |
 | APP | Capacitor | 同一前端支持 Android/iOS；首阶段最小 Android 包，iOS 后续 |
 | API | Python + FastAPI + Pydantic | 已实现 hello、健康检查及响应校验；业务接口后续引入 |
-| 数据库 | PostgreSQL + SQLAlchemy + Alembic | 已提供可选连接、Session、信息表和首个迁移；实际环境需配置并手动升级 |
+| 数据库 | PostgreSQL + SQLAlchemy + Alembic | 已提供可选连接、Session、信息表和迁移；开发入口自动准备本地库，独立环境需配置并手动升级 |
 | 后台任务 | 独立 Python worker | 后续采集与推荐；不依赖手机后台运行 |
 | 部署 | Python venv + Supervisor；Nginx + SSH 隧道 | 课程机普通用户直接运行后端，公网机提供 HTTPS；#29 实施 |
 

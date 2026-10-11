@@ -80,7 +80,9 @@
 
 ## 本地准备与调用
 
-后端运行时与依赖安装见 [backend README](../../../README.md)。先准备独立开发 PostgreSQL，在 backend 目录设置 `DATABASE_URL` 并执行迁移；下列 PowerShell 示例中的凭证自行替换：
+后端运行时与依赖安装见 [backend README](../../../README.md)。本地开发推荐在 backend 目录运行 `uv run --locked --group local-db python -m app.dev --port 18000 --reload`，它会自动安装并启动 PostgreSQL、创建数据库和执行迁移。保持该终端运行，将控制台打印的 `DATABASE_URL` 设置到运行采集脚本或 worker 的另一个终端即可使用。数据保存在 `backend/.local/postgres/`，停止再启动仍会保留；安装平台、路径与排错见[本地数据库自动准备](../../../README.md#本地数据库自动准备)。
+
+使用自己安装的 PostgreSQL 时，先准备独立开发数据库，再设置连接串并手动执行迁移；下列 PowerShell 示例中的凭证自行替换：
 
 ```powershell
 $env:DATABASE_URL = 'postgresql+psycopg://<用户名>:<密码>@127.0.0.1:5432/<开发数据库>'
@@ -88,7 +90,7 @@ uv run alembic upgrade head
 uv run alembic current
 ```
 
-迁移读取进程变量，不自动读取后端 `.env`。应用启动不会自动迁移；没有数据库时 hello 和存活检查仍可用，信息持久化需要配置数据库及创建表。现有数据库连接探针只验证 `SELECT 1`，不能代替检查迁移版本。
+迁移读取进程变量，不自动读取后端 `.env`。标准 `app.main:app` 入口不自动迁移；自动迁移仅发生在开发入口管理的本地数据库。没有数据库时 hello 和存活检查仍可用，信息持久化需要连接数据库及创建表。现有数据库连接探针只验证 `SELECT 1`，不能代替检查迁移版本。
 
 在 backend 目录的 Python 进程中，下面例子使用人工样例演示写入与查询；无需启动 Uvicorn：
 
@@ -169,3 +171,5 @@ uv lock --check
 ```
 
 自动测试使用临时 SQLite 文件验证实际迁移、跨 Session 持久化、来源更新与幂等、失败回滚、查询过滤、时间窗口和分页；另生成 PostgreSQL 离线迁移 SQL。这些检查不等于真实 PostgreSQL 连接、并发写入或真实渠道采集已通过。PostgreSQL 验证时先在独立开发库执行迁移，再按上例写入、读取和重复导入，确认 UUID 稳定以及 `/health/ready` 可连接；正式环境操作遵循[部署入口](../../../../docs/deployment.md)。
+
+`uv run --locked --group local-db pytest --local-postgres` 另在测试临时目录启动真实 PostgreSQL，验证自动建库、迁移、信息写入、重启后读取及停止进程；不会接触默认开发数据目录或 `DATABASE_URL` 指定的外部数据库。默认 `uv run pytest` 跳过这项集成测试，不下载数据库程序。该项不覆盖多进程并发或真实平台采集。
