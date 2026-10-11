@@ -42,4 +42,3 @@ curl -i http://127.0.0.1:8000/test/hello
 | `GET /health/ready` | 数据库 `SELECT 1` 成功 | 200 | `{"status":"ok","database":"connected"}` |
 
 就绪成功仅表示连接可用，不代表业务表、迁移或业务功能就绪。未配置数据库时 hello 仍可调用；当前部署探针仍使用 hello。配置、调用命令和迁移限制见[后端说明](../../README.md#数据库配置与健康检查)。
-
