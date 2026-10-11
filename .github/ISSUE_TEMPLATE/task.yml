@@ -12,7 +12,7 @@ body:
     id: scope
     attributes:
       label: 工作范围
-      description: 列出本任务包含的内容，必要时说明边界。
+      description: 列出模块、交付内容、预计修改的文档文件和章节；开始前查看相关 Issue/PR，重叠时协调分工或合并顺序。
     validations:
       required: false
   - type: textarea

@@ -12,7 +12,7 @@
 | [#6 定位附近当日活动](https://github.com/TomoriKaho/Livelife/issues/6) | 示例位置蓝点、定位按钮、附近今日活动与示例距离；不申请浏览器定位权限。 |
 | [#7 Agent 对话获取信息](https://github.com/TomoriKaho/Livelife/issues/7) | 信息区的校园 Agent 入口，跳转现有 D-06 页面。对话页展示前端样例，不请求模型。 |
 | [#8 身份兴趣与个性推荐](https://github.com/TomoriKaho/Livelife/issues/8) | 活动卡中的兴趣匹配标记，使用写死的科技/电影/阅读样例。无用户画像或推荐计算。 |
-| [#13 设计页面划分](https://github.com/TomoriKaho/Livelife/issues/13) | 当前保留七个业务页面与五项 Tab，仅补全 D-02。活动弹窗表达地图内的轻量查看，独立 D-03 详情页仍待设计。 |
+| [#13 设计页面划分](https://github.com/TomoriKaho/Livelife/issues/13) | 保留七个页面与五项 Tab。活动弹窗用于地图内轻量查看，完整详情进入已有 D-03 页面。 |
 
 搜索只搜索本地已命名的校内建筑和示例活动/教室，不调用在线地理编码。可以输入「理科」「208」「电影」「博雅塔」体验。未聚焦建筑时，四个有示例活动的校内建筑带标记，也提供建筑快捷按钮。其他校内建筑可通过直接点击轮廓或搜索进入分层示意，暂无活动时展示空状态；博雅塔进入完整地标近景。
 
@@ -57,14 +57,14 @@ OSM 有 `height` 时使用该高度；否则按 `building:levels × 3.8m` 推定
 - `scripts/prepare-campus-map.mjs`：从已下载的原始数据生成展示资源。
 - `scripts/download-campus-map.mjs`：仅显式刷新数据时访问 Overpass，下载后自动生成展示资源。
 
-在 `design/` 下：
+在 `frontend/` 下：
 
 ```powershell
 npm ci                 # 初次安装依赖需要网络；已有 node_modules 时可跳过
 npm run dev            # 地图启动与使用不需要互联网
 npm run map:prepare    # 从本地快照重新生成，无网络
 npm run test:map       # 校界裁切、投影、资源及活动映射检查
-npm run build
+npm run build:preview
 npm run preview        # dist 中包含地图、字体和 Three.js
 ```
 
@@ -72,7 +72,7 @@ npm run preview        # dist 中包含地图、字体和 Three.js
 
 OSM 署名及 ODbL 许可证说明见 `src/assets/maps/LICENSE.md`。生产构建保留原始地图、转换数据、来源说明和许可证，便于团队分发和追溯。
 
-当前原型仅用于团队内部设计预览，地图画面不显示署名文字；依据 [OSMF 署名指南](https://osmfoundation.org/wiki/Licence/Attribution_Guidelines#Introduction)，内部使用不在该指南的适用范围内。面向公众发布时，应按交互地图要求补回可见的来源署名及许可链接。
+客户端地图已提供可见的 `© OpenStreetMap contributors` 署名及版权链接，构建保留地图来源和许可文件。分发时保留这些入口，参考 [OSMF 署名指南](https://osmfoundation.org/wiki/Licence/Attribution_Guidelines#Introduction)。
 
 ## 视觉基线
 
@@ -104,6 +104,14 @@ Canvas 按设备密度绘制（最高 2 倍），预缓存 Path2D 和色面图�
 
 ## Android 加载与绘制
 
-楼层裁切及其铅笔轮廓由单个 Web Worker 顺序准备，几何缓冲区通过转移返回主线程；不在 Worker 中创建 WebGL 上下文。普通地形、道路和周边准备按时间分片让出页面线程，附近建筑卡片和抽屉可在加载期间操作。离开地图会终止 Worker、取消剩余初始化并释放场景资源。
+楼层裁切及其铅笔轮廓由单个 Web Worker 顺序准备，几何缓冲区通过转移返回主线程；不在 Worker 中创建 DOM 或 WebGL 上下文。普通地形、道路和周边准备按约 5 毫秒检查是否让出线程，附近建筑卡片和抽屉可在加载期间操作。离开地图会终止 Worker、取消剩余初始化并释放场景资源及候选几何。
 
-地图静止时不持续绘制；相机拖动/惯性、定位/缩放、建筑展开、楼层高亮、活动更新及窗口尺寸变化安排下一帧。第一次 GPU 编译和上传仍有成本，应单独记录实际设备的加载时长和短暂停顿，不能用网页构建成功替代实机响应验证。
+地图静止时不持续绘制；相机拖动/惯性、定位/缩放、建筑展开、楼层高亮、活动更新及窗口尺寸变化安排下一帧。GPU 编译、上传和 Three.js 的部分场景准备仍在主线程，应单独记录实际设备的加载时长、短暂停顿和加载时操作列表的响应，不能用网页构建成功替代实机响应验证。
+
+公共手绘装饰和磁盘缓存见[手绘渲染](../../plugins/README.md)及[缓存模块](../../platform/SKETCH_CACHE.md)。
+
+## 外部网页与地图故障区分
+
+地图使用包内数据，不依赖在线 OpenStreetMap 瓦片。角落的署名链接通向外部版权页；Android 的 Capacitor 默认导航策略把外部地址交给系统浏览器，配置不应把外部域名加入 `server.allowNavigation`。验收时点击署名、返回应用，再检查地图与底部导航。外部网站超时应只影响浏览器，不应替换应用的本地页面。
+
+临时绘制诊断应用使用普通 WebView，与正式测试包的外链策略不同，不能用其外部网页错误认定 APK 地图崩溃。若实际 APK 出现同样问题，记录包版本、完整错误地址和操作步骤，并检查 WebView 错误与进程退出日志；不要仅凭网站超时推断地图渲染进程崩溃。

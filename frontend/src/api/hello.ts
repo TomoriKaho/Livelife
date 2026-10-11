@@ -1,6 +1,6 @@
 /**
  * 首阶段唯一的真实后端接口：GET /test/hello
- * 接口契约见 docs/architecture.md#首阶段接口契约。
+ * 接口契约见 docs/api.md#get-testhello；客户端行为见本目录 README.md。
  */
 import { checkAndroidStatus } from '../platform/android-config';
 import type { HelloResponse } from '../types';
