@@ -11,6 +11,7 @@ import { RouterLink, useRoute } from 'vue-router';
 import { saved, toggleSave, activityDetailRoute } from '../data/favorites.js';
 import AppIcon from '../components/AppIcon.vue';
 import ActivityDrawer from './map/ActivityDrawer.vue';
+import OsmAttribution from './map/OsmAttribution.vue';
 import mascot from '../assets/mascot.png';
 import campus from '../assets/maps/campus.json';
 import { activities, categories, filters, venues } from './map/demo.js';
@@ -152,7 +153,7 @@ watch(() => route.query.activity, applyActivityRoute);
       </template>
         <span v-if="mode === '3d'" class="campus-caption">北京大学 · 燕园</span>
         <div class="map-hint">{{ routedActivity ? `${routedActivity.title}${focusPoint ? ' · 地点示意' : ` · ${floor}F`}` : mode === '2d' ? selected ? '俯视建筑 · 在下方切换楼层查看活动' : '点建筑查看活动 · 拖动平移 · 双指缩放' : currentBuilding?.scenic ? '拖动环绕博雅塔 · 缩小看看未名湖' : selected ? '点楼层查看活动 · 拖动查看另一侧' : '点建筑，看看楼层里正在发生什么' }}</div>
-      <a class="map-attribution" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a>
+      <OsmAttribution class="map-attribution" />
       <div class="map-overlay">
       <div class="map-search-wrap">
         <label v-sketch class="map-search sketch sketch-white"><AppIcon name="pin" /><input v-model="search" type="search" placeholder="找建筑、教室或活动…" aria-label="搜索燕园建筑、教室或活动" autocomplete="off" /><span class="search-campus">燕园</span></label>
@@ -293,7 +294,8 @@ watch(() => route.query.activity, applyActivityRoute);
 <style scoped>
 .map-page { position: relative; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; outline: none; }
 .map-rule { height: 1.5px; flex: 0 0 auto; background: #20304b; }
-.map-attribution { position: absolute; top: 4px; right: 8px; z-index: 12; font: 10px/1.4 system-ui; background: #fffC; color: #334; padding: 2px 4px; border-radius: 3px; }
+/* 右下角并跟随 --drawer-peek，避开顶部搜索框、右侧 .map-rail 和左下 .map-hint。 */
+.map-attribution { position: absolute; right: 8px; bottom: calc(var(--drawer-peek) + 8px); z-index: 12; }
 .map-overlay { position: absolute; top: 8px; left: 0; right: 0; z-index: 8; pointer-events: none; }
 .map-search-wrap { position: relative; z-index: 2; margin: 0 17px; pointer-events: auto; }
 .map-search { display: flex; align-items: center; gap: 7px; padding: 4px 12px; min-height: 44px; }

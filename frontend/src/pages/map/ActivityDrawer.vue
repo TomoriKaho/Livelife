@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { drawerStates, drawerHeights, draggedHeight, nextDrawerState, snapDrawerState } from './drawer-gesture.mjs';
+import OsmAttribution from './OsmAttribution.vue';
 
 const emit = defineEmits(['measure']);
 const state = ref('middle'), dragging = ref(false), dragHeight = ref(0);
@@ -94,6 +95,8 @@ onBeforeUnmount(() => observer?.disconnect());
         @pointerdown="pointerStart" @pointermove="event => move(event.clientX, event.clientY, event)" @pointerup="finish()" @pointercancel="finish(true)">
         <span class="sheet-grip" aria-hidden="true"></span>
       </button>
+      <!-- 展开档完整遮挡地图，地图署名不可见，因此在把手右侧补一份同源署名。 -->
+      <OsmAttribution v-if="state === 'expanded'" class="drawer-attribution" />
       <div id="map-drawer-content" ref="content" class="drawer-content" :inert="state === 'hidden'" :aria-hidden="state === 'hidden' ? true : undefined" @touchstart.passive="touchStart" @touchmove="touchMove" @touchend="finish()" @touchcancel="finish(true)">
         <slot />
       </div>
@@ -109,6 +112,7 @@ onBeforeUnmount(() => observer?.disconnect());
 .drawer-handle:active { transform: none; }
 .drawer-handle:focus-visible { outline-offset: -6px; }
 .sheet-grip { width: 32px; height: 3px; border-radius: 70%; background: #8d9b9e; }
+.drawer-attribution { position: absolute; top: 0; right: 8px; z-index: 1; display: flex; align-items: center; height: 38px; }
 .drawer-content { flex: 1; min-height: 0; padding: 0 17px 18px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 @media (max-width: 359px) { .drawer-content { padding-left: 15px; padding-right: 15px; } }
 @media (prefers-reduced-motion: reduce) { .activity-drawer { transition: none; } }
