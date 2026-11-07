@@ -21,6 +21,7 @@ import MoreIcon from './more/MoreIcon.vue';
 import PreferenceSwitch from './more/PreferenceSwitch.vue';
 import InterestPreferences from './more/InterestPreferences.vue';
 import { initialProfile, initialInterests, menuItems, titles } from './more/demo.js';
+import { authState, logout as logoutAccount } from '../api/auth';
 
 const showInternalTools = import.meta.env.VITE_INTERNAL_TOOLS === 'true';
 const HelloConnectionTest = showInternalTools
@@ -44,7 +45,6 @@ const selectedInterests = ref([...initialInterests]);
 const pickedInterests = computed(() => interests.filter(item => selectedInterests.value.includes(item.id)));
 const prefs = reactive({ personalized: true, reminders: true, recommendations: false, location: true, useIdentity: true, useInterests: true, quiet: false });
 const advance = ref('30分钟'), recommendationMode = ref('interest');
-const password = ref(''), confirmPassword = ref(''), passwordChanged = ref(false);
 const feedback = ref(''), notice = ref('');
 let noticeTimer;
 const favoritesSummary = computed(() => `收藏 ${savedActivities.value.length} 个活动 · ${savedActivities.value.filter(item => activityStatus(item) === 'upcoming').length} 个待开始`);
@@ -53,7 +53,6 @@ function open(id) {
   if (id === pane.value) return;
   paneTrail.push(pane.value);
   if (id === 'profile') Object.assign(profileDraft, profile);
-  if (id === 'password') { password.value = ''; confirmPassword.value = ''; }
   pane.value = id;
   if (id === 'favorites') router.replace({ path: '/more', query: { pane: 'favorites' } });
 }
@@ -72,18 +71,18 @@ function saveProfile() {
   paneTrail.length = 0; pane.value = 'home'; notify('资料已保存');
 }
 function saveInterests(value) { selectedInterests.value = [...value.selected]; prefs.personalized = value.personalized; recommendationMode.value = value.mode; paneTrail.length = 0; pane.value = 'home'; notify('兴趣与推荐设置已保存'); }
-function savePassword() {
-  if (!password.value || !confirmPassword.value) return;
-  if (password.value !== confirmPassword.value) { notify('两次输入的密码不一致'); return; }
-  passwordChanged.value = true; password.value = ''; confirmPassword.value = ''; goBack(); notify('已演示密码更新');
-}
 function sendFeedback() { if (feedback.value.trim()) notify('谢谢你的建议！提交功能将在后续开放'); }
+async function signOut() {
+  try { await logoutAccount(); }
+  catch { notify('已在本地退出；服务器会话将在过期后失效'); }
+  router.push('/onboarding');
+}
 watch(pane, async () => {
   if (warming) return;
   await nextTick();
   root.value?.querySelector('h1')?.focus({ preventScroll: true });
 });
-onBeforeUnmount(() => { clearTimeout(noticeTimer); password.value = ''; confirmPassword.value = ''; });
+onBeforeUnmount(() => { clearTimeout(noticeTimer); });
 </script>
 
 <template>
@@ -131,21 +130,13 @@ onBeforeUnmount(() => { clearTimeout(noticeTimer); password.value = ''; confirmP
       </section>
       <section v-else-if="pane === 'account'" aria-label="账户与隐私设置">
         <h2 class="field-heading">账户信息</h2>
-        <dl class="account-info"><div><dt>账户 ID</dt><dd>LL · 20260018</dd></div><div><dt>登录邮箱</dt><dd>yan***@pku.edu.cn</dd></div></dl>
-        <button class="plain-setting" type="button" @click="open('password')"><span>登录密码<small>{{ passwordChanged ? '刚刚更新 · 界面预览' : '已设置' }}</small></span><span>修改 <MoreIcon name="chevron" /></span></button>
+        <dl class="account-info"><div><dt>账户 ID</dt><dd>{{ authState.user?.id || '演示账户' }}</dd></div><div><dt>登录邮箱</dt><dd>{{ authState.user?.email || '未登录' }}</dd></div></dl>
         <h2 class="field-heading spaced-heading">推荐数据偏好</h2><p class="small-note">你来决定，推荐可以参考哪些信息。</p>
         <div class="switch-row"><span><strong>使用校园身份</strong><small>根据学生、教职工等身份筛选信息</small></span><PreferenceSwitch v-model="prefs.useIdentity" label="推荐使用校园身份" /></div>
         <div class="switch-row"><span><strong>使用兴趣标签</strong><small>根据你圈选的兴趣调整推荐</small></span><PreferenceSwitch v-model="prefs.useInterests" label="推荐使用兴趣标签" /></div>
-        <p class="preview-note">当前为界面预览，账户和设置均为示例。</p>
-        <button v-sketch class="secondary-button sketch" type="button" @click="router.push('/onboarding')"><MoreIcon name="logout" />退出登录</button>
+        <p class="preview-note">个人资料与推荐偏好仍为界面预览。</p>
+        <button v-sketch class="secondary-button sketch" type="button" :disabled="!authState.user" @click="signOut"><MoreIcon name="logout" />退出登录</button>
       </section>
-      <form v-else-if="pane === 'password'" @submit.prevent="savePassword">
-        <p class="pane-lede">为账户换一个新的密码。</p>
-        <label class="form-field"><span>新密码</span><div v-sketch class="field-outline sketch"><input v-model="password" type="password" autocomplete="new-password" required aria-label="新密码" /></div></label>
-        <label class="form-field"><span>再次输入新密码</span><div v-sketch class="field-outline sketch"><input v-model="confirmPassword" type="password" autocomplete="new-password" required aria-label="确认新密码" /></div></label>
-        <p class="preview-note">仅演示修改流程，不更改真实账户。</p>
-        <button v-sketch class="primary-button sketch" data-pencil="yellow" type="submit" :disabled="!password || !confirmPassword">确认修改</button>
-      </form>
       <section v-else-if="pane === 'appearance'" aria-label="界面风格选择">
         <p class="pane-lede">用喜欢的颜色，打开校园生活。</p>
         <div v-sketch class="style-preview sketch" data-pencil="yellow"><div v-sketch class="mini-ui sketch" aria-hidden="true"><div v-sketch class="mini-header sketch" data-pencil="blue"></div><div class="mini-tags"><i v-sketch class="sketch" data-pencil="mint"></i><i v-sketch class="sketch" data-pencil="pink"></i></div><div v-sketch class="mini-nav sketch" data-pencil="yellow"></div></div><div><h2>彩铅手绘</h2><p>黑铅勾线 · 彩铅平涂 · 小赖字体</p><span class="current-style"><MoreIcon name="check" />正在使用</span></div></div>
