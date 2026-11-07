@@ -1,6 +1,6 @@
 # 客户端 API 调用
 
-本目录维护请求和客户端失败处理。服务端契约从[共享 API 入口](../../../docs/api.md)及对应模块说明读取；页面交互由页面模块维护。
+本目录维护请求和客户端失败处理。服务端契约从[共享 API 入口](../../../docs/api.md)及对应模块说明读取；页面交互由页面模块维护。当前真实业务请求包括 hello 与 Agent 对话。
 
 ## hello 调用与失败处理
 
@@ -12,6 +12,10 @@
 - 网页预览或 Android 分发配置启用时，核对真实响应的 `X-Livelife-Backend-SHA`；own/fixed 必须与配置 SHA 一致，staging 可随 main 更新。Android 调用前另核对安装包状态；配置或状态无效时停止测试，不回退 localhost。
 
 客户端校验失败不新增服务端错误码。自动行为测试与运行条件见[前端检查](../../README.md#构建预览与检查)，真实请求及断网重试按[测试入口](../../../docs/testing.md#网页与接口)验收。
+
+## Agent 对话
+
+[agent.ts](agent.ts) 使用 `sessionStorage` 保存 24 小时匿名会话令牌，通过 Bearer 认证读取历史并 POST 发送问题。`agent-stream.mjs` 解析 SSE 的开始、来源、文本增量、用量、完成和错误事件；失败时保留用户问题供重试。附件不会加入请求。服务端字段和错误语义见[Agent API](../../../backend/app/api/agent/API.md)。
 
 ## 新增业务请求
 
