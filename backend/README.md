@@ -1,6 +1,6 @@
 # 后端开发
 
-后端使用 FastAPI 和 Pydantic，采用模块化单体。当前提供 `GET /test/hello` 连通性接口、存活与数据库就绪检查，以及[通用信息系统](app/services/content/README.md)的内部采集协议、持久化与查询服务。信息系统尚未接入真实平台或前端；无业务登录。HTTP 契约见[连通性检查 API](app/api/demo/API.md)和[健康检查 API](app/api/health/API.md)，共享约定与接口索引见[API 入口](../docs/api.md)，整体技术路线见[架构说明](../docs/architecture.md)。
+后端使用 FastAPI 和 Pydantic，采用模块化单体。当前提供 `GET /test/hello`、存活与数据库就绪检查、[通用信息系统](app/services/content/README.md)，以及基于公开信息的匿名 Agent 对话。Agent 模型调用只有在环境提供凭证后可用。HTTP 契约见[连通性检查 API](app/api/demo/API.md)、[健康检查 API](app/api/health/API.md)和[Agent API](app/api/agent/API.md)，共享约定与接口索引见[API 入口](../docs/api.md)，整体技术路线见[架构说明](../docs/architecture.md)。
 
 ## 后端安装、启动与检查
 
@@ -36,6 +36,8 @@ uv run ruff format --check .
 uv lock --check
 ```
 
+已安装依赖且不需要改动依赖时，也可直接使用虚拟环境运行检查：Windows PowerShell 执行 `.venv\Scripts\python.exe -m pytest`、`.venv\Scripts\ruff.exe check .` 和 `.venv\Scripts\ruff.exe format --check .`；macOS/Linux 对应执行 `.venv/bin/python -m pytest`、`.venv/bin/ruff check .` 和 `.venv/bin/ruff format --check .`。这样即使 `uv` 未加入 PATH，也能复用已准备好的环境。
+
 测试默认把临时数据库放在 `backend/.pytest_cache/tmp/` 下，每次运行使用独立子目录，避免 Windows 全局 `Temp/pytest-of-<用户名>` 的权限问题及并行运行互相清理。该目录已被 Git 忽略，测试产物会保留在对应子目录中供排查。显式传入 `--basetemp` 或设置 `PYTEST_DEBUG_TEMPROOT` 时沿用调用方的配置。
 
 测试覆盖 hello、CORS、健康检查、开发启动流程，以及信息系统的迁移、持久化、批次回滚、幂等和查询。默认测试使用 SQLite 和模拟异常，不启动 PostgreSQL；另检查 PostgreSQL 离线迁移 SQL。可用 `uv run --locked --group local-db pytest --local-postgres` 验证真实本地 PostgreSQL 的迁移、写入、重启保留与进程停止；真实并发和渠道接入另行验证。专项步骤见[信息系统](app/services/content/README.md#迁移验证与回滚)。
@@ -47,7 +49,7 @@ uv lock --check
 - `http://localhost` 和 `http://127.0.0.1` 的 5173、8765、8766 端口；
 - Android / Capacitor 原生来源 `https://localhost`。
 
-仅允许 GET 和 Accept 请求头，暴露 `X-Livelife-Backend-SHA` 响应头。该版本头由测试部署网关注入，本地 Uvicorn 不自动生成。Origin 的协议、主机和端口必须完全匹配；自定义前端端口或手机局域网网页需明确添加对应来源。`curl` 成功不等于浏览器 CORS 已通过。
+允许 GET/POST、Accept/Authorization/Content-Type，暴露 `X-Livelife-Backend-SHA` 响应头。该版本头由测试部署网关注入，本地 Uvicorn 不自动生成。Origin 的协议、主机和端口必须完全匹配；自定义前端端口或手机局域网网页需明确添加对应来源。`curl` 成功不等于浏览器 CORS 已通过。
 
 前端地址配置和界面操作见[前端联调教程](../frontend/README.md#api-地址与联调)。公网预览通过同源网关访问 API，路由前缀、版本头和环境配对由[部署文档](../docs/deployment.md#api-地址与前端关联)维护。
 
@@ -95,6 +97,24 @@ curl -i http://127.0.0.1:8000/health/ready
 
 已提供 `migrations/`、Alembic 环境和首个信息表迁移。独立数据库需要设置 `DATABASE_URL` 后，在 backend 目录手动执行 `uv run alembic upgrade head` 和 `uv run alembic current`；开发入口只对自动管理的本地库执行升级。迁移、使用和会删除信息数据的回退操作见[信息系统说明](app/services/content/README.md#迁移验证与回滚)。连接就绪检查仍只执行 `SELECT 1`，不验证迁移版本。
 
+### Agent 服务配置
+
+Agent 默认关闭模型请求，直到提供服务端密钥。开发时在后端进程环境设置：
+
+```powershell
+$env:AGENT_SESSION_SECRET = '<至少 32 字节随机值>'
+$env:AGENT_LLM_BASE_URL = 'https://api.example.com/v1'
+$env:AGENT_LLM_API_KEY = '<服务端密钥>'
+$env:AGENT_LLM_MODEL = '<兼容模型名>'
+uv run --locked --group local-db python -m app.dev --port 18000 --reload
+```
+
+不要把这些变量写进前端 `.env` 或提交到仓库。自建兼容端点也可填写对应服务地址；用户问题、有限对话上下文和命中的公开信息片段会发送给模型服务。会话和 token 使用统计写入 PostgreSQL，24 小时后过期；无需额外 Redis。
+
+限制项及默认值：`AGENT_LLM_TIMEOUT_SECONDS=60`、`AGENT_LLM_MAX_OUTPUT_TOKENS=1024`、`AGENT_MAX_MESSAGE_CHARS=4000`、`AGENT_MAX_CONTEXT_CHARS=24000`、`AGENT_RATE_REQUESTS_PER_WINDOW=5`、`AGENT_IP_REQUESTS_PER_HOUR=30`、`AGENT_DAILY_TOKEN_QUOTA=100000`。每个会话固定只允许一个活跃模型请求，以保持单表状态简单。频率和 token 窗口按 UTC 计；token 用量优先使用模型返回值，缺失时按字符数估算。每日额度按匿名会话计，不代表供应商结算账单。
+
+数据库迁移由本地开发入口自动执行。独立数据库先设置 `DATABASE_URL`，再运行 `uv run alembic upgrade head`。Agent 契约、SSE 事件和错误码见[Agent API](app/api/agent/API.md)。限流 IP 使用 Uvicorn 仅对可信代理解析后的 `request.client.host`；部署代理变化时先核对可信代理配置，不在应用层直接采信 `X-Forwarded-For`。
+
 ## 目录职责与请求处理
 
 - `app/main.py`：创建应用、生命周期和 CORS；`app/api/router.py`：统一注册 hello 和健康检查 router。
@@ -120,6 +140,8 @@ app/api/
     ├── router.py         # 存活与数据库就绪检查
     └── API.md
 ```
+
+Agent 路由位于 `app/api/agent/`，会话和模型服务位于 `app/services/agent/`；相关短期会话与 IP 限额表通过 Alembic 管理。
 
 需要数据库的路由通过 `app/db/dependencies.py` 的 `get_session` 获取 Session；未配置时返回 HTTP 503。依赖在请求结束时关闭 Session，不负责提交事务。后续业务用例显式接收 Session，并负责提交或回滚；repository 只执行数据操作，不提交事务。
 

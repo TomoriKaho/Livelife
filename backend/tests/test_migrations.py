@@ -24,8 +24,12 @@ def test_migration_upgrade_matches_models_and_downgrade_removes_table():
             assert compare_metadata(context, Base.metadata) == []
             command.downgrade(config, "base")
             assert "information_items" not in inspect(connection).get_table_names()
+            assert "agent_sessions" not in inspect(connection).get_table_names()
+            assert "agent_ip_windows" not in inspect(connection).get_table_names()
             command.upgrade(config, "head")
             assert "information_items" in inspect(connection).get_table_names()
+            assert "agent_sessions" in inspect(connection).get_table_names()
+            assert "agent_ip_windows" in inspect(connection).get_table_names()
     finally:
         engine.dispose()
 

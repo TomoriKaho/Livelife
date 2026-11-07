@@ -12,6 +12,7 @@
 | --- | --- | --- |
 | 连通性检查 | [连通性检查 API](../backend/app/api/demo/API.md) | 客户端与后端连通性测试 |
 | 健康检查 | [健康检查 API](../backend/app/api/health/API.md) | 进程存活及数据库就绪检查 |
+| Agent 对话 | [Agent API](../backend/app/api/agent/API.md) | 匿名短期会话、SSE 回答、公开来源及反馈 |
 
 此表按模块提供入口，具体端点、请求和响应由对应模块契约及 OpenAPI 维护。新业务模块确定后，在此表增加模块契约链接；不为尚未确定的接口预建目录或空文档。
 
