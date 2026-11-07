@@ -29,6 +29,27 @@ export async function verifyStaticSketchGeometry() {
       results.push(`${width}x${height}: frame bounds and fill scale aligned`);
       renderer.release(control); control.remove();
     }
+    const nav = document.createElement('nav');
+    nav.className = 'bottom-nav'; nav.dataset.pencil = 'yellow';
+    nav.style.width = '320px'; root.append(nav); renderer.update(nav);
+    const tabs = Array.from({ length: 5 }, (_, index) => {
+      const tab = document.createElement('a'); tab.className = 'nav-item';
+      tab.textContent = `Tab ${index}`; nav.append(tab); return tab;
+    });
+    for (const selected of [0, 1, 2, 3, 4, 0, 3, 4, 2]) {
+      tabs.forEach((tab, index) => {
+        if (index === selected) { tab.setAttribute('aria-current', 'page'); tab.dataset.pencil = 'blue'; }
+        else { tab.removeAttribute('aria-current'); delete tab.dataset.pencil; }
+        renderer.update(tab);
+      });
+      if (nav.querySelectorAll('.nav-item > .sketch-decoration').length !== 1)
+        throw new Error('Navigation retained decoration from an old selection');
+      const fill = getComputedStyle(tabs[selected].querySelector('.sketch-decoration'), '::before');
+      if (fill.backgroundColor !== 'rgb(248, 244, 234)' || fill.backgroundImage === 'none')
+        throw new Error('Selected tab has no paper backing; blue and yellow may mix');
+    }
+    tabs.forEach(tab => renderer.release(tab)); renderer.release(nav); nav.remove();
+    results.push('five navigation states replace selection synchronously without old backing');
     return results;
   } finally { root.remove(); }
 }

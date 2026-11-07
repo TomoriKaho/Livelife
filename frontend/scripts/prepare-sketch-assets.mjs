@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { Resvg } from '@resvg/resvg-js';
-import { sketchVector } from './sketch-vector.mjs';
+import { sketchVector, navigationVector } from './sketch-vector.mjs';
 import { deflateSync } from 'node:zlib';
 
 const output = new URL('../src/assets/sketch/default/', import.meta.url);
@@ -54,10 +54,10 @@ async function save(name, svg, logicalWidth) {
   records.push({ name, width: png.width, height: png.height, bytes: bytes.length });
 }
 await save('outline', sketchVector(), 96);
+await save('navigation-top', navigationVector(), 96);
 for (const [color, cast] of Object.entries(colors)) {
   await save(`outline-${color}`, sketchVector({ cast }), 96);
-  // Crop away the shape's outer edge; CSS tiles the paper pigment independently
-  // from the nine-slice frame, rather than stretching a card-sized texture.
+  // Tile pigment independently from the frame instead of stretching a card-sized texture.
   await saveTexture(`fill-${color}`, cast, 64);
   await saveTexture(`swatch-${color}`, cast, 12, true);
 }

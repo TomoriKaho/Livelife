@@ -11,11 +11,12 @@ test('selection changes switch pigment and white paper without retaining the pre
     { color: '', cast: 'yellow', white: true, fillOnly: false, faint: false });
   assert.equal(decorationState(element(['sketch-white'], { pencil: 'unknown' })).white, true);
   assert.equal(decorationState(element(['sketch-fill-only'])).fillOnly, true);
+  assert.equal(decorationState(element(['nav-item'], { pencil: 'blue' })).cast, 'yellow');
 });
 test('committed default assets have bounded decoded cost and valid 3x PNG dimensions', async () => {
   const root = new URL('../src/assets/sketch/default/', import.meta.url);
   const manifest = JSON.parse(await readFile(new URL('manifest.json', root), 'utf8'));
-  assert.equal(manifest.theme, 'default'); assert.equal(manifest.assets.length, 16);
+  assert.equal(manifest.theme, 'default'); assert.equal(manifest.assets.length, 17);
   let pixels = 0, bytes = 0;
   for (const asset of manifest.assets) {
     const png = await readFile(new URL(`${asset.name}.png`, root));

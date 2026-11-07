@@ -70,3 +70,35 @@ export function sketchVector({ cast = '', width = 96, height = 96, seed = 127 } 
   svg.append(node('path', { d: pathFor(perimeter(width, height, seed, 1), true, true), fill: 'none', stroke: '#20304b', 'stroke-width': '.65', opacity: '.54', 'stroke-linejoin': 'round' }));
   return svg;
 }
+
+function topEdge(width, seed, pass = 0) {
+  const rng = random(seed + pass * 719);
+  const radius = Math.min(14, width / 8);
+  const top = 2.5 - pass * .16;
+  const points = [];
+  for (let i = 0; i <= 9; i++) {
+    const angle = i / 9 * Math.PI / 2;
+    points.push([radius - radius * Math.cos(angle), top + radius - radius * Math.sin(angle)]);
+  }
+  const steps = Math.ceil((width - radius * 2) / 5);
+  for (let i = 1; i < steps; i++) {
+    const envelope = Math.sin(Math.PI * i / steps);
+    points.push([
+      radius + (width - radius * 2) * i / steps,
+      top + envelope * (Math.sin(i * .3 + seed) * .35 + (rng() - .5) * .3),
+    ]);
+  }
+  for (let i = 0; i <= 9; i++) {
+    const angle = i / 9 * Math.PI / 2;
+    points.push([width - radius + radius * Math.sin(angle), top + radius - radius * Math.cos(angle)]);
+  }
+  return points;
+}
+
+export function navigationVector({ width = 96, height = 48, seed = 127 } = {}) {
+  const svg = node('svg', { xmlns: 'http://www.w3.org/2000/svg', width, height, viewBox: `0 0 ${width} ${height}` });
+  for (const [pass, strokeWidth, opacity] of [[0, 1.65, .92], [1, .65, .54]]) {
+    svg.append(node('path', { d: pathFor(topEdge(width, seed, pass), false, true), fill: 'none', stroke: '#20304b', 'stroke-width': strokeWidth, opacity, 'stroke-linejoin': 'round' }));
+  }
+  return svg;
+}

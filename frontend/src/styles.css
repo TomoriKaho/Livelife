@@ -36,7 +36,6 @@ button:active, .nav-item:active { transform: translateY(1px); }
 .phone-shell { position: relative; width: min(100%, var(--phone-width)); height: 100vh; height: 100dvh; margin: 0 auto; display: flex; flex-direction: column; background-color: #f8f4ea; overflow: hidden; }
 .sketch { position: relative; border: 1.8px solid transparent; }
 .has-sketch { isolation: isolate; }
-.sketch-render { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; overflow: visible; }
 .pencil-fill { background: transparent; }
 .app-header { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 6px; position: relative; }
 .app-header.map-header { padding-bottom: 2px; }

@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc -b && vite build",
-    "build:preview": "vue-tsc -b && vite build --mode preview",
-    "build:production": "vue-tsc -b && vite build --mode production && node scripts/check-internal-tools-build.mjs false",
+    "build": "vue-tsc -b && vite build && node scripts/check-sketch-build.mjs",
+    "build:preview": "vue-tsc -b && vite build --mode preview && node scripts/check-sketch-build.mjs",
+    "build:production": "vue-tsc -b && vite build --mode production && node scripts/check-internal-tools-build.mjs false && node scripts/check-sketch-build.mjs",
     "check:internal-tools": "node scripts/check-internal-tools-build.mjs",
     "preview": "vite preview",
     "preview:phone": "vite preview --host 0.0.0.0",

@@ -83,7 +83,6 @@ function openActivity(activity, { expand = true } = {}) {
   detail.value = activity;
   search.value = '';
   drawer.value?.setState(expand ? 'expanded' : 'middle');
-  nextTick(() => window.HandDrawn?.refresh());
 }
 const removeBackHandler = registerBackHandler(() => {
   if (detail.value) { closeDetail(); return true; }
@@ -95,7 +94,6 @@ onBeforeUnmount(removeBackHandler);
 function closeDetail() {
   detail.value = null;
   drawer.value?.setState(drawer.value?.getState() || 'expanded');
-  nextTick(() => window.HandDrawn?.refresh());
 }
 function select(id) {
   focusPoint.value = null; routedActivity.value = null; detail.value = null;
@@ -121,7 +119,6 @@ async function setMode(value) {
   // 两种地图共用建筑、楼层和抽屉状态，切换后继续查看同一处活动。
   mode.value = value; search.value = '';
   await nextTick();
-  window.HandDrawn?.refresh();
 }
 async function applyActivityRoute() {
   const raw = route.query.activity;

@@ -118,4 +118,4 @@ Actions 附件只保存日志和版本/校验记录 7 天；APK 从下载页分�
 
 ## 真机验收
 
-安装后按[真机验收记录](../../docs/testing.md#真机验收记录)核对版本、页面、地图、返回键和真实 hello。手绘或缓存改动另按[手绘模块](../src/plugins/README.md#android-手绘渲染回归)和[缓存模块](../src/platform/SKETCH_CACHE.md#清理与验证)回归。网页构建与原生同步、签名后分发的流程参考 [Capacitor 文档](https://capacitorjs.com/docs/basics/workflow)。
+安装后按[真机验收记录](../../docs/testing.md#真机验收记录)核对版本、页面、地图、返回键和真实 hello。手绘或缓存改动另按[手绘模块](../src/plugins/README.md#android-手绘渲染回归)和[旧装饰缓存处理](../src/assets/sketch/README.md#旧版本缓存处理)回归。网页构建与原生同步、签名后分发的流程参考 [Capacitor 文档](https://capacitorjs.com/docs/basics/workflow)。
