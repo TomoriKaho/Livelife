@@ -1,6 +1,6 @@
 # 后端开发
 
-后端使用 FastAPI 和 Pydantic，采用模块化单体。当前提供 `GET /test/hello`、存活与数据库就绪检查、[通用信息系统](app/services/content/README.md)，以及基于公开信息的匿名 Agent 对话。Agent 模型调用只有在环境提供凭证后可用。HTTP 契约见[连通性检查 API](app/api/demo/API.md)、[健康检查 API](app/api/health/API.md)和[Agent API](app/api/agent/API.md)，共享约定与接口索引见[API 入口](../docs/api.md)，整体技术路线见[架构说明](../docs/architecture.md)。
+后端使用 FastAPI 和 Pydantic，采用模块化单体。当前提供 `GET /test/hello`、存活与数据库就绪检查、[校园邮箱账号与会话 API](app/api/accounts/API.md)、[Agent 对话 API](app/api/agent/API.md)，以及[通用信息系统](app/services/content/README.md)的内部采集协议、持久化与查询服务。Agent 模型调用只有在环境提供凭证后可用；信息系统尚未接入真实采集平台。HTTP 契约见[连通性检查 API](app/api/demo/API.md)、[健康检查 API](app/api/health/API.md)、[账户与认证 API](app/api/accounts/API.md)和[Agent API](app/api/agent/API.md)，共享约定与接口索引见[API 入口](../docs/api.md)，整体技术路线见[架构说明](../docs/architecture.md)。
 
 ## 后端安装、启动与检查
 
@@ -40,7 +40,7 @@ uv lock --check
 
 测试默认把临时数据库放在 `backend/.pytest_cache/tmp/` 下，每次运行使用独立子目录，避免 Windows 全局 `Temp/pytest-of-<用户名>` 的权限问题及并行运行互相清理。该目录已被 Git 忽略，测试产物会保留在对应子目录中供排查。显式传入 `--basetemp` 或设置 `PYTEST_DEBUG_TEMPROOT` 时沿用调用方的配置。
 
-测试覆盖 hello、CORS、健康检查、开发启动流程，以及信息系统的迁移、持久化、批次回滚、幂等和查询。默认测试使用 SQLite 和模拟异常，不启动 PostgreSQL；另检查 PostgreSQL 离线迁移 SQL。可用 `uv run --locked --group local-db pytest --local-postgres` 验证真实本地 PostgreSQL 的迁移、写入、重启保留与进程停止；真实并发和渠道接入另行验证。专项步骤见[信息系统](app/services/content/README.md#迁移验证与回滚)。
+测试覆盖账号验证码、注册登录、会话撤销与有效期、Agent 匿名会话与流式对话、hello、CORS、健康检查、开发启动，以及信息系统的迁移和数据行为。默认测试使用独立 SQLite，不启动 PostgreSQL；另检查 PostgreSQL 离线迁移 SQL。可用 `uv run --locked --group local-db pytest --local-postgres` 验证真实本地 PostgreSQL 的迁移、写入、重启保留与进程停止。账号 SMTP 使用测试替身；真实 SMTP 投递需在目标环境配置并单独验收。
 
 ## CORS 与浏览器联调
 
@@ -49,7 +49,7 @@ uv lock --check
 - `http://localhost` 和 `http://127.0.0.1` 的 5173、8765、8766 端口；
 - Android / Capacitor 原生来源 `https://localhost`。
 
-允许 GET/POST、Accept/Authorization/Content-Type，暴露 `X-Livelife-Backend-SHA` 响应头。该版本头由测试部署网关注入，本地 Uvicorn 不自动生成。Origin 的协议、主机和端口必须完全匹配；自定义前端端口或手机局域网网页需明确添加对应来源。`curl` 成功不等于浏览器 CORS 已通过。
+允许 GET、POST、OPTIONS 和 Accept、Authorization、Content-Type 请求头，暴露 `X-Livelife-Backend-SHA` 响应头。该版本头由测试部署网关注入，本地 Uvicorn 不自动生成。Origin 的协议、主机和端口必须完全匹配；自定义前端端口或手机局域网网页需明确添加对应来源。`curl` 成功不等于浏览器 CORS 已通过。
 
 前端地址配置和界面操作见[前端联调教程](../frontend/README.md#api-地址与联调)。公网预览通过同源网关访问 API，路由前缀、版本头和环境配对由[部署文档](../docs/deployment.md#api-地址与前端关联)维护。
 
@@ -95,7 +95,9 @@ curl -i http://127.0.0.1:8000/health/ready
 
 存活检查不访问数据库；就绪检查执行 `SELECT 1`，仅验证连接，不验证业务表或迁移状态。响应和失败行为见[健康检查契约](app/api/health/API.md#健康检查)。现有自动部署仍通过 hello 检查服务，部署启用状态见[部署入口](../docs/deployment.md#当前实施状态)。
 
-已提供 `migrations/`、Alembic 环境和首个信息表迁移。独立数据库需要设置 `DATABASE_URL` 后，在 backend 目录手动执行 `uv run alembic upgrade head` 和 `uv run alembic current`；开发入口只对自动管理的本地库执行升级。迁移、使用和会删除信息数据的回退操作见[信息系统说明](app/services/content/README.md#迁移验证与回滚)。连接就绪检查仍只执行 `SELECT 1`，不验证迁移版本。
+已提供 `migrations/`、Alembic 环境和信息、账户及 Agent 迁移。独立数据库需要设置 `DATABASE_URL` 后，在 backend 目录手动执行 `uv run alembic upgrade head` 和 `uv run alembic current`；开发入口只对自动管理的本地库执行升级。账户降级会删除用户、验证码与会话数据，Agent 降级会删除匿名会话；执行前先备份并核对目标库。
+
+账号接口还需要在后端进程环境设置 `SMTP_HOST`、`SMTP_PORT`、`SMTP_FROM`；需要认证时设置 `SMTP_USERNAME`、`SMTP_PASSWORD`。默认端口 587 使用 STARTTLS，端口 465 使用 SMTP SSL。SMTP 密码只由部署密钥配置注入，不写入仓库、前端变量或日志。共享/部署数据库须先执行 `uv run alembic upgrade head` 并检查 `uv run alembic current`，再启用账号 API；当前部署工作流不自动注入 SMTP 配置或执行迁移。缺少 SMTP 配置时验证码发送返回 503。
 
 ### Agent 服务配置
 
@@ -117,13 +119,13 @@ uv run --locked --group local-db python -m app.dev --port 18000 --reload
 
 ## 目录职责与请求处理
 
-- `app/main.py`：创建应用、生命周期和 CORS；`app/api/router.py`：统一注册 hello 和健康检查 router。
+- `app/main.py`：创建应用、生命周期和 CORS；`app/api/router.py`：统一注册账号、Agent、hello 和健康检查 router。
 - `app/dev.py`、`app/db/local.py`：本地开发启动入口、专属 PostgreSQL 生命周期和自动迁移；部署仍使用 `app.main:app`。
-- `app/api/`：按模块组织路由包，模块内的 `router.py` 处理 HTTP 路径、参数校验、依赖注入和响应映射，`API.md` 维护契约；`app/schemas/`：Pydantic 请求与响应模型。
+- `app/api/`：按模块组织路由包，`accounts/` 提供校园邮箱注册、登录、登出和当前用户查询，`agent/` 提供匿名会话与对话；模块 `API.md` 维护契约；`app/schemas/`：Pydantic 请求与响应模型。
 - `app/core/`：配置；`app/db/`：Engine、Session 工厂、UTC 时间类型及请求依赖；`app/db/models/`：共享 ORM Base 与信息模型。
 - `app/services/`：按业务域组织服务用例，`content/` 实现信息汇总和提供，`ingestion/` 定义信源适配协议；`app/repositories/sql/`：集中信息查询与原子写入。
 - `alembic.ini`、`migrations/`：迁移配置、环境与版本脚本，导入完整模型 metadata。
-- `tests/`：接口、CORS、健康检查、信息服务与迁移行为测试。
+- `tests/`：账号与会话、接口、CORS、健康检查、信息服务和迁移测试。
 
 当前已实现的路由模块如下；`demo` 是代码模块名，对外路径仍为 `/test/hello`：
 
@@ -131,6 +133,12 @@ uv run --locked --group local-db python -m app.dev --port 18000 --reload
 app/api/
 ├── __init__.py
 ├── router.py             # 汇总注册各模块 router
+├── accounts/
+│   ├── router.py         # 校园邮箱认证接口
+│   └── API.md
+├── agent/
+│   ├── router.py         # 匿名会话与 Agent 对话
+│   └── API.md
 ├── demo/
 │   ├── __init__.py
 │   ├── router.py         # hello 连通性检查

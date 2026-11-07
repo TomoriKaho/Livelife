@@ -338,6 +338,11 @@ def test_internal_information_services_do_not_add_http_routes():
         "/agent/sessions/close",
         "/agent/messages/stream",
         "/agent/messages/{message_id}/rating",
+        "/auth/email-codes",
+        "/auth/register",
+        "/auth/login",
+        "/auth/me",
+        "/auth/logout",
     }
 
 

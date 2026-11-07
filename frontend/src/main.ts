@@ -9,11 +9,13 @@ import { Capacitor } from '@capacitor/core';
 import { loadAndroidConfig } from './platform/android-config';
 import { setupAndroidNavigation } from './platform/android-navigation';
 import { loadPreviewConfig } from './platform/runtime-config';
+import { restoreSession } from './api/auth';
 
 // Configuration errors leave demo pages usable; the real API test stays disabled.
 const configReady = Capacitor.isNativePlatform() && import.meta.env.VITE_ANDROID_TEST === 'true'
   ? loadAndroidConfig() : loadPreviewConfig();
 configReady.then(async () => {
+  await restoreSession();
   const started = performance.now();
   const status = document.createElement('div');
   status.setAttribute('role', 'status'); status.textContent = '正在载入整套界面缓存…';

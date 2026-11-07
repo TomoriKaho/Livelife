@@ -66,7 +66,7 @@ watch(step, async () => {
     <div ref="body" class="onboarding-body">
       <Transition :name="motion" @after-leave="sliding = false">
         <div :key="step" class="step-pane" :class="{ 'has-chrome': step > 0 }">
-          <AccountStep v-if="step === 0" v-model:mode="accountMode" @login="onLogin" @register="showStep(1)" />
+          <AccountStep v-if="step === 0" v-model:mode="accountMode" @login="onLogin" />
           <PermissionStep v-else-if="step === 1" v-model:location-allowed="locationAllowed" v-model:notice-allowed="noticeAllowed" />
           <InterestStep v-else v-model:gender="gender" v-model:selected="selectedInterests" />
         </div>
