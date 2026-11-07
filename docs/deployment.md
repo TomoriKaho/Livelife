@@ -29,7 +29,7 @@
 | 前端连接另一后端 PR | 固定 SHA 的后端绑定 | 明确重新绑定才切换 |
 | 已验收 Tag | production | 单独授权和部署，不属于 #29 |
 
-main 是代码分支，staging 是测试环境。生产不会随 main 自动发布。当前后端有可选 `DATABASE_URL` 配置，并提供信息表与 Alembic 迁移，操作见[后端说明](../backend/README.md#数据库配置与健康检查)及[信息系统迁移](../backend/app/services/content/README.md#迁移验证与回滚)。代码支持不代表共享测试服已经配置数据库或运行迁移；现有部署程序仍使用 `app.main:app`，不自动安装、启动数据库或执行迁移，启用信息服务前需负责人核对目标环境并执行升级。[自动准备数据库的开发入口](../backend/README.md#本地数据库自动准备)仅用于本机开发，不接入部署工作流。尚未接入模型凭证或真实账号数据；未设置数据库时 hello 与现有部署检查继续可用。
+main 是代码分支，staging 是测试环境。生产不会随 main 自动发布。后端使用可选 `DATABASE_URL` 和 Alembic 迁移，操作见[后端说明](../backend/README.md#数据库配置与健康检查)。共享或部署环境启用账号前，维护者需核对目标数据库并执行 `uv run alembic upgrade head`，确认 `uv run alembic current`；当前部署工作流不自动迁移。邮箱验证码还需在后端运行环境设置 `SMTP_HOST`、`SMTP_PORT`、`SMTP_FROM`，以及服务商要求的 `SMTP_USERNAME`、`SMTP_PASSWORD`；默认使用 STARTTLS（587），465 使用 SMTP SSL。SMTP 凭证通过部署秘密配置注入，不能放入仓库或 `VITE_` 前端变量。工作流尚未自动配置上述变量，因此代码实现不代表共享测试服已启用数据库、邮件发送或真实账号。
 
 新 SHA 检查并部署成功后才切换入口；仍被其他客户端固定绑定的旧版本继续保留。实例、端口和兼容产物由[部署工具](../deploy/README.md)维护。
 
@@ -47,7 +47,7 @@ https://192.144.253.40/api/versions/be-<完整40位SHA>/   不可变版本
 
 请求 hello 时加 `test/hello`。网关去掉部署前缀，后端收到 `/test/hello`，响应仍为 `{"message":"hello world"}`。响应头 `X-Livelife-Backend-SHA` 提供版本，不修改业务 JSON。Uvicorn root-path 指向不可变入口，Swagger/OpenAPI 使用该前缀。
 
-`/__livelife/versions.json` 提供已发布路由和 SHA。网页/API 使用 HTTPS，预览入口无需额外 key；业务账号鉴权由后端接口按需实现。网关仍剥离旧测试访问头和 Cookie，保留业务认证头和 Cookie。控制平面只有专用 SSH JSON 命令，不提供公网 bind/delete 接口。业务登录和 APP 认证另行设计。
+`/__livelife/versions.json` 提供已发布路由和 SHA。网页/API 使用 HTTPS，预览入口无需额外 key；业务账号接口使用 Bearer 会话令牌。网关仍剥离旧测试访问头和 Cookie，保留业务认证头和 Cookie。控制平面只有专用 SSH JSON 命令，不提供公网 bind/delete 接口。
 
 ### 成员如何获得测试链接
 
