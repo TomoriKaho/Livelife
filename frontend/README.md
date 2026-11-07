@@ -6,7 +6,7 @@
 - [API 地址与联调](#api-地址与联调)
 - [构建、预览与检查](#构建预览与检查)
 - [内部调试工具与构建模式](#内部调试工具与构建模式)
-- [手绘 UI 渲染](src/plugins/README.md)与[装饰缓存](src/platform/SKETCH_CACHE.md)
+- [手绘 UI 渲染](src/plugins/README.md)与[导航装饰缓存](src/platform/SKETCH_CACHE.md)
 - [Android 开发与测试](android/README.md)
 
 ## 运行环境与安装
@@ -57,6 +57,9 @@ npm run test:plan
 npm run test:drawer
 npm run test:composer
 npm run test:favorites
+
+# 修改手绘资源生成算法后重新生成已提交的 PNG：
+npm run sketch:prepare
 
 # 从已提交的离线快照重新生成 campus.json，不访问网络：
 npm run map:prepare
@@ -132,7 +135,7 @@ npm run preview
 
 新增业务、接口和平台代码使用 TypeScript，既有 JS/MJS 逐批迁移。页面专属组件留在对应页面目录。资源迁移同步导入、许可证输出和处理脚本，移除个人机器路径；地图分发保留可见 OSM 署名。
 
-模块说明：[API 调用](src/api/README.md)、[Android 工程](android/README.md)、[手绘 UI](src/plugins/README.md)、[装饰缓存](src/platform/SKETCH_CACHE.md)、[地图](src/pages/map/README.md)、[建模](src/pages/map/MODELING.md)、[Agent 页面](src/pages/agent/README.md)、[个人页](src/pages/more/README.md)、[字体](src/assets/fonts/README.md)、[地图许可](src/assets/maps/LICENSE.md)。
+模块说明：[API 调用](src/api/README.md)、[Android 工程](android/README.md)、[手绘 UI](src/plugins/README.md)、[导航装饰缓存](src/platform/SKETCH_CACHE.md)、[地图](src/pages/map/README.md)、[建模](src/pages/map/MODELING.md)、[Agent 页面](src/pages/agent/README.md)、[个人页](src/pages/more/README.md)、[字体](src/assets/fonts/README.md)、[地图许可](src/assets/maps/LICENSE.md)。
 
 ## 手机网页与原生工程
 

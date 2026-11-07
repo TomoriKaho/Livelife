@@ -10,11 +10,10 @@ export function createSketchBitmapQueue(store: SketchStore = createSketchStore()
   const cache = new Map<string, Bitmap>();
   const identities = new Map<string, string>();
   const idle: Array<() => void> = [];
-  const persisted = new Set<string>();
   const context = `${window.innerWidth}:${window.innerHeight}:${window.devicePixelRatio || 1}`;
   let busy = false, pixelsInUse = 0, disposed = false;
-  const stats = { generated: 0, diskHits: 0, memoryHits: 0, readMs: 0, encodeMs: 0, restored: 0, restoreMs: 0 };
-  const maxPixels = 32 * 1024 * 1024;
+  const stats = { generated: 0, diskHits: 0, memoryHits: 0, readMs: 0, encodeMs: 0 };
+  const maxPixels = 4 * 1024 * 1024;
   const padding = 6; // Include the pencil outline displaced outside the box.
 
   function evict(required: number) {
@@ -130,7 +129,6 @@ export function createSketchBitmapQueue(store: SketchStore = createSketchStore()
             if (!stored?.identity || stored.identity !== identity || stored.context !== context || !decoded) {
               await store.put({ key: diskKey, blob, width: canvas.width, height: canvas.height, touched: Date.now(), identity, namespace, context }).catch(() => {});
             }
-            persisted.add(diskKey);
           }
           if (job.cancelled || disposed) return;
           if (!bitmapUrl) bitmapUrl = URL.createObjectURL(blob);
@@ -171,57 +169,6 @@ export function createSketchBitmapQueue(store: SketchStore = createSketchStore()
     publish(bitmap.image.cloneNode() as HTMLImageElement, () => { if (held) { held = false; bitmap.refs--; } });
     return () => {};
   }
-  async function restore(progress?: (completed: number, total: number) => void) {
-    if (busy || cache.size || disposed) return false;
-    const started = performance.now();
-    const records = await store.restore?.(namespace, context).catch(() => undefined);
-    stats.readMs += performance.now() - started;
-    if (!records?.length || disposed) return false;
-    if (records.reduce((sum, r) => sum + r.width * r.height, 0) > maxPixels) return false;
-    const candidates = new Map<string, Bitmap>();
-    let failed = false;
-    // Decode the whole compatible set with bounded concurrency, never page by
-    // page after mounting. Publish the set only when every PNG has succeeded.
-    for (let offset = 0; offset < records.length && !failed && !disposed; offset += 4) {
-      await Promise.all(records.slice(offset, offset + 4).map(async record => {
-        let url = '', timer: ReturnType<typeof setTimeout> | undefined, image: HTMLImageElement | undefined;
-        try {
-          url = URL.createObjectURL(record.blob);
-          image = new Image(); image.src = url;
-          await Promise.race([
-            image.decode(),
-            new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error('PNG decode timeout')), 3000); }),
-          ]);
-          if (disposed || image.naturalWidth !== record.width || image.naturalHeight !== record.height) throw new Error('Cached image mismatch');
-          image.className = 'sketch-render sketch-bitmap'; image.alt = ''; image.draggable = false;
-          image.setAttribute('aria-hidden', 'true');
-          image.style.cssText = `left:-${padding}px;top:-${padding}px;width:calc(100% + ${padding * 2}px);height:calc(100% + ${padding * 2}px)`;
-          candidates.set(record.key, { image, url, pixels: record.width * record.height, refs: 0, diskKey: record.key });
-          url = '';
-        } catch {
-          failed = true;
-          if (!disposed) await store.remove(record.key).catch(() => {});
-        } finally {
-          if (timer) clearTimeout(timer);
-          if (url) { URL.revokeObjectURL(url); if (image) image.src = ''; }
-        }
-      }));
-      progress?.(candidates.size, records.length);
-    }
-    if (failed || disposed || candidates.size !== records.length) {
-      for (const bitmap of candidates.values()) URL.revokeObjectURL(bitmap.url);
-      return false;
-    }
-    for (const record of records) {
-      const bitmap = candidates.get(record.key)!;
-      cache.set(record.key, bitmap); identities.set(record.identity!, record.key);
-      pixelsInUse += bitmap.pixels; persisted.add(record.key);
-    }
-    stats.restored = records.length; stats.diskHits += records.length;
-    stats.restoreMs = performance.now() - started;
-    return true;
-  }
-  async function markPrepared() { await store.markPrepared?.(namespace, context, [...persisted]).catch(() => {}); }
   function dispose() {
     disposed = true; store.close();
     jobs.forEach(job => { job.cancelled = true; });
@@ -234,5 +181,5 @@ export function createSketchBitmapQueue(store: SketchStore = createSketchStore()
   function whenIdle() {
     return busy ? new Promise<void>(resolve => idle.push(resolve)) : Promise.resolve();
   }
-  return { render, reuse, dispose, whenIdle, stats, restore, markPrepared };
+  return { render, reuse, dispose, whenIdle, stats };
 }

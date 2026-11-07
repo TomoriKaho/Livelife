@@ -1,0 +1,102 @@
+{
+  "theme": "default",
+  "scale": 3,
+  "assets": [
+    {
+      "name": "outline",
+      "width": 288,
+      "height": 288,
+      "bytes": 8625
+    },
+    {
+      "name": "outline-yellow",
+      "width": 288,
+      "height": 288,
+      "bytes": 10716
+    },
+    {
+      "name": "fill-yellow",
+      "width": 192,
+      "height": 192,
+      "bytes": 18697
+    },
+    {
+      "name": "swatch-yellow",
+      "width": 36,
+      "height": 36,
+      "bytes": 640
+    },
+    {
+      "name": "outline-blue",
+      "width": 288,
+      "height": 288,
+      "bytes": 10838
+    },
+    {
+      "name": "fill-blue",
+      "width": 192,
+      "height": 192,
+      "bytes": 18697
+    },
+    {
+      "name": "swatch-blue",
+      "width": 36,
+      "height": 36,
+      "bytes": 641
+    },
+    {
+      "name": "outline-mint",
+      "width": 288,
+      "height": 288,
+      "bytes": 10806
+    },
+    {
+      "name": "fill-mint",
+      "width": 192,
+      "height": 192,
+      "bytes": 18698
+    },
+    {
+      "name": "swatch-mint",
+      "width": 36,
+      "height": 36,
+      "bytes": 641
+    },
+    {
+      "name": "outline-pink",
+      "width": 288,
+      "height": 288,
+      "bytes": 10833
+    },
+    {
+      "name": "fill-pink",
+      "width": 192,
+      "height": 192,
+      "bytes": 18697
+    },
+    {
+      "name": "swatch-pink",
+      "width": 36,
+      "height": 36,
+      "bytes": 641
+    },
+    {
+      "name": "outline-lavender",
+      "width": 288,
+      "height": 288,
+      "bytes": 10911
+    },
+    {
+      "name": "fill-lavender",
+      "width": 192,
+      "height": 192,
+      "bytes": 18698
+    },
+    {
+      "name": "swatch-lavender",
+      "width": 36,
+      "height": 36,
+      "bytes": 641
+    }
+  ]
+}

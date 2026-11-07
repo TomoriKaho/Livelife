@@ -6,8 +6,6 @@ export type SketchStore = {
   put: (record: SketchRecord) => Promise<void>;
   remove: (key: string) => Promise<void>;
   touch?: (key: string) => Promise<void>;
-  restore?: (namespace: string, context: string) => Promise<SketchRecord[] | undefined>;
-  markPrepared?: (namespace: string, context: string, keys: string[]) => Promise<void>;
   close: () => void;
 };
 export const sketchCacheNamespace = 'pencil-png-v1:rounded-font-v1:default-theme';
@@ -17,7 +15,7 @@ export async function sketchCacheKey(source: string, ratio: number, namespace = 
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export function createSketchStore(name = 'livelife-sketch-cache', maxBytes = 32 * 1024 * 1024): SketchStore {
+export function createSketchStore(name = 'livelife-sketch-cache', maxBytes = 4 * 1024 * 1024): SketchStore {
   let database: IDBDatabase | undefined, opening: Promise<IDBDatabase | undefined> | undefined;
   let disabled = false;
   const timeoutMs = 1000;
@@ -52,7 +50,7 @@ export function createSketchStore(name = 'livelife-sketch-cache', maxBytes = 32 
     return opening;
   }
   async function transact<T>(mode: IDBTransactionMode,
-    work: (store: IDBObjectStore, set: (result: T) => void, metadata: IDBObjectStore, prepared: IDBObjectStore) => void): Promise<T | undefined> {
+    work: (store: IDBObjectStore, set: (result: T) => void, metadata: IDBObjectStore) => void): Promise<T | undefined> {
     const db = await open();
     if (!db || disabled) return undefined;
     return new Promise(resolve => {
@@ -67,10 +65,10 @@ export function createSketchStore(name = 'livelife-sketch-cache', maxBytes = 32 
         finish(false);
       }, timeoutMs);
       try {
-        tx = db.transaction(['images', 'metadata', 'prepared'], mode);
+        tx = db.transaction(['images', 'metadata'], mode);
         tx.oncomplete = () => finish(true);
         tx.onabort = tx.onerror = () => finish(false);
-        work(tx.objectStore('images'), result => { value = result; }, tx.objectStore('metadata'), tx.objectStore('prepared'));
+        work(tx.objectStore('images'), result => { value = result; }, tx.objectStore('metadata'));
       } catch { finish(false); }
     });
   }
@@ -119,38 +117,6 @@ export function createSketchStore(name = 'livelife-sketch-cache', maxBytes = 32 
       await transact('readwrite', (_images, _set, metadata) => {
         const request = metadata.get(key);
         request.onsuccess = () => { if (request.result) metadata.put({ ...request.result, touched: touched() }); };
-      });
-    },
-    async restore(namespace, context) {
-      return transact<SketchRecord[]>('readonly', (images, set, _metadata, prepared) => {
-        const marker = prepared.get(`${namespace}:${context}`);
-        marker.onsuccess = () => {
-          const keys = marker.result?.keys as unknown;
-          if (!Array.isArray(keys) || !keys.length || keys.length > 512 || !keys.every(k => typeof k === 'string') || new Set(keys).size !== keys.length) return;
-          const records: SketchRecord[] = [];
-          for (const key of keys) {
-            const request = images.get(key);
-            request.onsuccess = () => {
-              const r = request.result as SketchRecord | undefined;
-              if (r?.identity && r.namespace === namespace && r.context === context
-                && r.blob instanceof Blob && r.blob.type === 'image/png' && r.blob.size > 0 && r.blob.size <= maxBytes
-                && Number.isInteger(r.width) && r.width > 0 && Number.isInteger(r.height) && r.height > 0
-                && r.width * r.height <= 4 * 1024 * 1024) records.push(r);
-              if (records.length === keys.length) set(records);
-            };
-          }
-        };
-      });
-    },
-    async markPrepared(namespace, context, keys) {
-      if (!keys.length || keys.length > 512) return;
-      await transact('readwrite', (_images, _set, _metadata, prepared) => {
-        const request = prepared.getAll();
-        request.onsuccess = () => {
-          const others = request.result.filter(item => item.key !== `${namespace}:${context}`).sort((a, b) => a.touched - b.touched);
-          while (others.length >= 8) prepared.delete(others.shift()!.key);
-          prepared.put({ key: `${namespace}:${context}`, keys, touched: touched() });
-        };
       });
     },
     close() { disabled = true; database?.close(); database = undefined; },

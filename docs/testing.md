@@ -140,7 +140,7 @@ versionCode / APK SHA-256：
 | 本地 PostgreSQL 自动准备、持久化与停止 | [后端开发入口及集成测试](../backend/README.md#本地数据库自动准备)；真实数据库测试用 `uv run --locked --group local-db pytest --local-postgres` |
 | 内部工具与构建剔除 | [个人页验收](../frontend/src/pages/more/README.md#前端内部工具开关验收) |
 | Android 手绘渲染 | [手绘回归](../frontend/src/plugins/README.md#android-手绘渲染回归) |
-| 磁盘缓存与完整恢复 | [缓存回归](../frontend/src/platform/SKETCH_CACHE.md#手绘磁盘缓存验证) |
+| 导航装饰磁盘缓存 | [导航缓存回归](../frontend/src/platform/SKETCH_CACHE.md#清理与验证) |
 | 个人页返回键 | [页面回归](../frontend/src/pages/more/README.md#android-个人页返回回归) |
 | 地图与外链 | [地图说明](../frontend/src/pages/map/README.md#外部网页与地图故障区分) |
 | 部署、网关、队列和 SSH | [部署工具测试](../deploy/tests/README.md) |

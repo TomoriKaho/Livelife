@@ -1,0 +1,34 @@
+/* Default theme. Keep the frame's corners at 20 CSS px; only edge segments
+   stretch. Pigment repeats at its own scale instead of stretching with content. */
+.static-sketch > .sketch-decoration {
+  position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  container-type: size;
+  --sketch-frame: url('../assets/sketch/default/outline.png');
+  --sketch-fill: none;
+}
+.sketch-decoration::before {
+  content: ''; position: absolute;
+  inset: min(4px, 10cqw, 10cqh);
+  border-radius: min(11px, 27.5cqw, 27.5cqh);
+  background: var(--sketch-paper, transparent) var(--sketch-fill) repeat;
+  background-size: 64px 64px;
+}
+.sketch-decoration::after {
+  /* A real 20px border imposes a 40px minimum border box even when inset:0
+     targets a shorter chip. Paint the nine-slice frame without a layout border.
+     Match both the image edges and fill geometry to the same small-box scale. */
+  content: ''; position: absolute; inset: 0; border: 0 solid transparent;
+  border-image: var(--sketch-frame) 60 / min(20px, 50cqw, 50cqh) / 0 stretch;
+}
+.sketch-decoration.fill-only::after { display: none; }
+.sketch-decoration.faint::after { opacity: .4; }
+.sketch-decoration[data-color='yellow'] { --sketch-fill: url('../assets/sketch/default/fill-yellow.png'); }
+.sketch-decoration[data-color='blue'] { --sketch-fill: url('../assets/sketch/default/fill-blue.png'); }
+.sketch-decoration[data-color='mint'] { --sketch-fill: url('../assets/sketch/default/fill-mint.png'); }
+.sketch-decoration[data-color='pink'] { --sketch-fill: url('../assets/sketch/default/fill-pink.png'); }
+.sketch-decoration[data-color='lavender'] { --sketch-fill: url('../assets/sketch/default/fill-lavender.png'); }
+.sketch-decoration[data-cast='yellow'] { --sketch-frame: url('../assets/sketch/default/outline-yellow.png'); }
+.sketch-decoration[data-cast='blue'] { --sketch-frame: url('../assets/sketch/default/outline-blue.png'); }
+.sketch-decoration[data-cast='mint'] { --sketch-frame: url('../assets/sketch/default/outline-mint.png'); }
+.sketch-decoration[data-cast='pink'] { --sketch-frame: url('../assets/sketch/default/outline-pink.png'); }
+.sketch-decoration[data-cast='lavender'] { --sketch-frame: url('../assets/sketch/default/outline-lavender.png'); }

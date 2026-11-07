@@ -315,7 +315,9 @@ export function createHandDrawnRenderer(sharedBitmaps) {
   }
   function refresh() {
     tracked.forEach(element => { if (!element.isConnected) release(element); });
-    const elements = document.querySelectorAll('.sketch, .nav-item, .bottom-nav, .page-outlet, .icon-button:not(.notification-button)');
+    // Initial static migration: only navigation still needs the composited
+    // yellow cutout + selected blue tab. Other controls use static-sketch.
+    const elements = document.querySelectorAll('.nav-item, .bottom-nav');
     elements.forEach(element => {
       if (!drawings.has(element)) {
         const svg = node('svg', { class: 'sketch-render', 'aria-hidden': 'true', focusable: 'false', preserveAspectRatio: 'none' });

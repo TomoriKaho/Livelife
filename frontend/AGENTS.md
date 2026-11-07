@@ -16,6 +16,6 @@
 - 内部 API 测试、调试面板等使用 `VITE_INTERNAL_TOOLS` 构建开关；development / preview 默认开启，production 必须关闭。新增工具条件动态导入，扩展实际产物检查，验证正式构建剔除模块和请求代码，不以 CSS 隐藏或 `import.meta.env.PROD` 判断代替。
 - 使用 `npm run build:preview` 联调；`npm run build:production` 自动检查内部工具已移除。`npm run preview` 只服务上一次 dist。教程见 frontend/README.md 的“内部调试工具与构建模式”，正式 API 和部署工作流仍待后续接入。
 
-- 手绘磁盘别名可跳过 SVG 构造。修改笔触算法、调色板、字体或默认主题视觉时，同步更新 `platform/sketch-cache.ts` 的兼容命名空间；不能仅更新应用版本号而保留不兼容别名。验证冷启动与旧缓存迁移，细节见 src/plugins/README.md 和 src/platform/SKETCH_CACHE.md。
+- 公共手绘装饰使用已提交的静态资源，生成方法与来源见 src/assets/sketch/README.md。不要重新引入全页面预热或大量实时复杂 SVG 滤镜。底部导航暂保留动态合成及磁盘缓存；修改导航笔触、调色板、字体或主题视觉时，同步更新 `platform/sketch-cache.ts` 的兼容命名空间，不能仅更新应用版本号。验证冷启动、静态装饰状态与导航缓存，见 src/plugins/README.md 和 src/platform/SKETCH_CACHE.md。
 
 - 实现、平台操作和专项回归随代码更新对应模块说明；frontend/README.md 保留通用安装、启动、配置、构建和模块导航。API 从 docs/api.md 进入对应契约，客户端失败处理在 src/api/README.md 维护，部署字段在 deploy 对应文档维护，docs/testing.md 保留团队验收入口。接口变化核对调用方、类型、示例及测试，只更新受影响内容和必要导航。
