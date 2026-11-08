@@ -65,7 +65,7 @@ npm run map:prepare
 # npm run map:download
 ```
 
-地图脚本读写 `src/assets/maps/`；下载会修改快照，普通页面演示和构建无需下载。当前没有独立格式或 lint 脚本。依赖、dist、`.env` 等忽略规则见 `frontend/.gitignore`；TypeScript 构建可能产生 `tsconfig.tsbuildinfo`，属于本地缓存，不应提交。
+地图脚本读写 `src/assets/maps/`；下载会修改快照，普通页面演示和构建无需下载。当前没有独立格式或 lint 脚本。依赖、dist、`.env` 等忽略规则见 `frontend/.gitignore`；TypeScript 使用根目录 `tsconfig.json`（solution）引用 `tsconfig.app.json` / `tsconfig.node.json`，与 `vue-tsc -b` 一致；缓存位于 `node_modules/.tmp/` 或 `*.tsbuildinfo`，不应提交。
 
 ## 内部调试工具与构建模式
 

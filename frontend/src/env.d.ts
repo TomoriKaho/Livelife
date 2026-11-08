@@ -1,5 +1,9 @@
 /// <reference types="vite/client" />
 
+/** 地图与构建脚本中的 ESM 模块；由 node --test 覆盖行为，此处仅消除 IDE 声明缺失。 */
+declare module '*.mjs';
+declare module '*.js';
+
 declare module '*.vue' {
   import type { DefineComponent } from 'vue';
   const component: DefineComponent<object, object, unknown>;
