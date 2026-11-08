@@ -65,7 +65,7 @@ Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue
 uv run --locked --group local-db python -m app.dev --port 18000 --reload
 ```
 
-`local-db` 依赖组固定 `pgembed==0.2.0`，由 uv 下载并校验锁文件中的平台安装包；包内带真正的 PostgreSQL 程序，不替换为 SQLite，也不安装 Windows 系统服务。普通 API 和部署依赖不包含该组。当前安装包覆盖 Python 3.12 的 Windows x64、Linux x64/ARM64 和 macOS 15+ ARM64；其他平台使用下节的独立 PostgreSQL。安装包来源与平台列表见 [pgembed](https://pypi.org/project/pgembed/0.2.0/)。
+`local-db` 依赖组固定 `pgembed==0.2.0`，由 uv 下载并校验锁文件中的平台安装包；包内带真正的 PostgreSQL 程序，不替换为 SQLite，也不安装 Windows 系统服务。普通 API 依赖不包含该组；预览部署在控制 venv 单独安装固定 pgembed，见[部署说明](../deploy/README.md#预览数据库与启动门禁)。当前安装包覆盖 Python 3.12 的 Windows x64、Linux x64/ARM64 和 macOS 15+ ARM64；其他平台使用下节的独立 PostgreSQL。安装包来源与平台列表见 [pgembed](https://pypi.org/project/pgembed/0.2.0/)。
 
 首次启动创建独立 PostgreSQL 集群及 `livelife` 数据库，自动执行 `alembic upgrade head`；之后复用已有数据并补齐新迁移。程序位于 `.venv` 的依赖包内，数据和数据库日志位于 `backend/.local/postgres/`，均已被 Git 忽略。迁移失败会中止 API 启动并清理数据库进程，不报告虚假的就绪状态。`--reload` 只重启 API 子进程，父进程保持数据库运行。
 
@@ -93,11 +93,11 @@ curl -i http://127.0.0.1:8000/health/live
 curl -i http://127.0.0.1:8000/health/ready
 ```
 
-存活检查不访问数据库；就绪检查执行 `SELECT 1`，仅验证连接，不验证业务表或迁移状态。响应和失败行为见[健康检查契约](app/api/health/API.md#健康检查)。现有自动部署仍通过 hello 检查服务，部署启用状态见[部署入口](../docs/deployment.md#当前实施状态)。
+存活检查不访问数据库；就绪检查执行 `SELECT 1`，仅验证连接，不验证业务表或迁移状态。响应和失败行为见[健康检查契约](app/api/health/API.md#健康检查)。新的[预览部署启动器](../deploy/README.md#预览数据库与启动门禁)在 API 启动前还执行迁移和业务表校验，发布同时要求 hello 及就绪检查通过；服务器控制程序升级与实际启用状态见[部署入口](../docs/deployment.md#当前实施状态)。
 
-已提供 `migrations/`、Alembic 环境和信息、账户及 Agent 迁移。独立数据库需要设置 `DATABASE_URL` 后，在 backend 目录手动执行 `uv run alembic upgrade head` 和 `uv run alembic current`；开发入口只对自动管理的本地库执行升级。账户降级会删除用户、验证码与会话数据，Agent 降级会删除匿名会话；执行前先备份并核对目标库。
+已提供 `migrations/`、Alembic 环境和信息、账户及 Agent 迁移。标准 Uvicorn 入口连接的独立数据库需要设置 `DATABASE_URL` 后，在 backend 目录手动执行 `uv run alembic upgrade head` 和 `uv run alembic current`；开发入口只对自动管理的本地库执行升级。预览部署的自动迁移仅针对其按 SHA 隔离的测试库，不迁移外部或正式库。账户降级会删除用户、验证码与会话数据，Agent 降级会删除匿名会话；执行前先备份并核对目标库。
 
-账号接口还需要在后端进程环境设置 `SMTP_HOST`、`SMTP_PORT`、`SMTP_FROM`；需要认证时设置 `SMTP_USERNAME`、`SMTP_PASSWORD`。默认端口 587 使用 STARTTLS，端口 465 使用 SMTP SSL。SMTP 密码只由部署密钥配置注入，不写入仓库、前端变量或日志。共享/部署数据库须先执行 `uv run alembic upgrade head` 并检查 `uv run alembic current`，再启用账号 API；当前部署工作流不自动注入 SMTP 配置或执行迁移。缺少 SMTP 配置时验证码发送返回 503。
+账号接口还需要在后端进程环境设置 `SMTP_HOST`、`SMTP_PORT`、`SMTP_FROM`；需要认证时设置 `SMTP_USERNAME`、`SMTP_PASSWORD`。默认端口 587 使用 STARTTLS，端口 465 使用 SMTP SSL。SMTP 密码只由部署密钥配置注入，不写入仓库、前端变量或日志。共享/部署数据库须先执行 `uv run alembic upgrade head` 并检查 `uv run alembic current`，再启用账号 API；SMTP 配置不自动注入；预览数据库自动迁移的实现与服务器启用步骤见[部署说明](../deploy/README.md#预览数据库与启动门禁)。缺少 SMTP 配置时验证码发送返回 503。
 
 ### 临时内置测试账号
 
@@ -126,7 +126,7 @@ uv run --locked --group local-db python -m app.dev --port 18000 --reload
 ## 目录职责与请求处理
 
 - `app/main.py`：创建应用、生命周期和 CORS；`app/api/router.py`：统一注册账号、Agent、hello 和健康检查 router。
-- `app/dev.py`、`app/db/local.py`：本地开发启动入口、专属 PostgreSQL 生命周期和自动迁移；部署仍使用 `app.main:app`。
+- `app/dev.py`、`app/db/local.py`：本地开发启动入口、专属 PostgreSQL 生命周期和自动迁移；预览受信启动器准备测试库后仍运行 `app.main:app`。
 - `app/api/`：按模块组织路由包，`accounts/` 提供校园邮箱注册、登录、登出和当前用户查询，`agent/` 提供匿名会话与对话；模块 `API.md` 维护契约；`app/schemas/`：Pydantic 请求与响应模型。
 - `app/core/`：配置；`app/db/`：Engine、Session 工厂、UTC 时间类型及请求依赖；`app/db/models/`：共享 ORM Base 与信息模型。
 - `app/services/`：按业务域组织服务用例，`content/` 实现信息汇总和提供，`ingestion/` 定义信源适配协议；`app/repositories/sql/`：集中信息查询与原子写入。

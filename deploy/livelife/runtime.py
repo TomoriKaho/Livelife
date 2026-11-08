@@ -63,7 +63,7 @@ class Runtime:
         self.ensure(ident, commit, port, None)
 
     def health(self, port):
-        check_health(self.tunnel_port(port))
+        check_health(self.tunnel_port(port), require_database=True)
 
     def remove(self, ident, port):
         instance(ident)

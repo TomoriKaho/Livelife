@@ -46,19 +46,23 @@ def unpack(encoded, destination, digest):
             archive.extract(item, destination, filter="data")
 
 
-def check_health(port, timeout=45):
+def check_health(port, timeout=45, *, require_database=False):
     end = time.monotonic() + timeout
     error = None
     while time.monotonic() < end:
         try:
             with urllib.request.urlopen(f"http://127.0.0.1:{port}/test/hello", timeout=2) as response:
-                if response.status == 200 and json.load(response) == {"message": "hello world"}:
-                    return
-                error = "unexpected hello response"
+                if response.status != 200 or json.load(response) != {"message": "hello world"}:
+                    raise RuntimeError("unexpected hello response")
+            if require_database:
+                with urllib.request.urlopen(f"http://127.0.0.1:{port}/health/ready", timeout=2) as response:
+                    if response.status != 200 or json.load(response) != {"status": "ok", "database": "connected"}:
+                        raise RuntimeError("database readiness check failed")
+            return
         except Exception as exc:
             error = str(exc)
         time.sleep(0.5)
-    raise RuntimeError(f"hello health check failed on {port}: {error}")
+    raise RuntimeError(f"backend health check failed on {port}: {error}")
 
 
 class Course:
@@ -163,10 +167,10 @@ class Course:
         elif any(json.loads(metadata.read_text()).get(k) != v for k, v in {'sha': commit, 'port': port}.items()):
             raise ValueError("immutable release metadata mismatch")
         self.supervisor.configure(ident,
-            f"{directory}/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port {port} "
-            f"--root-path /api/versions/{ident}", directory / "backend",
-            f'LIVELIFE_BACKEND_SHA="{commit}"')
-        check_health(port)
+            f"{self.root}/control-venv/bin/python -m livelife.backend_runtime "
+            f"--root {self.root} --instance {ident} --port {port}", self.root / "control",
+            f'LIVELIFE_BACKEND_SHA="{commit}"', stopwaitsecs=30)
+        check_health(port, timeout=180, require_database=True)
         return {"status": "ready", "sha": commit, "port": port}
 
     def install_built(self, job, commit, port, directory):

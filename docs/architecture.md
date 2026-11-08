@@ -122,6 +122,8 @@ flowchart TD
 
 #29 使用课程机上的独立 Python 虚拟环境/进程运行后端，公网 Nginx 经 loopback SSH 隧道转发。环境与前端绑定由公网机 SQLite 管理，控制接口仅通过受限 SSH JSON RPC 调用，不进入业务 FastAPI。
 
+预览数据库启动器按后端固定 SHA 准备独立的测试 PostgreSQL，数据与测试 Agent 会话密钥放在 releases/venv 之外；同 SHA 重启复用，不同 SHA 不自动复制业务数据。受信控制进程不导入分支业务代码，迁移和表校验由该版本已测试的 Python 子进程完成。此模式不用于正式数据库的跨版本升级；生命周期、启用步骤和恢复限制见[预览数据库说明](../deploy/README.md#预览数据库与启动门禁)，线上启用证据仍以[实施状态](deployment.md#当前实施状态)为准。
+
 #27 网页同样由公网 Nginx 分发静态文件，不运行额外前端进程。浏览器先读取当前入口的 runtime-config.json，再请求同源 API；build_id 及真实后端响应 SHA 防止版本混淆。main/分支/PR 路由是部署别名，前端构建和后端实例分别按版本保存；网页当前与回滚记录独立持有后端引用。具体配置和资源发布见[网页预览](../deploy/WEB_PREVIEW.md)，受限请求字段见[控制接口](../deploy/CONTROL_API.md)。
 
 普通前端默认连接 main 共享测试后端；跨 PR 联调解析为固定 SHA 实例。后端 PR 的最新入口与不可变版本入口分开，main、打开的后端 PR 与前端绑定分别记录保留依据。引用与浏览器在线人数无关。路径前缀由网关去除，GET /test/hello 契约不变。端口与生命周期见[部署工具](../deploy/README.md)，成员配对操作见[部署入口](deployment.md)。

@@ -9,6 +9,7 @@
 | 后端构建与 HTTPS 测试部署 | 已接入，LIVELIFE_BACKEND_ENABLED=true | [main 部署](https://github.com/TomoriKaho/Livelife/actions/runs/37503098101)、[课程机控制运行](https://github.com/TomoriKaho/Livelife/actions/runs/37734442654) |
 | 课程机统一检查与网页自动预览 | 已接入，LIVELIFE_FRONTEND_ENABLED=true；网页/API 无额外预览 key | [main 网页运行](https://github.com/TomoriKaho/Livelife/actions/runs/37613254277)、[PR 网页运行](https://github.com/TomoriKaho/Livelife/actions/runs/37613465083) |
 | Android 测试包签名与分发 | 工程和自动链路已接入，LIVELIFE_ANDROID_ENABLED=true | [PR #45](https://github.com/TomoriKaho/Livelife/pull/45)、[实际分发运行](https://github.com/TomoriKaho/Livelife/actions/runs/37734472930) |
+| 预览 PostgreSQL、迁移及数据库发布门禁 | 仓库已提供；服务器控制程序升级、依赖安装与线上验收尚待完成 | [启用与恢复教程](../deploy/README.md#预览数据库与启动门禁) |
 | 正式发布与 iOS | 正式发布工作流和 iOS 工程尚未提供 | [正式发布约定](#客户端模式与后续正式发布约定) |
 
 上述证据覆盖后端、网页及测试包发布，不代表完整成员验收。Android main 首次自动发布、完整关闭/重开清理和最新 APK 返回键真机回归仍需核对，历史证据见[验证记录索引](#验证记录索引)。业务接口、数据库及登录的范围由[架构说明](architecture.md)维护。
@@ -29,9 +30,11 @@
 | 前端连接另一后端 PR | 固定 SHA 的后端绑定 | 明确重新绑定才切换 |
 | 已验收 Tag | production | 单独授权和部署，不属于 #29 |
 
-main 是代码分支，staging 是测试环境。生产不会随 main 自动发布。后端使用可选 `DATABASE_URL` 和 Alembic 迁移，操作见[后端说明](../backend/README.md#数据库配置与健康检查)及[信息系统迁移](../backend/app/services/content/README.md#迁移验证与回滚)。共享或部署环境启用账号及 Agent 前，维护者需核对目标数据库并执行 `uv run alembic upgrade head`，确认 `uv run alembic current`；当前部署工作流不自动迁移。账号邮件验证码需设置 `SMTP_HOST`、`SMTP_PORT`、`SMTP_FROM`，以及邮件服务要求的 `SMTP_USERNAME`、`SMTP_PASSWORD`；默认端口 587 使用 STARTTLS，465 使用 SMTP SSL。Agent 模型调用还需设置 Agent 会话密钥和兼容模型服务配置，详见[后端 Agent 服务配置](../backend/README.md#agent-服务配置)。凭证通过部署秘密注入，不能写入仓库或前端变量；部署工作流尚未自动配置这些变量，因此代码实现不代表共享测试服已启用数据库、邮件发送或模型服务。[自动准备数据库的开发入口](../backend/README.md#本地数据库自动准备)仅用于本机开发，不接入部署工作流。
+main 是代码分支，staging 是测试环境。生产不会随 main 自动发布。后端使用可选 `DATABASE_URL` 和 Alembic 迁移，操作见[后端说明](../backend/README.md#数据库配置与健康检查)及[信息系统迁移](../backend/app/services/content/README.md#迁移验证与回滚)。独立/正式数据库启用账号及 Agent 前，维护者需核对目标数据库并执行 `uv run alembic upgrade head`，确认 `uv run alembic current`；预览环境的自动迁移需要先升级后文所述受信控制程序。账号邮件验证码需设置 `SMTP_HOST`、`SMTP_PORT`、`SMTP_FROM`，以及邮件服务要求的 `SMTP_USERNAME`、`SMTP_PASSWORD`；默认端口 587 使用 STARTTLS，465 使用 SMTP SSL。Agent 模型调用还需设置 Agent 会话密钥和兼容模型服务配置，详见[后端 Agent 服务配置](../backend/README.md#agent-服务配置)。凭证通过部署秘密注入，不能写入仓库或前端变量；部署工作流尚未自动配置这些变量，因此代码实现不代表共享测试服已启用数据库、邮件发送或模型服务。[自动准备数据库的开发入口](../backend/README.md#本地数据库自动准备)仅用于本机开发，不接入部署工作流。
 
 临时测试账号入口默认开启，正式环境需在后端设置 `AUTH_TEST_LOGIN_ENABLED=false`；关闭入口不撤销已签发会话。共享身份和恢复限制见[后端测试账号说明](../backend/README.md#临时内置测试账号)。
+
+新的预览启动器可自动准备每 SHA 独立的 PostgreSQL、执行迁移并核对业务表，启动后同时检查 hello 和数据库就绪状态。此能力需要先更新两台服务器上已安装的受信控制程序及课程机依赖，**仅重跑 Actions 不会启用**。现有入口在完成升级前仍可能 hello 成功而账号接口返回 `Database is not configured`。更新与验收步骤、同 SHA 保留数据和不同 SHA 从空库开始的限制集中见[预览数据库与启动门禁](../deploy/README.md#预览数据库与启动门禁)。SMTP 和真实模型凭证仍未自动注入。
 
 新 SHA 检查并部署成功后才切换入口；仍被其他客户端固定绑定的旧版本继续保留。实例、端口和兼容产物由[部署工具](../deploy/README.md)维护。
 

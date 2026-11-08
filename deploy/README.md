@@ -27,6 +27,32 @@
 
 公网机使用独立 `livelife-gateway.service` 运行 Nginx。SQLite 登记表在 `/opt/livelife/state/registry.sqlite3`，控制程序在 root 拥有的 `/opt/livelife/control/`。分支产物仅在课程机运行，不在公网机执行。
 
+## 预览数据库与启动门禁
+
+`livelife/backend_runtime.py` 是课程机的受信启动器，由项目 Supervisor 管理。每个 `be-完整SHA` 使用独立 PostgreSQL 集群，路径为 `/home/group5/livelife/databases/be-完整SHA/postgres/`，使用该集群内的 `postgres` 数据库。同 SHA 的 PR、网页与 APK 引用共享这份测试数据；不同 SHA 不共享表、账号或迁移，即使来自同一分支。新提交从空库开始，不自动复制上一版数据；这不是正式用户数据库的跨版本升级方案。
+
+启动器使用控制虚拟环境固定的 `pgembed==0.2.0` 中的 PostgreSQL 程序，无需 Docker、sudo 或系统数据库服务。Linux 数据库只监听本地 Unix socket，数据父目录权限 0700；目录必须位于支持 Unix 权限的 Linux 文件系统，不能使用 WSL 的 Windows 挂载盘。这是同一课程机账号下的测试隔离，不是抵御恶意分支代码的安全沙箱，不用于正式数据或正式凭证。业务依赖及已测试 venv 的复用方式不变，不把 PostgreSQL 程序塞进后端产物。
+
+启动顺序为：准备或复用集群 → 为该 API 子进程设置 `DATABASE_URL` → 用该版本的已测试 Python 执行 `alembic upgrade head` → 比较数据库 revision 与源码 heads 并实际查询所有 ORM 表的列 → 启动 Uvicorn。迁移、表结构验证或连接失败均拒绝候选发布；API 启动后，课程机和公网隧道探针同时要求 hello 与 `/health/ready` 成功，不能只凭 hello 报告可用。准备阶段最长等待 180 秒，具体失败查看该实例 Supervisor 日志。
+
+停止、回收后端实例时先关闭 API、再关闭本次持有的数据库，保留整个 `databases/be-SHA/` 目录；同 SHA 重建和恢复时重新迁移校验并复用数据。Supervisor 给该启动器 30 秒正常退出窗口。强制终止后的数据库由下次启动复用并恢复。数据库目录不跟随 releases、构建任务或 venv 删除，也不在自动回收中删除；维护者需监测磁盘，只有确认该 SHA 无引用、进程停止且完成备份后才手动归档或删除。
+
+同一目录内 `runtime.json` 保存自动生成的测试 Agent 会话密钥（权限 0600），重启后复用。启动器仅向业务子进程传入必要运行环境和本版本测试连接，不继承部署凭证、SMTP 或模型密钥；临时空白登录在此测试入口开启。邮件验证码和真实模型服务并未因此启用，仍需另行设计测试凭证注入。正式环境不要使用该启动器。
+
+### 首次启用与现有服务器升级
+
+新增安装由下节 `bootstrap-course.sh` 安装 Supervisor 与固定 pgembed。已有服务器需要维护者从**已评审版本**更新课程机 `/home/group5/livelife/control/livelife/` 下的 `backend_runtime.py`、`course.py`、`supervisor.py`，以及公网机 `/opt/livelife/control/livelife/` 下的 `course.py`、`runtime.py`。课程机另执行：
+
+```bash
+/home/group5/livelife/control-venv/bin/python -m pip install 'pgembed==0.2.0'
+```
+
+更新前备份上述控制文件，保留既有 config、注册表、凭证和其他服务。不要将未评审分支中的控制程序直接装入服务器。工作流控制代码仍从 main 执行，所以只 push 业务分支或重跑构建不会更新这些已安装的控制文件。
+
+更新完成后，再运行目标分支的 Backend build request；也可使用现有 recover 恢复已登记实例，但它会按新规则逐个准备各自的测试数据库。先记录目标项目、版本、端口及原成功路由，在维护窗口操作，禁止操作 `/opt/sounichi-navi`。新候选失败应保留旧引用；不要把所有数据库未配置的历史实例同时恢复当作无风险验证。
+
+验证当前入口的 hello、`/health/ready`（应为 `database: connected`），再用空白登录验证 `/auth/me`、退出及同 SHA 重启恢复。仓库提供启动器不代表线上已启用，证据见[当前实施状态](../docs/deployment.md#当前实施状态)。回退控制代码时保留仍被运行实例使用的启动器模块和 pgembed；不自动降级或删除数据库。
+
 ## 维护者初始化教程
 
 以下使用已审查代码。先确认项目目录、账户、端口和前置条件，课程机不需要 Docker/sudo。
@@ -157,7 +183,7 @@ permissions:
 
 ## 后端启动与兼容产物
 
-#24 提供 Python 3.12 工程、`backend/app/main.py` 中的 `app`、`backend/pyproject.toml` 与 `backend/uv.lock`，以及约定的 `GET /test/hello`。部署启动为 `python -m uvicorn app.main:app`，工作目录为 release/backend。不为基础设施改动业务 JSON。
+#24 提供 Python 3.12 工程、`backend/app/main.py` 中的 `app`、`backend/pyproject.toml` 与 `backend/uv.lock`，以及约定的 `GET /test/hello`。预览先经[受信启动器](#预览数据库与启动门禁)准备数据库，API 子进程仍运行 `python -m uvicorn app.main:app`，工作目录为 release/backend。不为基础设施改动业务 JSON。
 
 以下为旧 GitHub Runner 打包模式，保留兼容旧产物，不是新请求工作流的执行路径。新路径见[课程机统一构建与队列](BUILDING.md#课程机统一构建与队列)。旧模式使用 Python 3.12 与固定 `uv==0.12.23`：
 
@@ -167,7 +193,7 @@ permissions:
 4. 打包 Git 中该 SHA 的 backend 源码、生成的 `.deploy-requirements.txt` 和 `.wheels/`，不包含本地虚拟环境或未提交文件。部署产物只上传 manifest.json 与 backend.tgz。
 5. 课程机创建版本独立 venv，用 pip 的 `--no-index --find-links` 离线安装；无需在每次预览时访问 PyPI。安装记录在该版本的 `install.log`。
 
-构建和课程机须保持上述系统/架构/运行时兼容。运行依赖必须有 wheel，压缩包上限 20 MiB，文件内容上限 100 MiB、10000 个条目；超限或依赖需要源码编译时明确失败，需要专项调整，不静默在线安装。简化的 requirements.txt 工程仍可用于独立基础设施验证；正式后端以 uv.lock 为准。
+构建和课程机须保持上述系统/架构/运行时兼容。运行依赖必须有 wheel，压缩包上限 20 MiB，文件内容上限 100 MiB、10000 个条目；超限或依赖需要源码编译时明确失败，需要专项调整，不静默在线安装。简化的 requirements.txt 工程仍可用于独立 hello 构建验证；新预览部署要求源码提供 Alembic 迁移及共享 ORM Base，缺失时拒绝启动，不降级为 hello-only 就绪。正式后端以 uv.lock 为准。
 
 uv 参数参考：[锁文件与导出教程](https://docs.astral.sh/uv/concepts/projects/sync/)。
 
@@ -196,7 +222,7 @@ uv 参数参考：[锁文件与导出教程](https://docs.astral.sh/uv/concepts/
 - 网关失败：`journalctl -u livelife-gateway.service` 与 gateway/logs；更新先 nginx -t，失败恢复原路由。
 - 清理失败：数据库保留待清理占用，网络恢复后 collect；不直接删数据库或按端口杀未知进程。
 - 证书失败：`journalctl -u livelife-renew-ip.service`，修复 443/ACME 条件后手动 renew。
-- 业务回滚：重新部署确认的旧 SHA。后续数据库引入时另行确认隔离、迁移和恢复策略。
+- 业务回滚：重新部署确认的旧 SHA；预览复用仍保留的该 SHA 独立数据库，不对其他版本降级或复制数据。正式数据库的回滚策略需另行确认，细节见[预览数据恢复限制](#预览数据库与启动门禁)。
 
 ### PR 评论返回 403 时如何处理
 

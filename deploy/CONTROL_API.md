@@ -19,6 +19,8 @@
 | collect / recover | 无 | 延迟清理 / 恢复进程、检查健康 |
 | deploy | owner、sha、generation；上传时另含 bundle、digest | 无包请求先复用已登记版本；不存在返回 upload_required，不占端口或更新 generation；上传校验完整包，不公开 HTTP 管理入口 |
 
+后端 `deploy` / `deploy_built` / `recover` 在更新服务器控制程序后，使用受信启动器准备按 SHA 隔离的 PostgreSQL、执行该版本迁移、校验实际业务表，并要求数据库探针成功才发布；失败沿用原有候选清理及旧引用保留语义。RPC 不接收任意数据库连接或凭证字段。生命周期和现有服务器升级见[预览数据库说明](README.md#预览数据库与启动门禁)。
+
 维护者可用专用密钥测试控制接口，先在本地准备权限 600 的密钥与已核对的 known_hosts，再执行：
 
 ```bash
