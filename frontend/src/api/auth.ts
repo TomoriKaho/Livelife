@@ -72,6 +72,8 @@ async function request<T>(path: string, body?: unknown, authenticated = false): 
 }
 
 function authError(data: unknown, status: number, path: string): string {
+  if (status === 403 && typeof data === 'object' && data !== null && 'detail' in data
+    && data.detail === 'Test login is disabled') return '临时测试登录未启用，请填写校园邮箱和密码。';
   if (status === 400) return '验证码错误或已过期，请重新获取。';
   if (status === 401) return '邮箱或密码错误，或登录状态已失效。';
   if (status === 409) return '该邮箱已注册，请直接登录。';

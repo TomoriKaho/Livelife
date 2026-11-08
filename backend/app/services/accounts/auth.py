@@ -6,9 +6,10 @@ import ssl
 from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 from os import environ
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.models.accounts import EmailVerificationCode, User, UserSession
@@ -20,6 +21,39 @@ CODE_RATE_LIMIT = 5
 CODE_MAX_ATTEMPTS = 5
 SESSION_SHORT_TTL = timedelta(days=1)
 SESSION_REMEMBER_TTL = timedelta(days=30)
+TEST_USER_ID = UUID("82054870-6c9c-4a64-9439-5204f8ede144")
+TEST_USER_EMAIL = "builtin-test@livelife.invalid"
+
+
+def test_login_enabled() -> bool:
+    return environ.get("AUTH_TEST_LOGIN_ENABLED", "true").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def get_test_user(session: Session) -> User:
+    user = session.get(User, TEST_USER_ID)
+    if user is None:
+        try:
+            with session.begin_nested():
+                user = User(
+                    id=TEST_USER_ID,
+                    email=TEST_USER_EMAIL,
+                    password_hash="!test-account-no-password",
+                    created_at=utcnow(),
+                )
+                session.add(user)
+                session.flush()
+        except IntegrityError:
+            # Concurrent first logins must share the same account. Only the
+            # savepoint is rolled back; create_session commits the final login.
+            user = session.get(User, TEST_USER_ID)
+            if user is None:
+                raise
+    return user
 
 
 def utcnow() -> datetime:

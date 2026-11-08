@@ -20,6 +20,10 @@
 
 请求：`{"email":"student@stu.pku.edu.cn","password":"...","remember":true}`。成功返回与注册相同的会话结构。普通会话有效 1 天，`remember: true` 有效 30 天。邮箱或密码错误统一返回 `401`。
 
+临时测试入口：`{"email":"","password":"","remember":false}` 会首次创建并复用内置普通用户 `builtin-test@livelife.invalid`，签发同样的真实会话，不要求邮箱验证码或 SMTP。所有空白登录共享该用户 ID，每次签发独立令牌；测试用户没有可用的密码，也不是校园邮箱已验证用户。仅当邮箱去空格后为空且密码为空字符串时生效；只填一项、普通登录失败或注册均不回退到测试账号。
+
+后端 `AUTH_TEST_LOGIN_ENABLED` 默认 `true`；设为 `false` 后空白登录返回 `403`，普通登录继续可用。关闭入口不会撤销已签发的测试会话，已有令牌仍按有效期和退出规则处理。无数据库仍返回 `503`。此入口用于当前临时联调，正式环境应关闭；测试用户是共享身份，不用于私人数据。
+
 ## 受保护接口
 
 `GET /auth/me` 返回 `{ "id": "<uuid>", "email": "..." }`。`POST /auth/logout` 撤销当前会话并返回 `204`。两者及后续受保护接口使用 `Authorization: Bearer <access_token>`；令牌只存储 SHA-256 摘要。缺失、撤销或过期会话返回 `401` 和 `WWW-Authenticate: Bearer`。无数据库时账号接口返回 `503`。现有健康检查及 hello 接口仍公开。

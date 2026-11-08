@@ -31,6 +31,8 @@
 
 main 是代码分支，staging 是测试环境。生产不会随 main 自动发布。后端使用可选 `DATABASE_URL` 和 Alembic 迁移，操作见[后端说明](../backend/README.md#数据库配置与健康检查)及[信息系统迁移](../backend/app/services/content/README.md#迁移验证与回滚)。共享或部署环境启用账号及 Agent 前，维护者需核对目标数据库并执行 `uv run alembic upgrade head`，确认 `uv run alembic current`；当前部署工作流不自动迁移。账号邮件验证码需设置 `SMTP_HOST`、`SMTP_PORT`、`SMTP_FROM`，以及邮件服务要求的 `SMTP_USERNAME`、`SMTP_PASSWORD`；默认端口 587 使用 STARTTLS，465 使用 SMTP SSL。Agent 模型调用还需设置 Agent 会话密钥和兼容模型服务配置，详见[后端 Agent 服务配置](../backend/README.md#agent-服务配置)。凭证通过部署秘密注入，不能写入仓库或前端变量；部署工作流尚未自动配置这些变量，因此代码实现不代表共享测试服已启用数据库、邮件发送或模型服务。[自动准备数据库的开发入口](../backend/README.md#本地数据库自动准备)仅用于本机开发，不接入部署工作流。
 
+临时测试账号入口默认开启，正式环境需在后端设置 `AUTH_TEST_LOGIN_ENABLED=false`；关闭入口不撤销已签发会话。共享身份和恢复限制见[后端测试账号说明](../backend/README.md#临时内置测试账号)。
+
 新 SHA 检查并部署成功后才切换入口；仍被其他客户端固定绑定的旧版本继续保留。实例、端口和兼容产物由[部署工具](../deploy/README.md)维护。
 
 默认仅改前端时连接 staging，随 main 更新；**主动指定另一个 PR 时固定其部署 SHA**。同一 PR 同时改前后端时，其自身预览跟随自己的最新成功部署，其他 PR 的固定绑定保持不变。

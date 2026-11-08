@@ -1,7 +1,7 @@
 import re
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 def normalize_email(value: str) -> str:
@@ -35,9 +35,20 @@ class RegistrationRequest(EmailRequest):
     password: str = Field(min_length=10, max_length=128)
 
 
-class LoginRequest(EmailRequest):
-    password: str = Field(min_length=1, max_length=128)
+class LoginRequest(BaseModel):
+    email: str = Field(max_length=254)
+    password: str = Field(max_length=128)
     remember: bool = False
+
+    @model_validator(mode="after")
+    def validate_credentials(self) -> "LoginRequest":
+        if not self.email.strip() and not self.password:
+            self.email = ""
+            return self
+        self.email = normalize_email(self.email)
+        if not self.password:
+            raise ValueError("Password is required")
+        return self
 
 
 class UserResponse(BaseModel):

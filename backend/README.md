@@ -99,6 +99,12 @@ curl -i http://127.0.0.1:8000/health/ready
 
 账号接口还需要在后端进程环境设置 `SMTP_HOST`、`SMTP_PORT`、`SMTP_FROM`；需要认证时设置 `SMTP_USERNAME`、`SMTP_PASSWORD`。默认端口 587 使用 STARTTLS，端口 465 使用 SMTP SSL。SMTP 密码只由部署密钥配置注入，不写入仓库、前端变量或日志。共享/部署数据库须先执行 `uv run alembic upgrade head` 并检查 `uv run alembic current`，再启用账号 API；当前部署工作流不自动注入 SMTP 配置或执行迁移。缺少 SMTP 配置时验证码发送返回 503。
 
+### 临时内置测试账号
+
+尚未配置 SMTP 时，在登录页让邮箱和密码都留空，点击“登录并进入”，后端会创建并复用 `builtin-test@livelife.invalid`，签发正常会话；刷新、记住登录及退出仍走账户接口。需要后端和已完成迁移的数据库，不需要验证码或邮件服务，不新增数据库迁移。所有测试登录共享这个普通用户，不能用它存放私人数据；只填写一项或普通密码错误不会进入测试账号，注册仍需验证码。
+
+`AUTH_TEST_LOGIN_ENABLED` 默认 `true`，正式环境在后端进程中设为 `false` 关闭入口；现有测试会话需退出或等待过期，关闭配置本身不撤销令牌。接口行为见[账户契约](app/api/accounts/API.md#post-authlogin)。
+
 ### Agent 服务配置
 
 Agent 默认关闭模型请求，直到提供服务端密钥。开发时在后端进程环境设置：

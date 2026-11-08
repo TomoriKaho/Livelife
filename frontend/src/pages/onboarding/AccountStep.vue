@@ -89,12 +89,12 @@ async function submit() {
     <div class="field">
       <div class="field-head">
         <label for="account-email">校园邮箱</label>
-        <span class="required">必填</span>
+        <span v-if="mode === 'register'" class="required">必填</span>
       </div>
       <span v-sketch class="control sketch sketch-white">
         <OnboardingIcon name="person" />
         <span class="rule" aria-hidden="true"></span>
-        <input id="account-email" v-model="email" type="email" name="email" autocomplete="email" maxlength="254" placeholder="name@pku.edu.cn 或 name@stu.pku.edu.cn" required>
+        <input id="account-email" v-model="email" type="email" name="email" autocomplete="email" maxlength="254" placeholder="name@pku.edu.cn 或 name@stu.pku.edu.cn" :required="mode === 'register' || password.length > 0">
       </span>
     </div>
 
@@ -115,7 +115,7 @@ async function submit() {
       <span v-sketch class="control sketch sketch-white">
         <OnboardingIcon name="lock" />
         <span class="rule" aria-hidden="true"></span>
-        <input id="account-password" v-model="password" :type="showPassword ? 'text' : 'password'" name="password" :autocomplete="mode === 'login' ? 'current-password' : 'new-password'" :minlength="mode === 'register' ? 10 : undefined" maxlength="128" :placeholder="mode === 'register' ? '至少 10 位' : '请输入密码'" required>
+        <input id="account-password" v-model="password" :type="showPassword ? 'text' : 'password'" name="password" :autocomplete="mode === 'login' ? 'current-password' : 'new-password'" :minlength="mode === 'register' ? 10 : undefined" maxlength="128" :placeholder="mode === 'register' ? '至少 10 位' : '请输入密码'" :required="mode === 'register' || Boolean(email.trim())">
         <button class="peek" type="button" :aria-pressed="showPassword" :aria-label="showPassword ? '隐藏密码' : '显示密码'" @click="showPassword = !showPassword">
           <OnboardingIcon :name="showPassword ? 'eye-off' : 'eye'" />
         </button>
@@ -143,6 +143,7 @@ async function submit() {
     </label>
     <span v-else class="remember-spacer" aria-hidden="true"></span>
 
+    <p v-if="mode === 'login'" class="form-message">临时测试：邮箱和密码均留空，可登录内置测试账号。</p>
     <p v-if="error" class="form-message error" role="alert">{{ error }}</p>
     <p v-if="notice" class="form-message" role="status">{{ notice }}</p>
     <button v-sketch class="enter sketch pencil-fill" data-pencil="yellow" type="submit" :disabled="busy">

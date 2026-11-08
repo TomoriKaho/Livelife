@@ -21,8 +21,10 @@ from app.services.accounts.auth import (
     CODE_MAX_ATTEMPTS,
     code_digest,
     create_session,
+    get_test_user,
     issue_code,
     password_hash,
+    test_login_enabled,
     token_digest,
     utcnow,
     verify_password,
@@ -100,16 +102,21 @@ def login(
     response: Response,
     session: Session = Depends(get_session),
 ) -> SessionResponse:
-    user = session.scalar(select(User).where(User.email == payload.email))
-    valid = (
-        verify_password(payload.password, user.password_hash)
-        if user
-        else verify_password(
-            payload.password, "scrypt$00000000000000000000000000000000$" + "00" * 64
+    if not payload.email and not payload.password:
+        if not test_login_enabled():
+            raise HTTPException(status_code=403, detail="Test login is disabled")
+        user = get_test_user(session)
+    else:
+        user = session.scalar(select(User).where(User.email == payload.email))
+        valid = (
+            verify_password(payload.password, user.password_hash)
+            if user
+            else verify_password(
+                payload.password, "scrypt$00000000000000000000000000000000$" + "00" * 64
+            )
         )
-    )
-    if user is None or not valid:
-        raise HTTPException(status_code=401, detail="Email or password is incorrect")
+        if user is None or not valid:
+            raise HTTPException(status_code=401, detail="Email or password is incorrect")
     token, expires_in = create_session(session, user, payload.remember)
     response.headers["Cache-Control"] = "no-store"
     return SessionResponse(

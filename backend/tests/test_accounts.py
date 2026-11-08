@@ -10,10 +10,10 @@ from alembic.config import Config
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from app.db.models.accounts import EmailVerificationCode, UserSession
+from app.db.models.accounts import EmailVerificationCode, User, UserSession
 from app.db.session import Database
 from app.main import app
-from app.services.accounts.auth import code_digest, token_digest, utcnow
+from app.services.accounts.auth import TEST_USER_EMAIL, code_digest, token_digest, utcnow
 
 BACKEND = Path(__file__).resolve().parents[1]
 TEST_CODE = "123456"
@@ -43,9 +43,69 @@ async def client(database: Database) -> Iterator[httpx.AsyncClient]:
 
 
 @pytest.mark.anyio
-async def test_email_code_register_login_me_and_logout(
-    client: httpx.AsyncClient, database: Database
+@pytest.mark.parametrize("remember", [False, True])
+async def test_blank_login_reuses_test_account_with_real_sessions(
+    client: httpx.AsyncClient, database: Database, monkeypatch: pytest.MonkeyPatch, remember: bool
 ) -> None:
+    monkeypatch.delenv("AUTH_TEST_LOGIN_ENABLED", raising=False)
+    with patch("app.services.accounts.auth.send_verification_email") as send:
+        first = await client.post(
+            "/auth/login", json={"email": "", "password": "", "remember": remember}
+        )
+        second = await client.post("/auth/login", json={"email": "  ", "password": ""})
+    send.assert_not_called()
+    assert first.status_code == second.status_code == 200
+    payload = first.json()
+    assert first.headers["cache-control"] == "no-store"
+    assert payload["user"]["email"] == TEST_USER_EMAIL
+    assert payload["user"] == second.json()["user"]
+    assert payload["access_token"] != second.json()["access_token"]
+    assert payload["expires_in"] == (30 if remember else 1) * 86400
+    headers = {"Authorization": f"Bearer {payload['access_token']}"}
+    assert (await client.get("/auth/me", headers=headers)).json() == payload["user"]
+    assert (await client.post("/auth/logout", headers=headers)).status_code == 204
+    assert (await client.get("/auth/me", headers=headers)).status_code == 401
+    with database.session_factory() as session:
+        users = session.scalars(select(User)).all()
+        assert len(users) == 1
+        assert users[0].password_hash.startswith("!test-account")
+        assert session.scalar(select(EmailVerificationCode)) is None
+
+
+@pytest.mark.anyio
+async def test_disabled_test_login_does_not_create_user(
+    client: httpx.AsyncClient, database: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AUTH_TEST_LOGIN_ENABLED", "false")
+    response = await client.post("/auth/login", json={"email": "", "password": ""})
+    assert response.status_code == 403
+    with database.session_factory() as session:
+        assert session.scalar(select(User)) is None
+        assert session.scalar(select(UserSession)) is None
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("email", "password"),
+    [("student@pku.edu.cn", ""), ("", "password"), ("", " "), ("other@example.com", "x")],
+)
+async def test_partial_or_invalid_credentials_never_use_test_login(
+    client: httpx.AsyncClient, database: Database, email: str, password: str
+) -> None:
+    response = await client.post("/auth/login", json={"email": email, "password": password})
+    assert response.status_code == 422
+    assert (
+        await client.post("/auth/register", json={"email": "", "password": "", "code": ""})
+    ).status_code == 422
+    with database.session_factory() as session:
+        assert session.scalar(select(User)) is None
+
+
+@pytest.mark.anyio
+async def test_email_code_register_login_me_and_logout(
+    client: httpx.AsyncClient, database: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AUTH_TEST_LOGIN_ENABLED", "false")
     assert (await client.get("/auth/me")).status_code == 401
     with patch("app.services.accounts.auth.send_verification_email") as send:
         response = await client.post("/auth/email-codes", json={"email": "Student@stu.pku.edu.cn"})
