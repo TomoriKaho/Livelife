@@ -55,6 +55,7 @@ node --test scripts/*.test.mjs
 npm run test:map
 npm run test:plan
 npm run test:drawer
+npm run test:osm
 npm run test:composer
 npm run test:favorites
 
