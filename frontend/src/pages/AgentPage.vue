@@ -9,7 +9,7 @@ export const pageMeta = {
 <script setup>
 import { registerBackHandler } from '../platform/android-navigation';
 import { sessionShuffle } from '../data/session-style';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { loadAgentSession, rateAgentMessage, sendAgentMessage } from '../api/agent';
 import AgentIcon from './agent/AgentIcon.vue';
 import LiLiAvatar from './agent/LiLiAvatar.vue';
@@ -110,10 +110,10 @@ async function send(retryMessage = null) {
     messages.value.push(userMessage);
     draft.value = '';
   }
-  const assistant = {
+  const assistant = reactive({
     id: crypto.randomUUID(), role: 'agent', text: '', status: 'pending', citations: [],
     color: colors[messages.value.length % colors.length], requestId: crypto.randomUUID(),
-  };
+  });
   messages.value.push(assistant);
   sending.value = true;
   const controller = new AbortController();
@@ -244,7 +244,7 @@ onBeforeUnmount(removeNativeBack);
         <button v-if="longDraft || expanded" class="composer-expand" type="button" :aria-label="expanded ? '取消全屏输入' : '全屏输入'" :title="expanded ? '取消全屏' : '全屏输入'" aria-controls="lili-draft-editor" :aria-expanded="expanded" @pointerdown.prevent @click="toggleExpanded"><AgentIcon :name="expanded ? 'contract' : 'expand'" /></button>
         <div class="composer-tools">
           <span class="composer-hint">回答基于公开信息</span>
-          <button v-sketch class="sketch composer-tool send-button" data-pencil="yellow" type="button" :disabled="!ready" aria-label="发送消息" @click="send"><AgentIcon name="send" /></button>
+          <button v-sketch class="sketch composer-tool send-button" data-pencil="yellow" type="button" :disabled="!ready" aria-label="发送消息" @click="send()"><AgentIcon name="send" /></button>
         </div>
       </div>
     </section>
