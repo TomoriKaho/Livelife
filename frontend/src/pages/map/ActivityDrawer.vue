@@ -1,9 +1,9 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { drawerStates, drawerHeights, draggedHeight, nextDrawerState, snapDrawerState } from './drawer-gesture.mjs';
-import OsmAttribution from './OsmAttribution.vue';
+import { drawerOcclusionHeight } from './map-drawer-layout.mjs';
 
-const emit = defineEmits(['measure']);
+const emit = defineEmits(['measure', 'layout']);
 const state = ref('middle'), dragging = ref(false), dragHeight = ref(0);
 const heights = ref({ hidden: 38, middle: 180, expanded: 540 }), bottom = ref(86);
 const root = ref(null), content = ref(null);
@@ -68,6 +68,12 @@ function chrome(shell) {
     header: shell.querySelector('.lab-header, .app-header'),
   };
 }
+function publishLayout() {
+  emit('layout', {
+    state: state.value,
+    occlusionHeight: drawerOcclusionHeight(state.value, heights.value, { dragging: dragging.value, dragHeight: dragHeight.value }),
+  });
+}
 function measure() {
   const shell = root.value?.closest('.phone-shell');
   const { nav, header } = shell ? chrome(shell) : {};
@@ -76,7 +82,9 @@ function measure() {
   bottom.value = navHeight;
   heights.value = drawerHeights(shell.getBoundingClientRect().height, header.getBoundingClientRect().height, navHeight);
   emit('measure', heights.value.middle);
+  publishLayout();
 }
+watch([state, height, dragging], publishLayout);
 onMounted(() => {
   measure(); observer = new ResizeObserver(measure);
   const shell = root.value.closest('.phone-shell');
@@ -95,8 +103,6 @@ onBeforeUnmount(() => observer?.disconnect());
         @pointerdown="pointerStart" @pointermove="event => move(event.clientX, event.clientY, event)" @pointerup="finish()" @pointercancel="finish(true)">
         <span class="sheet-grip" aria-hidden="true"></span>
       </button>
-      <!-- 展开档完整遮挡地图，地图署名不可见，因此在把手右侧补一份同源署名。 -->
-      <OsmAttribution v-if="state === 'expanded'" class="drawer-attribution" />
       <div id="map-drawer-content" ref="content" class="drawer-content" :inert="state === 'hidden'" :aria-hidden="state === 'hidden' ? true : undefined" @touchstart.passive="touchStart" @touchmove="touchMove" @touchend="finish()" @touchcancel="finish(true)">
         <slot />
       </div>
@@ -112,7 +118,6 @@ onBeforeUnmount(() => observer?.disconnect());
 .drawer-handle:active { transform: none; }
 .drawer-handle:focus-visible { outline-offset: -6px; }
 .sheet-grip { width: 32px; height: 3px; border-radius: 70%; background: #8d9b9e; }
-.drawer-attribution { position: absolute; top: 0; right: 8px; z-index: 1; display: flex; align-items: center; height: 38px; }
 .drawer-content { flex: 1; min-height: 0; padding: 0 17px 18px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 @media (max-width: 359px) { .drawer-content { padding-left: 15px; padding-right: 15px; } }
 @media (prefers-reduced-motion: reduce) { .activity-drawer { transition: none; } }

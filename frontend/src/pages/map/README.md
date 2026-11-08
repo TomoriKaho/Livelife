@@ -72,7 +72,7 @@ npm run preview        # dist 中包含地图、字体和 Three.js
 
 OSM 署名及 ODbL 许可证说明见 `src/assets/maps/LICENSE.md`。生产构建保留原始地图、转换数据、来源说明和许可证，便于团队分发和追溯。
 
-客户端地图在地图区右下角提供可见的 `© OpenStreetMap contributors` 署名及版权链接，位置跟随 `--drawer-peek`，保持在默认档抽屉上方，不与搜索框、模式切换和缩放按钮重叠。活动抽屉展开档会完整遮挡地图背景（见下文视觉基线），因此展开时在把手右侧额外显示同一份署名；两处共用 `OsmAttribution.vue`，文案与链接只在 `osm-attribution.ts` 维护。构建保留地图来源和许可文件。分发时保留这些入口，参考 [OSMF 署名指南](https://osmfoundation.org/wiki/Licence/Attribution_Guidelines#Introduction)。
+客户端地图在地图仍可见时，于地图区右下角显示 `© OpenStreetMap contributors` 署名及版权链接。署名与左下提示跟随当前抽屉遮挡高度 `--drawer-occlusion`（由 `ActivityDrawer` 的 `layout` 事件驱动，策略在 `map-drawer-layout.mjs`），隐藏档贴在把手上方、默认档贴在半展开高度上方，不与搜索框或缩放控件重叠。全展开遮盖地图时不显示署名。相机视口仍用默认档 `middle` 作 `focusInset`，与浮层位置解耦。共用 `OsmAttribution.vue`，文案与链接只在 `osm-attribution.ts` 维护。构建保留地图来源和许可文件。分发时保留这些入口，参考 [OSMF 署名指南](https://osmfoundation.org/wiki/Licence/Attribution_Guidelines#Introduction)。
 
 ## 视觉基线
 
@@ -84,7 +84,7 @@ OSM 署名及 ODbL 许可证说明见 `src/assets/maps/LICENSE.md`。生产构�
 
 地图画布完整延伸至 Tab，通过 `CampusScene` 的 `focusInset` 与相机视口偏移，把聚焦中心保持在默认抽屉上方，同时绘制被覆盖的下方地图。换档不改变画布尺寸或相机，隐藏后显示完整地图，不出现蓝色空白。2D 也共用这一抽屉与固定覆盖范围，完整画布延伸到 Tab。320px 宽度仍保持单列，不生成桌面布局。
 
-`npm run test:drawer` 检查三档尺寸、页眉及 Tab 边界、拖动限幅、横向/纵向手势吸附及隐藏档恢复规则。`npm run test:osm` 检查署名文案与版权链接，并锁定“仅展开档完整覆盖地图”这一几何事实，它是抽屉内需要第二份署名的依据。
+`npm run test:drawer` 检查三档尺寸、页眉及 Tab 边界、拖动限幅、横向/纵向手势吸附及隐藏档恢复规则。`npm run test:osm` 检查署名文案与版权链接；`node --test scripts/map-drawer-layout.test.mjs` 检查遮挡高度与署名可见性策略。
 
 
 ## 2D 俯视地图规范
