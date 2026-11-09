@@ -1,36 +1,15 @@
 <script setup>
-import { useId } from 'vue';
-
-const props = defineProps({
-  pencil: { type: String, required: true },
-});
-
-const fills = {
-  yellow: '#fbd21a',
-  blue: '#5ea7e5',
-  mint: '#88cbb2',
-  pink: '#e99796',
-  lavender: '#ab94de',
-};
-
-const fid = `swatch-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
+import yellow from '../../assets/sketch/default/swatch-yellow.png';
+import blue from '../../assets/sketch/default/swatch-blue.png';
+import mint from '../../assets/sketch/default/swatch-mint.png';
+import pink from '../../assets/sketch/default/swatch-pink.png';
+import lavender from '../../assets/sketch/default/swatch-lavender.png';
+defineProps({ pencil: { type: String, required: true } });
+const swatches = { yellow, blue, mint, pink, lavender };
 </script>
 
 <template>
-  <svg class="swatch" viewBox="0 0 12 12" aria-hidden="true">
-    <defs>
-      <filter :id="fid" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
-        <feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="3" seed="7" result="paper" />
-        <feColorMatrix in="paper" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  .28 .53 .19 0 0" />
-        <feComponentTransfer>
-          <feFuncA type="linear" slope="2.4" intercept="-.42" />
-        </feComponentTransfer>
-        <feComposite in="SourceGraphic" operator="in" />
-      </filter>
-    </defs>
-    <circle cx="6.1" cy="6" r="4.7" :fill="fills[props.pencil]" :filter="`url(#${fid})`" />
-    <circle cx="6.6" cy="5.4" r="2.4" :fill="fills[props.pencil]" opacity=".38" />
-  </svg>
+  <img class="swatch" :src="swatches[pencil] || swatches.yellow" alt="" aria-hidden="true" draggable="false" width="10" height="10" />
 </template>
 
 <style scoped>

@@ -276,7 +276,7 @@ Milestone 用来组织一个阶段的交付范围，例如“实现 MVP 版本�
 
 | 任务 | 文档范围 | 共同内容 |
 | --- | --- | --- |
-| 地图 | frontend/src/pages/map/README.md 的交互章节 | 手绘变化更新 plugins 说明，持久化变化更新 platform/SKETCH_CACHE.md |
+| 地图 | frontend/src/pages/map/README.md 的交互章节 | 手绘变化更新 plugins 说明，静态资源与旧缓存迁移更新 assets/sketch/README.md |
 | API 与页面 | 实际后端模块的 API.md（尚未拆分时用 docs/api.md 章节）、双方实现说明 | 一个契约 PR 确认后并行实现；公共入口只更新共享约定和模块链接 |
 | Android | frontend/android/README.md 的操作、deploy/ANDROID.md 的分发、docs/testing.md 的真机验收 | RPC 字段集中在 deploy/CONTROL_API.md，其他文档链接引用 |
 
