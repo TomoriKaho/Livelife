@@ -49,7 +49,11 @@
 
 更新前备份上述控制文件，保留既有 config、注册表、凭证和其他服务。不要将未评审分支中的控制程序直接装入服务器。工作流控制代码仍从 main 执行，所以只 push 业务分支或重跑构建不会更新这些已安装的控制文件。
 
-更新完成后，再运行目标分支的 Backend build request；也可使用现有 recover 恢复已登记实例，但它会按新规则逐个准备各自的测试数据库。先记录目标项目、版本、端口及原成功路由，在维护窗口操作，禁止操作 `/opt/sounichi-navi`。新候选失败应保留旧引用；不要把所有数据库未配置的历史实例同时恢复当作无风险验证。
+运行模式按 release 固定。新安装只在产物包含 `backend/preview-runtime.json` 且内容为 `{"runtime_mode":"postgres-v1"}` 时启用数据库，并把模式写入 `release.json`；无标记的历史 SHA 重装和 smoke fixture 仍使用 `legacy`。未知模式或损坏标记拒绝启动。已有 `release.json` 缺少 `runtime_mode` 时始终视为 legacy，不因源码有迁移或标记而自动升级；recover 保留其既有 Supervisor 配置，只尝试启动原进程，不创建数据库或密钥。缺失配置时重建原 Uvicorn 启动方式。legacy 只检查 hello，postgres-v1 同时检查数据库 readiness。
+
+先更新课程机控制程序，再更新公网机，避免新版公网健康检查调用旧课程机不存在的 `health_policy`。更新完成后，再运行目标分支的 Backend build request。显式升级已安装目标版本时，维护者须先记录 SHA、端口、原成功路由，并备份该版本 `release.json` 和 `supervisor/programs/be-SHA.conf`；仅在已确认该版本迁移可用、依赖齐备并获得授权后，将目标 metadata 的 `runtime_mode` 设置为 `postgres-v1`，再恢复该目标。没有新增 RPC 写模式的权限或接口。普通 recover 不改变其他旧版本。禁止操作 `/opt/sounichi-navi`。
+
+目标升级失败的回退：停止该目标数据库启动器，恢复备份的 release metadata 和 Supervisor 配置，执行项目 Supervisor 的 reread/update 并启动原目标，验证原 hello 和路由。不能只删除 metadata 模式字段而保留数据库启动命令。保留数据库目录及备份，不自动删除或降级数据库；回退只恢复原运行方式，并不会给旧 API 增加数据库能力。
 
 验证当前入口的 hello、`/health/ready`（应为 `database: connected`），再用空白登录验证 `/auth/me`、退出及同 SHA 重启恢复。仓库提供启动器不代表线上已启用，证据见[当前实施状态](../docs/deployment.md#当前实施状态)。回退控制代码时保留仍被运行实例使用的启动器模块和 pgembed；不自动降级或删除数据库。
 

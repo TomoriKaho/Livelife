@@ -17,6 +17,8 @@ Python 3.12，控制工具使用标准库和固定版本 Supervisor，预览数�
 
 新增预览数据库的普通测试在 `test_backend_runtime.py`，不需要 PostgreSQL。真实生命周期测试在普通 Linux 用户下显式启用，先在独立测试 venv 安装仓库锁定的后端依赖及 `local-db` 组、`supervisor==4.3.0`，然后从仓库根目录执行：
 
+`test_runtime_compatibility.py` 覆盖旧 release 配置不被恢复操作改写、显式管理员 opt-in、新产物标记持久化、无标记历史产物保持 legacy、未知模式拒绝，以及公网 ensure 和全新控制进程的独立健康策略查询。
+
 ```bash
 LIVELIFE_PREVIEW_DB_INTEGRATION=1 <测试venv>/bin/python -m unittest discover -s deploy/tests -p test_backend_runtime.py -v
 ```

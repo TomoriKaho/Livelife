@@ -19,7 +19,9 @@
 | collect / recover | 无 | 延迟清理 / 恢复进程、检查健康 |
 | deploy | owner、sha、generation；上传时另含 bundle、digest | 无包请求先复用已登记版本；不存在返回 upload_required，不占端口或更新 generation；上传校验完整包，不公开 HTTP 管理入口 |
 
-后端 `deploy` / `deploy_built` / `recover` 在更新服务器控制程序后，使用受信启动器准备按 SHA 隔离的 PostgreSQL、执行该版本迁移、校验实际业务表，并要求数据库探针成功才发布；失败沿用原有候选清理及旧引用保留语义。RPC 不接收任意数据库连接或凭证字段。生命周期和现有服务器升级见[预览数据库说明](README.md#预览数据库与启动门禁)。
+后端 `deploy` / `deploy_built` / `recover` 对明确选择 `postgres-v1` 的 release 使用受信启动器准备按 SHA 隔离的 PostgreSQL、执行迁移、校验实际业务表，并要求数据库探针成功才发布。旧 metadata 无模式时保持 legacy；新产物通过 `backend/preview-runtime.json` 显式选择模式。失败沿用原有候选清理及旧引用保留语义。RPC 不接收任意数据库连接、凭证或模式修改字段。生命周期和升级见[预览数据库说明](README.md#预览数据库与启动门禁)。
+
+课程机内部只读请求 `{"op":"health_policy","port":18000}` 按已安装 release metadata 返回 `runtime_mode` 和 `require_database`；没有唯一匹配或模式非法时失败。课程机 ensure 同时返回这两个字段。公网 ensure 使用返回模式，独立 bind 健康检查重新读取课程机策略，不依赖进程缓存、不把 readiness 失败降级成 hello 成功。该操作不通过公网 dispatch 暴露。
 
 维护者可用专用密钥测试控制接口，先在本地准备权限 600 的密钥与已核对的 known_hosts，再执行：
 

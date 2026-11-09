@@ -89,7 +89,7 @@ class PreviewRuntimeTests(unittest.TestCase):
 
     def exercise_runtime(self, failure=None, interrupted=False):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             release = root / "releases" / A
             (release / "backend/app").mkdir(parents=True)
             (release / "backend/app/main.py").touch()
@@ -170,12 +170,12 @@ class PreviewRuntimeTests(unittest.TestCase):
 
     def test_course_uses_trusted_launcher_and_recycling_preserves_database(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             course = Course(root)
             release = course.releases / A
             release.mkdir()
             (release / "release.json").write_text(
-                json.dumps({"sha": A[3:], "port": 18000})
+                json.dumps({"sha": A[3:], "port": 18000, "runtime_mode": "postgres-v1"})
             )
             state = runtime.state_directory(root, A)
             (state / "keep").write_text("data")
@@ -209,7 +209,7 @@ class RealPreviewDatabaseTests(unittest.TestCase):
                 "run as an ordinary user; tests must not create system accounts"
             )
         with tempfile.TemporaryDirectory(prefix="livelife-db-") as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             release = root / "releases" / A
             backend = release / "backend"
             backend.mkdir(parents=True)

@@ -19,6 +19,23 @@ from .supervisor import Supervisor
 MAX_BUNDLE = 20 * 1024 * 1024
 
 
+def runtime_mode(metadata):
+    mode = metadata.get("runtime_mode", "legacy")
+    if mode not in ("legacy", "postgres-v1"):
+        raise ValueError("unsupported preview runtime mode")
+    return mode
+
+
+def source_runtime_mode(directory):
+    marker = directory / "backend/preview-runtime.json"
+    if not marker.exists():
+        return "legacy"
+    data = json.loads(marker.read_text())
+    if not isinstance(data, dict) or "runtime_mode" not in data:
+        raise ValueError("invalid preview runtime marker")
+    return runtime_mode(data)
+
+
 def unpack(encoded, destination, digest):
     data = base64.b64decode(encoded, validate=True)
     if len(data) > MAX_BUNDLE or hashlib.sha256(data).hexdigest() != digest:
@@ -74,6 +91,17 @@ class Course:
 
     def handle(self, request):
         op = request["op"]
+        if op == "health_policy":
+            port = self.port(request["port"])
+            matches = []
+            for metadata in self.releases.glob("be-*/release.json"):
+                data = json.loads(metadata.read_text())
+                if data.get("port") == port:
+                    matches.append(data)
+            if len(matches) != 1:
+                raise ValueError("preview port has no unique installed release")
+            mode = runtime_mode(matches[0])
+            return {"runtime_mode": mode, "require_database": mode == "postgres-v1"}
         if op == 'android_tools':
             # Administrative transfer of verified project tools, never source artifacts.
             import io
@@ -144,6 +172,7 @@ class Course:
                 shutil.rmtree(directory)
             directory.mkdir()
             unpack(request["bundle"], directory, request["digest"])
+            mode = source_runtime_mode(directory)
             requirements = directory / "backend/.deploy-requirements.txt"
             if not requirements.is_file():
                 requirements = directory / "backend/requirements.txt"
@@ -163,15 +192,28 @@ class Course:
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
                 tail = (directory / "install.log").read_text(errors="replace")[-2000:]
                 raise RuntimeError(f"offline dependency install failed: {tail}") from error
-            atomic_json(metadata, {"sha": commit, "port": port})
+            atomic_json(metadata, {"sha": commit, "port": port, "runtime_mode": mode})
         elif any(json.loads(metadata.read_text()).get(k) != v for k, v in {'sha': commit, 'port': port}.items()):
             raise ValueError("immutable release metadata mismatch")
-        self.supervisor.configure(ident,
-            f"{self.root}/control-venv/bin/python -m livelife.backend_runtime "
-            f"--root {self.root} --instance {ident} --port {port}", self.root / "control",
-            f'LIVELIFE_BACKEND_SHA="{commit}"', stopwaitsecs=30)
-        check_health(port, timeout=180, require_database=True)
-        return {"status": "ready", "sha": commit, "port": port}
+        mode = runtime_mode(json.loads(metadata.read_text()))
+        if mode == "postgres-v1":
+            self.supervisor.configure(ident,
+                f"{self.root}/control-venv/bin/python -m livelife.backend_runtime "
+                f"--root {self.root} --instance {ident} --port {port}", self.root / "control",
+                f'LIVELIFE_BACKEND_SHA="{commit}"', stopwaitsecs=30)
+        elif (self.supervisor.programs / f"{ident}.conf").exists():
+            # Recovery must not rewrite or restart historical APIs.
+            self.supervisor.ensure()
+            self.supervisor.ctl("start", ident, check=False)
+        else:
+            self.supervisor.configure(ident,
+                f"{directory}/.venv/bin/python -m uvicorn app.main:app "
+                f"--host 127.0.0.1 --port {port} --root-path /api/versions/{ident}",
+                directory / "backend", f'LIVELIFE_BACKEND_SHA="{commit}"')
+        require_database = mode == "postgres-v1"
+        check_health(port, timeout=180, require_database=require_database)
+        return {"status": "ready", "sha": commit, "port": port,
+                "runtime_mode": mode, "require_database": require_database}
 
     def install_built(self, job, commit, port, directory):
         from .build_queue import BuildQueue, job_id
@@ -192,7 +234,8 @@ class Course:
         directory.mkdir()
         extract_source(source, directory)
         (directory / '.venv').symlink_to(venv, target_is_directory=True)
-        atomic_json(directory / 'release.json', {'sha': commit, 'port': port, 'job': job})
+        atomic_json(directory / 'release.json', {'sha': commit, 'port': port, 'job': job,
+                    'runtime_mode': source_runtime_mode(directory)})
 
     @staticmethod
     def port(value):
