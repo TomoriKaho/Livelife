@@ -143,6 +143,7 @@ versionCode / APK SHA-256：
 | 静态手绘资源、尺寸与导航状态 | [手绘回归](../frontend/src/plugins/README.md#android-手绘渲染回归)、[资源与旧缓存迁移](../frontend/src/assets/sketch/README.md) |
 | 个人页返回键 | [页面回归](../frontend/src/pages/more/README.md#android-个人页返回回归) |
 | 地图与外链 | [地图说明](../frontend/src/pages/map/README.md#外部网页与地图故障区分) |
+| 前台定位平台适配 | [平台定位说明](../frontend/src/platform/README.md#前台定位)；分别验证允许、拒绝、关闭位置服务/超时与 Android 粗略位置 |
 | 部署、网关、队列和 SSH | [部署工具测试](../deploy/tests/README.md) |
 
 ## 历史验证证据

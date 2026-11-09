@@ -136,7 +136,7 @@ npm run preview
 | src/components/ | 跨页面公共组件 |
 | src/api/、src/types/ | 请求、API 配置、错误处理及接口类型 |
 | src/data/ | 明确标注的演示数据 |
-| src/platform/ | Web / 原生能力适配 |
+| src/platform/ | [Web / 原生能力适配](src/platform/README.md) |
 | src/plugins/ | 手绘等 Vue 插件 |
 | src/assets/ | 地图、字体和图片，保留来源与许可证 |
 | scripts/ | 资源处理、构建校验和行为测试 |

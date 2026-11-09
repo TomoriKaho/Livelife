@@ -37,7 +37,7 @@ Android Studio 内置 JDK 不一定被 java_home 识别，可直接指定其真�
 VITE_API_BASE_URL=https://192.144.253.40/api/staging/
 ```
 
-该地址是共享测试后端，会随 main 更新。APP 内 localhost 指手机自身，不是开发电脑。本地工程未开启 HTTP 网络例外；使用项目 HTTPS 入口。业务登录、定位和推送尚未实现，页面大部分是明确标注的样例。
+该地址是共享测试后端，会随 main 更新。APP 内 localhost 指手机自身，不是开发电脑。本地工程未开启 HTTP 网络例外；使用项目 HTTPS 入口。业务登录和推送尚未实现；定位仅提供按用户操作调用的通用前台能力，尚未接入地图、日历、推荐或 Agent，页面大部分是明确标注的样例。
 
 ```bash
 cd frontend
