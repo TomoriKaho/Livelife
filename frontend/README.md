@@ -6,7 +6,7 @@
 - [API 地址与联调](#api-地址与联调)
 - [构建、预览与检查](#构建预览与检查)
 - [内部调试工具与构建模式](#内部调试工具与构建模式)
-- [手绘 UI 渲染](src/plugins/README.md)与[装饰缓存](src/platform/SKETCH_CACHE.md)
+- [手绘 UI 渲染](src/plugins/README.md)与[静态装饰资源](src/assets/sketch/README.md)
 - [Android 开发与测试](android/README.md)
 
 ## 运行环境与安装
@@ -47,6 +47,15 @@ npm run preview
 
 `build:preview` 先运行 `vue-tsc -b` 类型检查，再执行开启接口测试工具的 Vite preview 模式构建，产物位于 `frontend/dist/`。`preview` 提供本地构建预览 `http://127.0.0.1:8766/`；它要求先构建，不是正式生产服务器。预览端口也为严格端口，可用 `npm run preview -- --port 8776` 指定其他空闲端口。
 
+`build`、`build:preview`、`build:production` 的额外参数直接传给 Vite，例如 `npm run build:preview -- --base=/demo/`。静态手绘产物检查通过对应的 npm `postbuild*` 钩子执行；production 钩子还检查内部工具已剔除。不要把检查脚本接到主构建命令末尾，否则 npm 会把 `--base` 等参数传给检查脚本而不是 Vite。
+
+课程机预览资源路径可在本地复现（以下环境变量只用于本次命令）：
+
+```bash
+VITE_WEB_PREVIEW=true VITE_WEB_BUILD_ID=fe-0000000000000000000000000000000000000000-1-1 npm run build -- --base=/__livelife/web-builds/fe-0000000000000000000000000000000000000000-1-1/
+VITE_WEB_BUILD_ID=fe-0000000000000000000000000000000000000000-1-1 node scripts/check-preview-build.mjs
+```
+
 现有检查与地图命令：
 
 ```bash
@@ -57,6 +66,9 @@ npm run test:plan
 npm run test:drawer
 npm run test:composer
 npm run test:favorites
+
+# 修改手绘资源生成算法后重新生成已提交的 PNG：
+npm run sketch:prepare
 
 # 从已提交的离线快照重新生成 campus.json，不访问网络：
 npm run map:prepare
@@ -132,8 +144,12 @@ npm run preview
 
 新增业务、接口和平台代码使用 TypeScript，既有 JS/MJS 逐批迁移。页面专属组件留在对应页面目录。资源迁移同步导入、许可证输出和处理脚本，移除个人机器路径；地图分发保留可见 OSM 署名。
 
-模块说明：[API 调用](src/api/README.md)、[Android 工程](android/README.md)、[手绘 UI](src/plugins/README.md)、[装饰缓存](src/platform/SKETCH_CACHE.md)、[地图](src/pages/map/README.md)、[建模](src/pages/map/MODELING.md)、[Agent 页面](src/pages/agent/README.md)、[个人页](src/pages/more/README.md)、[字体](src/assets/fonts/README.md)、[地图许可](src/assets/maps/LICENSE.md)。
+模块说明：[API 调用](src/api/README.md)、[Android 工程](android/README.md)、[手绘 UI](src/plugins/README.md)、[静态装饰资源](src/assets/sketch/README.md)、[地图](src/pages/map/README.md)、[建模](src/pages/map/MODELING.md)、[Agent 页面](src/pages/agent/README.md)、[个人页](src/pages/more/README.md)、[字体](src/assets/fonts/README.md)、[地图许可](src/assets/maps/LICENSE.md)。
 
 ## 手机网页与原生工程
+
+应用外壳占满视口扣除系统安全区后的空间；页眉和底部导航位于内容滚动区域之外，页面在 `.page-main` 或各页面内部的滚动容器中滚动。不要在带安全区 padding 的 body 内再放置 `100dvh` 高的外壳，否则会撑高根页面，使导航随整页移动。根页面禁止滚动和越界回弹；桌面预览仍保留居中的手机边框留白。
+
+布局回归：在 Vite 页面进入“我的”等显示底部导航的页面，在 Console 执行 `await (await import('/scripts/viewport-scroll.browser.mjs')).verifyViewportScroll()`，检查无安全区及上下 24/34px 安全区时内容可滚动、根页面不可滚动且导航位置不变。另在 Android 上反复上滑、下拉内容至边界，确认导航不移动、顶部不露白；切换页面、横竖屏及键盘弹出收起后重复检查。
 
 手机浏览器预览先构建，再执行 `npm run preview:phone`，使用电脑局域网 IP 和 8766 端口访问；网络与防火墙需允许连接。Android 工程位于 android/，SDK、IDE、本地 debug 和分发包步骤见[Android 教程](android/README.md)。网页演示的数据边界见[架构说明](../docs/architecture.md#首阶段结构与数据边界)。

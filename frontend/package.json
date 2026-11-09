@@ -6,8 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
+    "postbuild": "node scripts/check-sketch-build.mjs",
     "build:preview": "vue-tsc -b && vite build --mode preview",
-    "build:production": "vue-tsc -b && vite build --mode production && node scripts/check-internal-tools-build.mjs false",
+    "postbuild:preview": "node scripts/check-sketch-build.mjs",
+    "build:production": "vue-tsc -b && vite build --mode production",
+    "postbuild:production": "node scripts/check-internal-tools-build.mjs false && node scripts/check-sketch-build.mjs",
     "check:internal-tools": "node scripts/check-internal-tools-build.mjs",
     "preview": "vite preview",
     "preview:phone": "vite preview --host 0.0.0.0",
@@ -21,7 +24,8 @@
     "android:sync": "npm run build:preview && cap sync android",
     "android:open": "cap open android",
     "android:debug": "npm run android:sync && cd android && ./gradlew assembleDebug",
-    "android:unsigned": "cd android && ./gradlew --no-daemon --max-workers=2 assembleRelease"
+    "android:unsigned": "cd android && ./gradlew --no-daemon --max-workers=2 assembleRelease",
+    "sketch:prepare": "node scripts/prepare-sketch-assets.mjs"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
@@ -38,6 +42,7 @@
   },
   "devDependencies": {
     "@capacitor/cli": "8.5.2",
+    "@resvg/resvg-js": "2.6.2",
     "@types/node": "^22.0.0",
     "@vitejs/plugin-vue": "^6.0.9",
     "typescript": "~5.7.0",

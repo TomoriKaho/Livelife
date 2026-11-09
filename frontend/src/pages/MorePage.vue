@@ -7,8 +7,7 @@ export const pageMeta = {
 </script>
 
 <script setup>
-import { computed, defineAsyncComponent, inject, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
-import { sketchWarmupKey, sketchWarmupScenariosKey } from '../plugins/sketch-warmup';
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { registerBackHandler } from '../platform/android-navigation';
 import ElasticList from './agent/ElasticList.vue';
@@ -29,16 +28,6 @@ const HelloConnectionTest = showInternalTools
 
 const router = useRouter(), route = useRoute(), root = ref(null), pane = ref(route.query.pane === 'favorites' ? 'favorites' : 'home');
 const paneTrail = [];
-const warming = inject(sketchWarmupKey, false);
-const registerWarmup = inject(sketchWarmupScenariosKey, null);
-if (warming && registerWarmup) {
-  // Prepare visual states directly; do not click save, permission, or API actions.
-  const unregister = registerWarmup(Object.keys(titles).map(id => async () => {
-    if (id === 'help' && showInternalTools) await import('./more/HelloConnectionTest.vue');
-    pane.value = id;
-  }));
-  onBeforeUnmount(unregister);
-}
 const profile = reactive({ ...initialProfile }), profileDraft = reactive({ ...initialProfile });
 const selectedInterests = ref([...initialInterests]);
 const pickedInterests = computed(() => interests.filter(item => selectedInterests.value.includes(item.id)));
@@ -58,14 +47,12 @@ function open(id) {
   if (id === 'favorites') router.replace({ path: '/more', query: { pane: 'favorites' } });
 }
 function goBack() { pane.value = paneTrail.pop() || 'home'; if (route.query.pane) router.replace('/more'); }
-if (!warming) {
-  const removeNativeBack = registerBackHandler(() => {
-    if (pane.value === 'home') return false;
-    goBack();
-    return true;
-  });
-  onBeforeUnmount(removeNativeBack);
-}
+const removeNativeBack = registerBackHandler(() => {
+  if (pane.value === 'home') return false;
+  goBack();
+  return true;
+});
+onBeforeUnmount(removeNativeBack);
 function saveProfile() {
   if (!profileDraft.nickname.trim()) return;
   Object.assign(profile, profileDraft, { nickname: profileDraft.nickname.trim(), bio: profileDraft.bio.trim() });
@@ -79,7 +66,6 @@ function savePassword() {
 }
 function sendFeedback() { if (feedback.value.trim()) notify('谢谢你的建议！提交功能将在后续开放'); }
 watch(pane, async () => {
-  if (warming) return;
   await nextTick();
   root.value?.querySelector('h1')?.focus({ preventScroll: true });
 });
