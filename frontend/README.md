@@ -47,6 +47,15 @@ npm run preview
 
 `build:preview` 先运行 `vue-tsc -b` 类型检查，再执行开启接口测试工具的 Vite preview 模式构建，产物位于 `frontend/dist/`。`preview` 提供本地构建预览 `http://127.0.0.1:8766/`；它要求先构建，不是正式生产服务器。预览端口也为严格端口，可用 `npm run preview -- --port 8776` 指定其他空闲端口。
 
+`build`、`build:preview`、`build:production` 的额外参数直接传给 Vite，例如 `npm run build:preview -- --base=/demo/`。静态手绘产物检查通过对应的 npm `postbuild*` 钩子执行；production 钩子还检查内部工具已剔除。不要把检查脚本接到主构建命令末尾，否则 npm 会把 `--base` 等参数传给检查脚本而不是 Vite。
+
+课程机预览资源路径可在本地复现（以下环境变量只用于本次命令）：
+
+```bash
+VITE_WEB_PREVIEW=true VITE_WEB_BUILD_ID=fe-0000000000000000000000000000000000000000-1-1 npm run build -- --base=/__livelife/web-builds/fe-0000000000000000000000000000000000000000-1-1/
+VITE_WEB_BUILD_ID=fe-0000000000000000000000000000000000000000-1-1 node scripts/check-preview-build.mjs
+```
+
 现有检查与地图命令：
 
 ```bash
