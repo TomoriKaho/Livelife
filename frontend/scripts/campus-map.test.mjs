@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { contains, clipRoad, project, origin, constrainToBoundary } from '../src/pages/map/geometry.mjs';
+import { accuracyRadius, toDeviceMapLocation } from '../src/pages/map/device-location.mjs';
 import { activities, venues, demoLocation } from '../src/pages/map/demo.js';
 import { initialView } from '../src/pages/map/view.mjs';
 import { joinRings, insideFootprint } from '../src/pages/map/rings.mjs';
@@ -128,7 +129,7 @@ test('拖动中心按凹形校界约束，边界及校内位置保持稳定', ()
   assert.deepEqual(constrainToBoundary([12, 12], u), [10, 10]);
   assert.deepEqual(constrainToBoundary([7, 6], u), [7, 6]);
 });
-test('初始相机与定位蓝点共用校内位置，视角低于原校园全景', () => {
+test('未取得设备位置时初始相机使用校内示例位置，视角低于原校园全景', () => {
   assert.deepEqual(initialView.target, [demoLocation[0], 0, demoLocation[1]]);
   assert.ok(contains(demoLocation, campus.boundary));
   assert.ok(initialView.offset[1] < 480);
@@ -154,6 +155,17 @@ test('北京坐标投影保持原点、米制方向与精度', () => {
   assert.deepEqual(project({ lon: origin[0], lat: origin[1] }), [0, -0]);
   const [x, z] = project({ lon: origin[0] + .001, lat: origin[1] + .001 });
   assert.ok(x > 85 && x < 86 && z < -111 && z > -112);
+});
+test('设备 WGS-84 位置投影到地图米制坐标并保留精度范围', () => {
+  const location = toDeviceMapLocation({ latitude: 39.993201, longitude: 116.303663, accuracy: 18 });
+  assert.ok(location);
+  assert.ok(Math.abs(location.point[0] + 28.8) < .2);
+  assert.ok(Math.abs(location.point[1] + 189.3) < .2);
+  assert.ok(contains(location.point, campus.boundary));
+  assert.equal(location.accuracy, 18);
+  assert.equal(accuracyRadius(location.accuracy), 18);
+  assert.equal(accuracyRadius(0), 1);
+  assert.equal(toDeviceMapLocation({ latitude: Number.NaN, longitude: 116.3, accuracy: 3 }), null);
 });
 test('本地校区资源完整，演示活动映射到实际 OSM 建筑且楼层合法', () => {
   assert.ok(campus.buildings.length > 200);

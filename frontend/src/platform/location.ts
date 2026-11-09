@@ -58,7 +58,7 @@ function platformSupportsLocation(provider: LocationProvider) {
 }
 
 /**
- * Request one foreground position after an explicit user action.
+ * Request one foreground position when a visible consumer needs it.
  *
  * Consumers call this function directly and branch on `status`; it keeps no
  * global location state, starts no watch, and never sends coordinates anywhere.

@@ -13,16 +13,28 @@ import ActivityDrawer from './map/ActivityDrawer.vue';
 import mascot from '../assets/mascot.png';
 import campus from '../assets/maps/campus.json';
 import { activities, categories, filters, venues } from './map/demo.js';
+import { contains } from './map/geometry.mjs';
+import { toDeviceMapLocation } from './map/device-location.mjs';
 import { profileFor } from './map/model-profiles.mjs';
+import { getCurrentLocation } from '../platform/location';
 const CampusScene = defineAsyncComponent(() => import('./map/CampusScene.vue'));
 const CampusPlan = defineAsyncComponent(() => import('./map/CampusPlan.vue'));
 const route = useRoute(), focusPoint = ref(null), routedActivity = ref(null);
-const mode = ref('3d'), filter = ref('all'), search = ref(''), selected = ref(null), floor = ref(2), scene = ref(null), located = ref(false), detail = ref(null);
+const mode = ref('3d'), filter = ref('all'), search = ref(''), selected = ref(null), floor = ref(2), scene = ref(null), detail = ref(null);
+const deviceLocation = ref(null), locationState = ref('idle');
 const drawer = ref(null), drawerPeek = ref(180);
 const planView = ref(null);
 let drawerBeforeSelection = null;
 const campusActivities = activities.filter(item => item.building);
 const visibleActivities = computed(() => campusActivities.filter(item => filter.value === 'all' || item.category === filter.value));
+const locationHint = computed(() => ({
+  locating: '正在获取当前位置…',
+  'permission-denied': '未获得位置权限；点击定位按钮可再次尝试。',
+  unavailable: '暂时无法获取位置；请检查定位服务后重试。',
+  timeout: '定位超时；点击定位按钮重试。',
+  unsupported: '此设备暂不支持定位。',
+  'outside-campus': '当前位置不在燕园离线地图范围内。',
+}[locationState.value] || ''));
 const currentBuilding = computed(() => {
   if (!selected.value) return null;
   const building = campus.buildings.find(b => b.id === selected.value), venue = venues.find(v => v.id === selected.value);
@@ -109,9 +121,24 @@ function select(id) {
   floor.value = visibleActivities.value.find(a => a.building === id)?.floor || 1;
 }
 async function locate() {
-  // 复位只调整地图，保留操作当下的抽屉档位；结束本次建筑探索记录。
-  drawerBeforeSelection = null; located.value = true; selected.value = null; detail.value = null; focusPoint.value = null; routedActivity.value = null;
-  await nextTick(); scene.value?.locate();
+  if (locationState.value === 'locating') return;
+  locationState.value = 'locating';
+  const result = await getCurrentLocation();
+  if (result.status !== 'success') {
+    locationState.value = result.error;
+    return;
+  }
+  const nextLocation = toDeviceMapLocation(result.location);
+  if (!nextLocation || !contains(nextLocation.point, campus.boundary)) {
+    deviceLocation.value = null;
+    locationState.value = 'outside-campus';
+    return;
+  }
+  // 定位只调整地图，保留操作当下的抽屉档位；结束本次建筑探索记录。
+  drawerBeforeSelection = null; selected.value = null; detail.value = null; focusPoint.value = null; routedActivity.value = null;
+  deviceLocation.value = nextLocation;
+  locationState.value = 'located';
+  await nextTick(); scene.value?.locate(nextLocation.point);
 }
 async function setMode(value) {
   if (value === mode.value) return;
@@ -133,7 +160,10 @@ async function applyActivityRoute() {
   focusPoint.value = item.mapPosition || null;
   routedActivity.value = item;
 }
-onMounted(applyActivityRoute);
+onMounted(async () => {
+  await applyActivityRoute();
+  if (!route.query.activity) void locate();
+});
 watch(() => route.query.activity, applyActivityRoute);
 </script>
 
@@ -141,8 +171,8 @@ watch(() => route.query.activity, applyActivityRoute);
   <section id="page-title" class="map-page" aria-label="燕园活动探索" tabindex="-1">
     <div class="map-rule" aria-hidden="true"></div>
     <div class="map-stage" :class="{ 'building-focus': selected, 'plan-mode': mode === '2d' }" :style="{ '--drawer-peek': `${drawerPeek}px` }">
-        <CampusScene v-if="mode === '3d'" ref="scene" :focus-inset="drawerPeek" :focus-point="focusPoint" :selected="selected" :floor="floor" :activities="visibleActivities" @select="select" @floor="floor = $event" />
-        <CampusPlan v-else ref="scene" :focus-inset="drawerPeek" :focus-point="focusPoint" :selected="selected" :activities="visibleActivities" :starting-view="planView" @select="select" />
+        <CampusScene v-if="mode === '3d'" ref="scene" :focus-inset="drawerPeek" :focus-point="focusPoint" :device-location="deviceLocation" :selected="selected" :floor="floor" :activities="visibleActivities" @select="select" @floor="floor = $event" />
+        <CampusPlan v-else ref="scene" :focus-inset="drawerPeek" :focus-point="focusPoint" :device-location="deviceLocation" :selected="selected" :activities="visibleActivities" :starting-view="planView" @select="select" />
         <span v-if="mode === '3d'" class="campus-caption">北京大学 · 燕园</span>
         <div class="map-hint">{{ routedActivity ? `${routedActivity.title}${focusPoint ? ' · 地点示意' : ` · ${floor}F`}` : mode === '2d' ? selected ? '俯视建筑 · 在下方切换楼层查看活动' : '点建筑查看活动 · 拖动平移 · 双指缩放' : currentBuilding?.scenic ? '拖动环绕博雅塔 · 缩小看看未名湖' : selected ? '点楼层查看活动 · 拖动查看另一侧' : '点建筑，看看楼层里正在发生什么' }}</div>
       <a class="map-attribution" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a>
@@ -166,9 +196,10 @@ watch(() => route.query.activity, applyActivityRoute);
         <div class="map-tools" aria-label="地图控制">
           <button v-sketch class="sketch" aria-label="放大地图" @click="scene?.zoom(.8)">＋</button>
           <button v-sketch class="sketch" aria-label="缩小地图" @click="scene?.zoom(1.25)">−</button>
-          <button v-sketch class="sketch locate-button" :data-pencil="located ? 'blue' : undefined" aria-label="查看示例定位附近的活动" @click="locate">◎</button>
+          <button v-sketch class="sketch locate-button" :data-pencil="deviceLocation ? 'blue' : undefined" :aria-label="locationState === 'locating' ? '正在定位' : '定位到我的位置'" :disabled="locationState === 'locating'" @click="locate">◎</button>
         </div>
       </div>
+      <p v-if="locationHint" class="location-hint" :class="{ error: locationState !== 'locating' }" :role="locationState === 'locating' ? 'status' : 'alert'">{{ locationHint }}</p>
     </div>
     <ActivityDrawer ref="drawer" @measure="drawerPeek = $event">
       <template v-if="detail">
@@ -300,6 +331,7 @@ watch(() => route.query.activity, applyActivityRoute);
 .filter-row { display: flex; align-items: center; gap: 6px; padding: 8px 17px 0; pointer-events: auto; }
 .filter-chip { flex: none; padding: 7px 10px; min-height: 36px; font-size: 12px; white-space: nowrap; background: transparent; }.demo-stamp { margin-left: auto; font-size: 10px; color: #899287; white-space: nowrap; }
 .map-stage { position: relative; min-height: 0; flex: 1; overflow: hidden; background: var(--blue); }
+.location-hint { position: absolute; z-index: 7; left: 14px; right: 72px; bottom: calc(var(--drawer-peek) + 14px); margin: 0; padding: 7px 10px; border-radius: 8px; background: #fffdf0e8; color: #315974; font-size: 11px; line-height: 1.35; box-shadow: 0 1px 0 #20304b33; pointer-events: none; }.location-hint.error { color: #805049; }
 .map-rail { position: absolute; right: 12px; top: 104px; z-index: 6; display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .mode-switch { display: grid; grid-template-columns: 1fr; width: 44px; padding: 3px; background: transparent; }
 .mode-tab { min-height: 34px; border: 0; background: transparent; font-size: 11px; color: var(--ink); padding: 4px 0; }

@@ -23,7 +23,7 @@ const keys = pages.map((page) => page.key);
 if (new Set(keys).size !== keys.length) throw new Error('页面的 pageMeta.key 不可重复');
 
 const routes: RouteRecordRaw[] = [
-  { path: '/', redirect: '/onboarding' },
+  { path: '/', redirect: '/map' },
   { path: '/login', redirect: '/onboarding' },
   ...pages.map(({ component, ...meta }) => ({
     path: `/${meta.key}` as const,

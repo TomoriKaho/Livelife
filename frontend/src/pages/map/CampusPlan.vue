@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import campus from '../../assets/maps/campus.json';
 import { demoLocation, venues } from './demo.js';
 import { center, constrainToBoundary } from './geometry.mjs';
+import { accuracyRadius } from './device-location.mjs';
 import { profileFor } from './model-profiles.mjs';
 import { treeLayout } from './landscape.mjs';
 import { mapPalette } from './map-palette.mjs';
@@ -10,7 +11,7 @@ import { createPlanPatterns, pencilPlanPath } from './plan-pencil.mjs';
 import { initialPlanScale, planAnchor, worldToPlan, planToWorld, zoomPlan, panPlan, pinchPlan,
   planBounds, intersectsPlan, pickPlanBuilding, planScaleBar } from './plan-view.mjs';
 
-const props = defineProps({ selected: String, focusPoint: Array, activities: Array,
+const props = defineProps({ selected: String, focusPoint: Array, deviceLocation: Object, activities: Array,
   focusInset: { type: Number, default: 0 }, startingView: Object });
 const emit = defineEmits(['select']);
 const host = ref(null), canvas = ref(null), labels = ref([]), ready = ref(false);
@@ -43,7 +44,7 @@ function focusPlace() { if (props.focusPoint) fly({ center: [...props.focusPoint
 function zoom(ratio, point = anchor()) {
   stop(); view = zoomPlan(view, view.scale / ratio, point, anchor(), campus.boundary); schedule();
 }
-function locate() { fly({ center: [...demoLocation], scale: initialPlanScale(width) }); }
+function locate(point = props.deviceLocation?.point || demoLocation) { fly({ center: [...point], scale: initialPlanScale(width) }); }
 defineExpose({ zoom, locate, getView: () => ({ center: [...view.center], scale: view.scale }) });
 
 function surface(item, color, type) {
@@ -181,16 +182,18 @@ function draw(time) {
     ctx.fillStyle = patterns[tree.color]; ctx.fill(tree.path);
     ctx.strokeStyle = '#526743'; ctx.globalAlpha = .38; ctx.lineWidth = .6 / view.scale; ctx.stroke(tree.path); ctx.globalAlpha = 1;
   }
-  // 示例定位固定，与 3D 蓝点共用 demoLocation，不获取设备位置。
-  ctx.beginPath(); ctx.arc(...demoLocation, 10 / view.scale, 0, Math.PI * 2); ctx.fillStyle = '#84bdf866'; ctx.fill();
-  ctx.beginPath(); ctx.arc(...demoLocation, 4.5 / view.scale, 0, Math.PI * 2); ctx.fillStyle = '#428bd1'; ctx.fill(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.8 / view.scale; ctx.stroke();
+  if (props.deviceLocation) {
+    const { point, accuracy } = props.deviceLocation;
+    ctx.beginPath(); ctx.arc(...point, accuracyRadius(accuracy), 0, Math.PI * 2); ctx.fillStyle = '#84bdf85c'; ctx.fill(); ctx.strokeStyle = '#428bd188'; ctx.lineWidth = 1 / view.scale; ctx.stroke();
+    ctx.beginPath(); ctx.arc(...point, 4.5 / view.scale, 0, Math.PI * 2); ctx.fillStyle = '#428bd1'; ctx.fill(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.8 / view.scale; ctx.stroke();
+  }
   displayView.value = { center: [...view.center], scale: view.scale }; updateLabels();
   if (motion) schedule();
 }
 function resize() {
   const first = !width; width = host.value.clientWidth; height = host.value.clientHeight;
   dpr = Math.min(window.devicePixelRatio || 1, 2); canvas.value.width = Math.round(width * dpr); canvas.value.height = Math.round(height * dpr);
-  if (first) view = props.startingView ? { center: [...props.startingView.center], scale: props.startingView.scale } : { center: [...demoLocation], scale: initialPlanScale(width) };
+  if (first) view = props.startingView ? { center: [...props.startingView.center], scale: props.startingView.scale } : { center: [...(props.deviceLocation?.point || demoLocation)], scale: initialPlanScale(width) };
   schedule();
 }
 function pointerDown(event) {
@@ -233,6 +236,7 @@ function keyboard(event) {
 }
 watch(() => props.selected, focusBuilding);
 watch(() => props.focusPoint, focusPlace);
+watch(() => props.deviceLocation, location => { if (location && width) locate(location.point); else schedule(); });
 watch(() => props.activities, schedule);
 watch(() => props.focusInset, schedule);
 onMounted(() => {
