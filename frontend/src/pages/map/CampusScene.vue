@@ -29,6 +29,7 @@ function invalidate() {
 }
 const meshes = new Map(), selectable = [], raycaster = new THREE.Raycaster();
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const locationBlue = 0x4387bb, locationMarkerRadius = 4.5, headingConeBaseRadius = 2.8, headingConeLength = 13;
 const initialTarget = new THREE.Vector3(...initialView.target);
 const initialCamera = initialTarget.clone().add(new THREE.Vector3(...initialView.offset));
 function shape(points) { return footprintShape(points); }
@@ -181,17 +182,16 @@ function updateDeviceLocation() {
   locationMarker.visible = locationRing.visible = visible;
   headingCone.visible = visible && Number.isFinite(location?.heading);
   if (!location) return;
-  locationMarker.position.set(location.point[0], 4.5, location.point[1]);
+  locationMarker.position.set(location.point[0], locationMarkerRadius, location.point[1]);
   locationRing.position.set(location.point[0], .25, location.point[1]);
   locationRing.geometry.dispose();
   locationRing.geometry = new THREE.CircleGeometry(accuracyRadius(location.accuracy), 48);
   if (Number.isFinite(location.heading)) {
-    const height = 34;
-    headingCone.position.set(location.point[0], 6.5, location.point[1]);
+    headingCone.position.set(location.point[0], locationMarkerRadius, location.point[1]);
     headingCone.geometry.dispose();
-    headingCone.geometry = new THREE.ConeGeometry(6.2, height, 16);
-    // 底面贴近蓝点，尖端沿北向（-z）伸出；再随航向绕 y 轴旋转。
-    headingCone.geometry.translate(0, height / 2, 0);
+    headingCone.geometry = new THREE.ConeGeometry(headingConeBaseRadius, headingConeLength, 16);
+    // 底面中心与蓝点球心重合，尖端沿北向（-z）短距离伸出；再随航向绕 y 轴旋转。
+    headingCone.geometry.translate(0, headingConeLength / 2, 0);
     headingCone.geometry.rotateX(-Math.PI / 2);
     headingCone.geometry.rotateY(-location.heading * Math.PI / 180);
   }
@@ -302,9 +302,9 @@ onMounted(async () => {
       contextGeometry.forEach(g => g.dispose()); pencilEdge(contextBuildings, { opacity: .18, threshold: 42 }); scene.add(contextBuildings);
     }
     vegetation = createVegetation(campus); scene.add(vegetation); renderer.shadowMap.needsUpdate = true;
-    locationMarker = new THREE.Mesh(new THREE.SphereGeometry(4.5, 16, 10), new THREE.MeshBasicMaterial({ color: 0x4387bb })); locationMarker.visible = false; scene.add(locationMarker);
+    locationMarker = new THREE.Mesh(new THREE.SphereGeometry(locationMarkerRadius, 16, 10), new THREE.MeshBasicMaterial({ color: locationBlue })); locationMarker.visible = false; scene.add(locationMarker);
     locationRing = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshBasicMaterial({ color: 0x77a5c6, transparent: true, opacity: .28, side: THREE.DoubleSide, depthWrite: false })); locationRing.rotation.x = -Math.PI / 2; locationRing.visible = false; scene.add(locationRing);
-    headingCone = new THREE.Mesh(new THREE.ConeGeometry(1, 1, 3), new THREE.MeshStandardMaterial({ color: 0x2f7fbc, roughness: .42, metalness: .06, flatShading: true })); headingCone.castShadow = true; headingCone.visible = false; scene.add(headingCone);
+    headingCone = new THREE.Mesh(new THREE.ConeGeometry(1, 1, 3), new THREE.MeshBasicMaterial({ color: locationBlue })); headingCone.castShadow = true; headingCone.visible = false; scene.add(headingCone);
     updateDeviceLocation();
     observer = new ResizeObserver(resizeViewport); observer.observe(host.value);
     renderer.domElement.addEventListener('pointerdown', e => { pointerStart = { x: e.clientX, y: e.clientY, time: performance.now() }; });
