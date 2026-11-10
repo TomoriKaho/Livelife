@@ -1,4 +1,4 @@
-import { project } from './geometry.mjs';
+import { contains, project } from './geometry.mjs';
 import { insideFootprint } from './rings.mjs';
 
 // Device geolocation is WGS-84 latitude/longitude. The campus snapshot uses
@@ -13,6 +13,13 @@ export function toDeviceMapLocation({ latitude, longitude, accuracy, heading }) 
 // Keep a non-zero area visible when a platform reports a zero-meter estimate.
 export function accuracyRadius(accuracy) {
   return Math.max(1, Number.isFinite(accuracy) ? accuracy : 1);
+}
+
+/** A loaded offline-map extent, unlike the core-campus boundary, includes rendered context buildings. */
+export function locationWithinMapCoverage(location, coverage) {
+  const point = location?.point;
+  return Array.isArray(point) && point.length === 2 && point.every(Number.isFinite)
+    && Array.isArray(coverage) && coverage.length >= 3 && contains(point, coverage);
 }
 
 export function normalizeHeading(heading) {

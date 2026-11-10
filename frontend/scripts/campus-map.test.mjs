@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { contains, clipRoad, project, origin, constrainToBoundary } from '../src/pages/map/geometry.mjs';
-import { accuracyRadius, buildingsAtDeviceLocation, normalizeHeading, orientationHeading, preserveHeading, toDeviceMapLocation } from '../src/pages/map/device-location.mjs';
+import { accuracyRadius, buildingsAtDeviceLocation, locationWithinMapCoverage, normalizeHeading, orientationHeading, preserveHeading, toDeviceMapLocation } from '../src/pages/map/device-location.mjs';
 import { activities, venues, demoLocation } from '../src/pages/map/demo.js';
 import { initialView } from '../src/pages/map/view.mjs';
 import { joinRings, insideFootprint } from '../src/pages/map/rings.mjs';
@@ -176,6 +176,13 @@ test('设备 WGS-84 位置投影到地图米制坐标并保留精度范围', () 
   assert.deepEqual(preserveHeading({ point: [1, 2], accuracy: 3 }, 270), { point: [1, 2], accuracy: 3, heading: 270 });
   assert.deepEqual(preserveHeading({ point: [1, 2], accuracy: 3, heading: 10 }, 270), { point: [1, 2], accuracy: 3, heading: 10 });
   assert.equal(toDeviceMapLocation({ latitude: Number.NaN, longitude: 116.3, accuracy: 3 }), null);
+});
+test('离线背景内的北大化学学院位置不被核心校界误判为地图范围外', () => {
+  const chemistry = toDeviceMapLocation({ latitude: 39.9900333, longitude: 116.310585, accuracy: 5 });
+  assert.ok(chemistry);
+  assert.equal(contains(chemistry.point, campus.boundary), false);
+  assert.equal(locationWithinMapCoverage(chemistry, campus.context.extent), true);
+  assert.equal(locationWithinMapCoverage({ point: [9_999, 9_999], accuracy: 5 }, campus.context.extent), false);
 });
 test('定位精度圈与建筑相交时识别全部楼体并正确处理中庭', () => {
   const building = { id: 'test-building', points: [[0, 0], [10, 0], [10, 10], [0, 10]], holes: [[[3, 3], [7, 3], [7, 7], [3, 7]]] };

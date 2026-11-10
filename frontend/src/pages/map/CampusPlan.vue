@@ -26,8 +26,8 @@ const anchor = () => planAnchor(width, height, props.focusInset);
 const pointInView = event => { const rect = canvas.value.getBoundingClientRect(); return [event.clientX - rect.left, event.clientY - rect.top]; };
 function schedule() { if (!frame) frame = requestAnimationFrame(draw); }
 function stop() { motion = null; velocity = [0, 0]; }
-function fly(target) {
-  stop(); target.center = constrainToBoundary(target.center, campus.boundary);
+function fly(target, { constrain = true } = {}) {
+  stop(); if (constrain) target.center = constrainToBoundary(target.center, campus.boundary);
   if (reducedMotion.matches) view = target;
   else motion = { from: { center: [...view.center], scale: view.scale }, target, start: performance.now(), duration: 720 };
   schedule();
@@ -44,7 +44,11 @@ function focusPlace() { if (props.focusPoint) fly({ center: [...props.focusPoint
 function zoom(ratio, point = anchor()) {
   stop(); view = zoomPlan(view, view.scale / ratio, point, anchor(), campus.boundary); schedule();
 }
-function locate(point = props.deviceLocation?.point || demoLocation) { fly({ center: [...point], scale: initialPlanScale(width) }); }
+function locate(point = props.deviceLocation?.point || demoLocation) {
+  // Device positions may be on a preloaded context building outside the core
+  // interactive boundary; centre them faithfully instead of snapping inward.
+  fly({ center: [...point], scale: initialPlanScale(width) }, { constrain: false });
+}
 defineExpose({ zoom, locate, getView: () => ({ center: [...view.center], scale: view.scale }) });
 
 function surface(item, color, type) {

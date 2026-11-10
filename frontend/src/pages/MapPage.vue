@@ -13,8 +13,7 @@ import ActivityDrawer from './map/ActivityDrawer.vue';
 import mascot from '../assets/mascot.png';
 import campus from '../assets/maps/campus.json';
 import { activities, categories, filters, venues } from './map/demo.js';
-import { contains } from './map/geometry.mjs';
-import { normalizeHeading, orientationHeading, preserveHeading, toDeviceMapLocation } from './map/device-location.mjs';
+import { locationWithinMapCoverage, normalizeHeading, orientationHeading, preserveHeading, toDeviceMapLocation } from './map/device-location.mjs';
 import { profileFor } from './map/model-profiles.mjs';
 import { currentLocation, locationTrackingState, refreshCurrentLocation, restartLocationTracking } from '../platform/location-tracker';
 import { watchAndroidDeviceHeading } from '../platform/device-heading';
@@ -22,14 +21,14 @@ const CampusScene = defineAsyncComponent(() => import('./map/CampusScene.vue'));
 const CampusPlan = defineAsyncComponent(() => import('./map/CampusPlan.vue'));
 const route = useRoute(), focusPoint = ref(null), routedActivity = ref(null);
 const mode = ref('3d'), filter = ref('all'), search = ref(''), selected = ref(null), floor = ref(2), scene = ref(null), detail = ref(null);
-const deviceLocation = ref(null), outsideCampus = ref(false);
+const deviceLocation = ref(null), outsideMapCoverage = ref(false);
 const drawer = ref(null), drawerPeek = ref(180);
 const planView = ref(null);
 let drawerBeforeSelection = null, latestOrientation = null, latestNativeHeading = null, deviceHeadingFrame = 0;
 let stopNativeHeading = null, headingListenerGeneration = 0;
 const campusActivities = activities.filter(item => item.building);
 const visibleActivities = computed(() => campusActivities.filter(item => filter.value === 'all' || item.category === filter.value));
-const locationState = computed(() => outsideCampus.value ? 'outside-campus' : locationTrackingState.value);
+const locationState = computed(() => outsideMapCoverage.value ? 'outside-campus' : locationTrackingState.value);
 const locationHint = computed(() => ({
   locating: '正在获取当前位置…',
   'permission-denied': '未获得位置权限；点击定位按钮可再次尝试。',
@@ -198,12 +197,14 @@ function select(id) {
 function syncDeviceLocation(location) {
   if (!location) return;
   const nextLocation = toDeviceMapLocation(location);
-  if (!nextLocation || !contains(nextLocation.point, campus.boundary)) {
+  // `boundary` only defines the core interactive campus. Location markers may
+  // also sit on the preloaded context buildings, such as the chemistry campus.
+  if (!nextLocation || !locationWithinMapCoverage(nextLocation, campus.context.extent)) {
     deviceLocation.value = null;
-    outsideCampus.value = true;
+    outsideMapCoverage.value = true;
     return;
   }
-  outsideCampus.value = false;
+  outsideMapCoverage.value = false;
   deviceLocation.value = preserveHeading(nextLocation, deviceLocation.value?.heading);
   applyDeviceHeading();
 }
