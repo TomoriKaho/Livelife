@@ -30,7 +30,7 @@ function invalidate() {
 const meshes = new Map(), selectable = [], raycaster = new THREE.Raycaster();
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 // 圆锥底部沿蓝点球面向上拱起，并在球面外保留细微间隙。
-const locationBlue = 0x4387bb, locationMarkerRadius = 4.5, headingConeRadius = 2, headingConeLength = 1.5, headingConeSurfaceGap = .9;
+const locationBlue = 0x4387bb, locationMarkerRadius = 4.5, headingConeRadius = 2.5, headingConeLength = 1.8, headingConeSurfaceGap = .9;
 const initialTarget = new THREE.Vector3(...initialView.target);
 const initialCamera = initialTarget.clone().add(new THREE.Vector3(...initialView.offset));
 function shape(points) { return footprintShape(points); }
