@@ -21,7 +21,7 @@ import MoreIcon from './more/MoreIcon.vue';
 import PreferenceSwitch from './more/PreferenceSwitch.vue';
 import InterestPreferences from './more/InterestPreferences.vue';
 import { initialProfile, initialInterests, menuItems, titles } from './more/demo.js';
-import { authState, logout as logoutAccount } from '../api/auth';
+import { authState, deleteAccount, logout as logoutAccount } from '../api/auth';
 
 const showInternalTools = import.meta.env.VITE_INTERNAL_TOOLS === 'true';
 const HelloConnectionTest = showInternalTools
@@ -39,6 +39,7 @@ const prefs = reactive({ personalized: true, reminders: true, recommendations: f
 const advance = ref('30分钟'), recommendationMode = ref('interest');
 const feedback = ref(''), notice = ref('');
 let noticeTimer;
+const deleteOpen = ref(false), deletePassword = ref(''), deleteError = ref(''), deleting = ref(false);
 const favoritesSummary = computed(() => `收藏 ${savedActivities.value.length} 个活动 · ${savedActivities.value.filter(item => activityStatus(item) === 'upcoming').length} 个待开始`);
 function notify(text) { clearTimeout(noticeTimer); notice.value = text; noticeTimer = setTimeout(() => { notice.value = ''; }, 2400); }
 function open(id) {
@@ -115,6 +116,21 @@ async function signOut() {
   catch { notify('已在本地退出；服务器会话将在过期后失效'); }
   router.push('/onboarding');
 }
+function openDelete() { deletePassword.value = ''; deleteError.value = ''; deleteOpen.value = true; }
+async function confirmDelete() {
+  if (!deletePassword.value) { deleteError.value = '请输入登录密码以确认注销。'; return; }
+  deleting.value = true; deleteError.value = '';
+  try {
+    await deleteAccount(deletePassword.value);
+    deleteOpen.value = false; hasSession.value = false;
+    router.replace('/onboarding');
+    notify('账号已注销，账户与资料已删除');
+  } catch (error) {
+    deleteError.value = error instanceof Error ? error.message : '注销失败，请稍后重试。';
+  } finally {
+    deleting.value = false; deletePassword.value = '';
+  }
+}
 watch(pane, async () => {
   await nextTick();
   root.value?.querySelector('h1')?.focus({ preventScroll: true });
@@ -173,6 +189,15 @@ onBeforeUnmount(() => { clearTimeout(noticeTimer); });
         <div class="switch-row"><span><strong>使用兴趣标签</strong><small>根据你圈选的兴趣调整推荐</small></span><PreferenceSwitch v-model="prefs.useInterests" label="推荐使用兴趣标签" /></div>
         <p class="preview-note">个人资料与推荐偏好仍为界面预览。</p>
         <button v-sketch class="secondary-button sketch" type="button" :disabled="!authState.user" @click="signOut"><MoreIcon name="logout" />退出登录</button>
+        <h2 class="field-heading spaced-heading">注销账号</h2>
+        <p class="small-note">注销会永久删除账户、个人资料与兴趣标签，无法恢复；退出登录只结束当前会话，不会删除账户。</p>
+        <button v-if="!deleteOpen" v-sketch class="secondary-button sketch" type="button" :disabled="!authState.user" @click="openDelete">注销账号</button>
+        <form v-else @submit.prevent="confirmDelete">
+          <label class="form-field"><span>输入登录密码确认注销</span><div v-sketch class="field-outline sketch"><input v-model="deletePassword" type="password" autocomplete="current-password" aria-label="登录密码" placeholder="登录密码" /></div></label>
+          <p v-if="deleteError" class="small-note" role="alert">{{ deleteError }}</p>
+          <button v-sketch class="secondary-button sketch" type="button" :disabled="deleting" @click="deleteOpen = false">取消</button>
+          <button v-sketch class="primary-button sketch" data-pencil="pink" type="submit" :disabled="deleting || !deletePassword">{{ deleting ? '正在注销…' : '确认注销' }}</button>
+        </form>
       </section>
       <section v-else-if="pane === 'appearance'" aria-label="界面风格选择">
         <p class="pane-lede">用喜欢的颜色，打开校园生活。</p>

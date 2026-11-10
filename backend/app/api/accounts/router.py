@@ -4,13 +4,15 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.dependencies import get_session
 from app.db.models.accounts import EmailVerificationCode, User, UserSession
+from app.db.models.profile import UserInterest, UserProfile
 from app.schemas.accounts import (
+    AccountDeletionRequest,
     EmailRequest,
     LoginRequest,
     RegistrationRequest,
@@ -175,5 +177,28 @@ def logout(
         if record is not None:
             record.revoked_at = datetime.now(UTC)
             session.commit()
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response
+
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+def delete_account(
+    payload: AccountDeletionRequest,
+    response: Response,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> Response:
+    """注销账号：密码二次确认后删除账户及其会话、资料与验证码。"""
+
+    if not user.password_hash.startswith("scrypt$") or not verify_password(
+        payload.password, user.password_hash
+    ):
+        raise HTTPException(status_code=400, detail="Password is incorrect")
+    session.execute(delete(UserSession).where(UserSession.user_id == user.id))
+    session.execute(delete(UserInterest).where(UserInterest.user_id == user.id))
+    session.execute(delete(UserProfile).where(UserProfile.user_id == user.id))
+    session.execute(delete(EmailVerificationCode).where(EmailVerificationCode.email == user.email))
+    session.delete(user)
+    session.commit()
     response.status_code = status.HTTP_204_NO_CONTENT
     return response

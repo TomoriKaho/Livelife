@@ -63,3 +63,9 @@ class SessionResponse(BaseModel):
     token_type: str = "bearer"
     expires_in: int
     user: UserResponse
+
+
+class AccountDeletionRequest(BaseModel):
+    """注销账号的二次确认凭据。"""
+
+    password: str = Field(min_length=1, max_length=128)

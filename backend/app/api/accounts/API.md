@@ -1,6 +1,6 @@
 # 账户与认证 API
 
-基址使用后端 API 基址，不含部署前缀。账户使用邮箱加密码；注册仅接受 `@pku.edu.cn` 与 `@stu.pku.edu.cn`，邮箱统一去除首尾空格并转小写。成功及错误响应遵循 FastAPI 的 JSON 结构，不增加统一响应包裹。
+基址使用后端 API 基址，不含部署前缀。账户使用邮箱加密码；注册仅接受 `@pku.edu.cn` 与 `@stu.pku.edu.cn`，邮箱统一去除首尾空格并转小写。当前账号体系仅支持上述校园邮箱注册与登录，用户名登录纳入后续版本，届时另行更新本契约与前端文案。成功及错误响应遵循 FastAPI 的 JSON 结构，不增加统一响应包裹。
 
 ## `POST /auth/email-codes`
 
@@ -29,3 +29,7 @@
 `GET /auth/me` 返回 `{ "id": "<uuid>", "email": "..." }`。`POST /auth/logout` 撤销当前会话并返回 `204`。两者及后续受保护接口使用 `Authorization: Bearer <access_token>`；令牌只存储 SHA-256 摘要。缺失、撤销或过期会话返回 `401` 和 `WWW-Authenticate: Bearer`。无数据库时账号接口返回 `503`。现有健康检查及 hello 接口仍公开。
 
 令牌是 bearer 凭证，客户端必须通过 HTTPS 发送。当前前端按“记住登录”选择 localStorage，否则 sessionStorage；退出时清除本地令牌并在服务端撤销。XSS 风险和后续更安全的原生凭证存储可作为后续专项改进。
+
+## `DELETE /auth/me`（注销账号）
+
+请求头携带 `Authorization: Bearer <access_token>`，请求体 `{"password":"..."}` 作二次确认。校验通过后在同一事务内删除该账户的会话、个人资料与兴趣标签、该邮箱未使用的验证码以及用户记录，返回 `204`，已签发令牌立即失效。密码错误返回 `400`；缺失、撤销或过期会话返回 `401` 和 `WWW-Authenticate: Bearer`。内置测试账号没有可用密码，不通过此接口注销。`POST /auth/logout` 只撤销当前会话，不删除账户。
