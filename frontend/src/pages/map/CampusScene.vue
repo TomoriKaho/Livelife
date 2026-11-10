@@ -29,7 +29,8 @@ function invalidate() {
 }
 const meshes = new Map(), selectable = [], raycaster = new THREE.Raycaster();
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-const locationBlue = 0x4387bb, locationMarkerRadius = 4.5, headingConeBaseRadius = 2.8, headingConeLength = 13;
+// 方向锥体保持低于蓝点截面，但底面接近蓝点直径，确保在三维场景中清晰可辨。
+const locationBlue = 0x4387bb, locationMarkerRadius = 4.5, headingConeBaseRadius = 3.8, headingConeLength = 13;
 const initialTarget = new THREE.Vector3(...initialView.target);
 const initialCamera = initialTarget.clone().add(new THREE.Vector3(...initialView.offset));
 function shape(points) { return footprintShape(points); }
