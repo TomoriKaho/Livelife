@@ -75,13 +75,28 @@ class SSHTransportTests(unittest.TestCase):
             patch("livelife.ssh_transport.random.uniform", return_value=0),
         ):
             self.transport.rpc({"op": "ensure"})
-        self.assertEqual([c.args[0] for c in sleep.call_args_list], [1, 2])
+        self.assertEqual([c.args[0] for c in sleep.call_args_list], [2, 4])
         starts = [c for c in run.call_args_list if "-M" in c.args[0]]
         self.assertEqual(len(starts), 3)
         self.assertTrue(
             all("-N" in c.args[0] and "input" not in c.kwargs for c in starts)
         )
         self.assertEqual(sum("input" in c.kwargs for c in run.call_args_list), 1)
+
+    def test_recovers_when_course_rejects_first_four_connections(self):
+        with (
+            patch("livelife.ssh_transport.subprocess.run", side_effect=[result(255)]
+                  + [result(255, error="Connection closed by example.test port 1021")] * 4
+                  + [result(), result(), result(out='{"ready":true}')]) as run,
+            patch("livelife.ssh_transport.time.sleep") as sleep,
+            patch("livelife.ssh_transport.random.uniform", return_value=0),
+        ):
+            self.assertEqual(self.transport.rpc({"op": "ensure"}), {"ready": True})
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [2, 4, 8, 16])
+        starts = [call for call in run.call_args_list if "-M" in call.args[0]]
+        self.assertEqual(len(starts), 5)
+        self.assertTrue(all("ControlPersist=600" in call.args[0] for call in starts))
+        self.assertEqual(sum("input" in call.kwargs for call in run.call_args_list), 1)
 
     def test_authentication_and_host_key_failures_are_not_retried(self):
         for error in (
@@ -123,13 +138,13 @@ class SSHTransportTests(unittest.TestCase):
             patch(
                 "livelife.ssh_transport.subprocess.run",
                 side_effect=[result(255)]
-                + [result(255, error="Exceeded MaxStartups")] * 4,
+                + [result(255, error="Exceeded MaxStartups")] * 6,
             ) as run,
             patch("livelife.ssh_transport.time.sleep"),
         ):
             with self.assertRaises(RuntimeError):
                 self.transport.rpc({"op": "ensure"})
-        self.assertEqual(run.call_count, 5)
+        self.assertEqual(run.call_count, 7)
         self.assertFalse(any("input" in c.kwargs for c in run.call_args_list))
 
     def test_concurrent_process_style_callers_start_one_master_and_parallel_sessions(

@@ -33,7 +33,7 @@ LIVELIFE_PREVIEW_DB_INTEGRATION=1 <测试venv>/bin/python -m unittest discover -
 
 从仓库根目录先运行 `deploy/.venv/bin/python -m unittest discover -s deploy/tests -p test_ssh_transport.py -v`，再运行本节的完整检查。Unix socket、Supervisor 和 Nginx 的相关集成测试需要对应操作系统与依赖，跳过须明确记录。
 
-重点验证冷启动只建立一个主连接，多个独立调用者并发复用；主连接空闲退出或失效后恢复；凭证/known_hosts 更换后新建连接；私有目录、socket 和锁不可被其他账号访问，异常文件不被删除。临时认证握手拒绝最多重试四次，认证失败/主机公钥变化立即失败。已发送部署操作后响应丢失时不得自动重放，以免将未确认的提交误当未执行。
+重点验证冷启动只建立一个主连接，多个独立调用者并发复用；主连接空闲退出或失效后恢复；凭证/known_hosts 更换后新建连接；私有目录、socket 和锁不可被其他账号访问，异常文件不被删除。临时认证握手拒绝最多尝试六次（含首次），覆盖前四次断连后恢复及耗尽后停止，认证失败/主机公钥变化立即失败。已发送部署操作后响应丢失时不得自动重放，以免将未确认的提交误当未执行。
 
 实际测试服验证使用只读的 `port_available` 或已存在任务的 `build_status` 查询，记录共享主连接 PID和独立进程并发结果。验证主连接恢复时只关闭确认没有在途请求的项目控制 socket，不能重启 SSH 服务或停止后端；验收步骤及维护命令见[课程机 SSH 控制连接复用](../BUILDING.md#课程机-ssh-控制连接复用)。验证 HTTPS staging hello 仍正常，再重跑原先失败的工作流，以真实检查和产物结果确认恢复。
 

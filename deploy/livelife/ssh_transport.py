@@ -11,6 +11,10 @@ import subprocess
 import time
 
 
+MASTER_RETRY_DELAYS = (2, 4, 8, 16, 30)
+MASTER_IDLE_SECONDS = 600
+
+
 class CourseSSH:
     def __init__(self, root, command, remote):
         self.command, self.remote = list(command), remote
@@ -84,7 +88,7 @@ class CourseSSH:
                 if not stat.S_ISSOCK(info.st_mode) or info.st_uid != os.getuid():
                     raise ValueError("unexpected course SSH control socket")
                 self.socket.unlink()
-            for attempt in range(4):
+            for attempt in range(len(MASTER_RETRY_DELAYS) + 1):
                 result = subprocess.run(
                     self.command
                     + [
@@ -94,7 +98,7 @@ class CourseSSH:
                         "-S",
                         str(self.socket),
                         "-o",
-                        "ControlPersist=120",
+                        f"ControlPersist={MASTER_IDLE_SECONDS}",
                         self.remote,
                     ],
                     capture_output=True,
@@ -106,14 +110,14 @@ class CourseSSH:
                 if (
                     result.returncode == 0
                     or not self.transient(result.stderr)
-                    or attempt == 3
+                    or attempt == len(MASTER_RETRY_DELAYS)
                 ):
                     raise RuntimeError(
                         "course SSH master establishment failed: "
                         + result.stderr[-1000:]
                     )
                 # No session/RPC was sent by -N. Only authentication can be retried.
-                time.sleep(2**attempt + random.uniform(0, 0.3))
+                time.sleep(MASTER_RETRY_DELAYS[attempt] + random.uniform(0, 0.3))
 
     def rpc(self, request):
         self.ensure()
