@@ -5,7 +5,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import campus from '../../assets/maps/campus.json';
 import { center, constrainToBoundary } from './geometry.mjs';
-import { accuracyRadius } from './device-location.mjs';
+import { accuracyRadius, buildingAtDeviceLocation } from './device-location.mjs';
 import { venues } from './demo.js';
 import { initialView } from './view.mjs';
 import { mapPalette } from './map-palette.mjs';
@@ -21,8 +21,9 @@ const emit = defineEmits(['select', 'floor', 'ready']);
 const host = ref(null), failed = ref(false), loading = ref(true), labels = ref([]);
 const modelIdentity = ref(''), modelProgress = ref('0');
 const panTarget = ref(initialView.target.filter((_, i) => i !== 1).join(','));
-let renderer, scene, camera, controls, observer, frame, buildings = [], focusedModel, floorMeshes = [], tween, pointerStart, disposed = false, locationMarker, locationRing, headingCone, contextBuildings, vegetation, centeredOnDevice = false;
+let renderer, scene, camera, controls, observer, frame, buildings = [], focusedModel, floorMeshes = [], tween, pointerStart, disposed = false, locationMarker, locationRing, headingCone, contextBuildings, vegetation, centeredOnDevice = false, translucentLocationBuilding = null;
 let storeysWorker, needsRender = true;
+let locationBuildingMaterials = [];
 function invalidate() {
   needsRender = true;
   if (!disposed && !loading.value && !frame) frame = requestAnimationFrame(tick);
@@ -189,10 +190,38 @@ function headingGeometry() {
   geometry.rotateX(-Math.PI / 2);
   return geometry;
 }
+function restoreLocationBuilding() {
+  for (const { material, opacity, transparent, depthWrite } of locationBuildingMaterials) {
+    material.opacity = opacity;
+    material.transparent = transparent;
+    material.depthWrite = depthWrite;
+    material.needsUpdate = true;
+  }
+  locationBuildingMaterials = [];
+  translucentLocationBuilding = null;
+}
+function revealLocationInside(building) {
+  const model = building && meshes.get(building.id);
+  if (model === translucentLocationBuilding) return;
+  restoreLocationBuilding();
+  if (!model) return;
+  model.traverse(object => {
+    const materials = object.material ? (Array.isArray(object.material) ? object.material : [object.material]) : [];
+    for (const material of materials) {
+      locationBuildingMaterials.push({ material, opacity: material.opacity, transparent: material.transparent, depthWrite: material.depthWrite });
+      material.opacity = Math.min(material.opacity, .3);
+      material.transparent = true;
+      material.depthWrite = false;
+      material.needsUpdate = true;
+    }
+  });
+  translucentLocationBuilding = model;
+}
 function updateDeviceLocation() {
   if (!locationMarker || !locationRing || !headingCone) return;
   const location = props.deviceLocation;
-  const visible = Boolean(location) && !props.selected;
+  revealLocationInside(location && buildingAtDeviceLocation(location.point, buildings));
+  const visible = Boolean(location);
   locationMarker.visible = locationRing.visible = visible;
   headingCone.visible = visible && Number.isFinite(location?.heading);
   if (!location) return;
@@ -337,7 +366,7 @@ onMounted(async () => {
     if (!disposed) { console.error('校园 3D 地图初始化失败', error); failed.value = true; loading.value = false; }
   }
 });
-onBeforeUnmount(() => { disposed = true; storeysWorker?.dispose(); cancelAnimationFrame(frame); observer?.disconnect(); controls?.dispose(); if (scene) disposeGroup(scene); renderer?.dispose(); });
+onBeforeUnmount(() => { disposed = true; restoreLocationBuilding(); storeysWorker?.dispose(); cancelAnimationFrame(frame); observer?.disconnect(); controls?.dispose(); if (scene) disposeGroup(scene); renderer?.dispose(); });
 </script>
 
 <template>

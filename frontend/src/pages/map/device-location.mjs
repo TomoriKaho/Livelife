@@ -1,4 +1,5 @@
 import { project } from './geometry.mjs';
+import { insideFootprint } from './rings.mjs';
 
 // Device geolocation is WGS-84 latitude/longitude. The campus snapshot uses
 // the same local-meter projection as its OSM source data.
@@ -34,4 +35,10 @@ export function orientationHeading(event, screenAngle = 0) {
 export function preserveHeading(location, fallbackHeading) {
   const heading = normalizeHeading(location?.heading) ?? normalizeHeading(fallbackHeading);
   return { ...location, ...(heading === null ? {} : { heading }) };
+}
+
+/** Return the campus building containing a projected device point, if any. */
+export function buildingAtDeviceLocation(point, buildings) {
+  if (!Array.isArray(point) || point.length !== 2 || !point.every(Number.isFinite) || !Array.isArray(buildings)) return null;
+  return buildings.find(building => insideFootprint(point, building)) || null;
 }

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { contains, clipRoad, project, origin, constrainToBoundary } from '../src/pages/map/geometry.mjs';
-import { accuracyRadius, normalizeHeading, orientationHeading, preserveHeading, toDeviceMapLocation } from '../src/pages/map/device-location.mjs';
+import { accuracyRadius, buildingAtDeviceLocation, normalizeHeading, orientationHeading, preserveHeading, toDeviceMapLocation } from '../src/pages/map/device-location.mjs';
 import { activities, venues, demoLocation } from '../src/pages/map/demo.js';
 import { initialView } from '../src/pages/map/view.mjs';
 import { joinRings, insideFootprint } from '../src/pages/map/rings.mjs';
@@ -176,6 +176,14 @@ test('设备 WGS-84 位置投影到地图米制坐标并保留精度范围', () 
   assert.deepEqual(preserveHeading({ point: [1, 2], accuracy: 3 }, 270), { point: [1, 2], accuracy: 3, heading: 270 });
   assert.deepEqual(preserveHeading({ point: [1, 2], accuracy: 3, heading: 10 }, 270), { point: [1, 2], accuracy: 3, heading: 10 });
   assert.equal(toDeviceMapLocation({ latitude: Number.NaN, longitude: 116.3, accuracy: 3 }), null);
+});
+test('设备位于建筑轮廓内时识别对应建筑并排除中庭', () => {
+  const building = { id: 'test-building', points: [[0, 0], [10, 0], [10, 10], [0, 10]], holes: [[[3, 3], [7, 3], [7, 7], [3, 7]]] };
+  assert.equal(buildingAtDeviceLocation([2, 2], [building]), building);
+  assert.equal(buildingAtDeviceLocation([5, 5], [building]), null);
+  assert.equal(buildingAtDeviceLocation([12, 2], [building]), null);
+  assert.equal(buildingAtDeviceLocation([Number.NaN, 2], [building]), null);
+  assert.equal(buildingAtDeviceLocation([2, 2]), null);
 });
 test('本地校区资源完整，演示活动映射到实际 OSM 建筑且楼层合法', () => {
   assert.ok(campus.buildings.length > 200);
