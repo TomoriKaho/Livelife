@@ -28,7 +28,7 @@ API 前缀为 `/agent`。本模块服务未登录用户；所有会话读取、�
 | `message_start` | `message_id`, `request_id` | 创建回答消息 |
 | `citation` | `rank`, `information_id`, `title`, `source_url`, `platform`, `source_id`, `published_at`, `activity_location`, `activity_start_at`, `activity_end_at`, `registration_deadline_at`, `snippet` | 检索到的来源 |
 | `delta` | `text` | 新增回答文本 |
-| `usage` | `input_tokens`, `output_tokens`, `estimated` | 本次用量；缺少模型 usage 时使用估算 |
+| `usage` | `input_tokens`, `output_tokens`, `estimated` | 本次用量；缺少模型 usage 时按实际发送的消息内容字符数估算 |
 | `done` | `message_id`, `status` | 正常完成 |
 | `error` | `code`, `retryable` | 模型流或服务异常 |
 
@@ -49,6 +49,8 @@ API 前缀为 `/agent`。本模块服务未登录用户；所有会话读取、�
 - 会话 token 缺失/错误返回 `401`；会话过期返回 `404`；问题过长返回 `413`；未配置数据库或会话密钥返回 `503`。
 - IP 限流使用 Uvicorn 可信代理解析后的连接地址，再保存 HMAC 摘要；应用不直接信任请求中的 `X-Forwarded-For` 字符串。
 - 只有当前公开信息表中的记录可作为事实证据并生成来源引用。来源正文、用户消息和历史对话均视为不可信输入；历史只帮助补全明确的追问（例如“这个课的老师是什么”），检索仍需从公开记录取得新证据。模型不得声称能访问尚未接入的实时课表、选课、提醒或定位能力。
+
+用量预留和缺少模型 usage 时的输入估算共用模型请求的消息组装逻辑：计入系统提示、公开记录包装及裁剪后的历史，排除未发送的旧消息与被截断内容；预留另包含最大输出额度。估算仍为字符数近似，不等同于供应商账单。
 
 ## 配置与本地联调
 

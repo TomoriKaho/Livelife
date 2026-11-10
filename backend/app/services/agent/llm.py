@@ -25,15 +25,12 @@ def _bounded_history(history: list[dict[str, str]], max_chars: int) -> list[dict
     return list(reversed(selected))
 
 
-async def stream_completion(
+def completion_messages(
     settings: AgentSettings,
     *,
     history: list[dict[str, str]],
     sources: tuple[RetrievedInformation, ...],
-) -> AsyncIterator[tuple[str | None, dict[str, int] | None]]:
-    if not settings.llm_configured:
-        raise AgentModelError("model_not_configured")
-
+) -> list[dict[str, str]]:
     bounded_history = _bounded_history(history, settings.max_context_chars)
     history_chars = sum(len(message["content"]) for message in bounded_history)
     source_budget = max(0, settings.max_context_chars - history_chars)
@@ -50,7 +47,7 @@ async def stream_completion(
         f"<untrusted_body>{source.content[:3000]}</untrusted_body>\n</record>"
         for index, source in enumerate(sources, start=1)
     )[:source_budget]
-    messages = [
+    return [
         {
             "role": "system",
             "content": (
@@ -68,6 +65,29 @@ async def stream_completion(
         {"role": "user", "content": f"<public_records>\n{source_text}\n</public_records>"},
         *bounded_history,
     ]
+
+
+def estimate_input_tokens(settings, *, history, sources) -> int:
+    """Estimate only the message contents actually sent, including prompt/records."""
+    return (
+        sum(
+            len(message["content"])
+            for message in completion_messages(settings, history=history, sources=sources)
+        )
+        // 4
+    )
+
+
+async def stream_completion(
+    settings: AgentSettings,
+    *,
+    history: list[dict[str, str]],
+    sources: tuple[RetrievedInformation, ...],
+) -> AsyncIterator[tuple[str | None, dict[str, int] | None]]:
+    if not settings.llm_configured:
+        raise AgentModelError("model_not_configured")
+
+    messages = completion_messages(settings, history=history, sources=sources)
     url = settings.llm_base_url
     if not url.endswith("/chat/completions"):
         url += "/chat/completions"

@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 
 from app.core.config import get_agent_settings
 from app.db.session import Database
-from app.services.agent.llm import AgentModelError, stream_completion
+from app.services.agent.llm import AgentModelError, estimate_input_tokens, stream_completion
 from app.services.agent.schemas import (
     AgentRatingRequest,
     CreateSessionResponse,
@@ -191,10 +191,9 @@ async def send_message(request: Request, payload: SendMessageRequest):
                 if not answer.strip():
                     raise AgentModelError("model_empty_response")
                 if estimated:
-                    input_tokens = (
-                        sum(len(message["content"]) for message in state["history"])
-                        + sum(len(s.content) for s in state["sources"])
-                    ) // 4
+                    input_tokens = estimate_input_tokens(
+                        settings, history=state["history"], sources=state["sources"]
+                    )
                     output_tokens = len(answer) // 4
 
             finish_request(

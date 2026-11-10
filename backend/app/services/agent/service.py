@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import AgentSettings
 from app.db.models import AgentIpWindow, AgentSession
+from app.services.agent.llm import estimate_input_tokens
 from app.services.agent.retrieval import RetrievedInformation, search_information
 
 SESSION_TTL = timedelta(hours=24)
@@ -229,14 +230,12 @@ def begin_request(
         request_id = str(client_request_id)
         user_id = str(uuid4())
         assistant_id = str(uuid4())
+        history = [
+            {"role": message["role"], "content": message["content"]} for message in completed
+        ] + [{"role": "user", "content": content}]
         estimate = (
-            (
-                sum(len(message.get("content", "")) for message in messages[-8:])
-                + len(content)
-                + context_chars
-                + settings.max_output_tokens * 4
-            )
-            // 4
+            estimate_input_tokens(settings, history=history, sources=sources)
+            + settings.max_output_tokens
             if settings.llm_configured
             else 0
         )
@@ -287,13 +286,7 @@ def begin_request(
             "user_message": _safe_message(user_message),
             "assistant_message": _safe_message(assistant_message),
             "sources": sources,
-            "history": [
-                {"role": message["role"], "content": message["content"]}
-                for message in messages[:-2]
-                if message.get("role") in {"user", "assistant"}
-                and message.get("status") == "completed"
-            ]
-            + [{"role": "user", "content": content}],
+            "history": history,
             "estimate": estimate,
         }
 

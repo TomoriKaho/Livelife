@@ -506,3 +506,88 @@ async def test_http_model_failure_emits_retryable_error_and_marks_message_failed
             assert current.json()["messages"][-1]["status"] == "failed"
     finally:
         database.close()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("provider_usage", [False, True])
+async def test_usage_matches_sent_context_not_discarded_history(monkeypatch, provider_usage):
+    import importlib
+
+    from starlette.requests import Request
+
+    from app.services.agent.schemas import SendMessageRequest
+
+    router = importlib.import_module("app.api.agent.router")
+    config = settings(
+        llm_base_url="https://llm.example.test/v1",
+        llm_api_key="test",
+        llm_model="test",
+        max_context_chars=350,
+    )
+    payloads, usages = [], []
+    monkeypatch.setattr(router, "_factory", lambda _request: None)
+    monkeypatch.setattr(router, "get_agent_settings", lambda: config)
+    monkeypatch.setattr(router, "finish_request", lambda *args, **kw: usages.append(kw))
+    for count in (12, 40):
+        state = {
+            "duplicate": False,
+            "sources": (),
+            "history": [
+                {"role": "user" if i % 2 == 0 else "assistant", "content": "x" * 100}
+                for i in range(count)
+            ],
+            "assistant_message": {"id": "a", "request_id": "b", "citations": []},
+        }
+        monkeypatch.setattr(router, "begin_request", lambda *args, **kw: state)
+        lines = ['data: {"choices":[{"delta":{"content":"hello"}}]}']
+        if provider_usage:
+            lines.append('data: {"usage":{"prompt_tokens":17,"completion_tokens":3}}')
+        lines.append("data: [DONE]")
+        fake = _FakeAsyncClient(_FakeStreamResponse(lines))
+        monkeypatch.setattr("app.services.agent.llm.httpx.AsyncClient", lambda **kw: fake)
+        request = Request(
+            {
+                "type": "http",
+                "headers": [(b"authorization", b"Bearer test")],
+                "client": ("127.0.0.1", 1),
+            }
+        )
+        response = await router.send_message(
+            request, SendMessageRequest(content="x" * 100, client_request_id=uuid4())
+        )
+        events = [event async for event in response.body_iterator]
+        assert any("event: done" in event for event in events)
+        payloads.append(fake.calls[0][2]["json"])
+    assert payloads[0] == payloads[1]
+    expected = sum(len(m["content"]) for m in payloads[0]["messages"]) // 4
+    assert sum(len(m["content"]) for m in payloads[0]["messages"][2:]) == 350
+    assert [u["input_tokens"] for u in usages] == [17 if provider_usage else expected] * 2
+    assert all(u["estimated_usage"] is not provider_usage for u in usages)
+
+
+def test_reservation_uses_same_bounded_context_as_model(sessions):
+    from app.services.agent.llm import completion_messages
+
+    config = settings(
+        llm_base_url="https://llm.example.test/v1",
+        llm_api_key="test-key",
+        llm_model="test-model",
+        max_context_chars=10,
+    )
+    created = create_session(sessions, config, "127.0.0.1")
+    with sessions() as session, session.begin():
+        make_information(session, title="课程", content="课程" * 100)
+    state = begin_request(
+        sessions,
+        config,
+        token=created["session_token"],
+        content="课程是什么",
+        client_request_id=uuid4(),
+        ip="127.0.0.1",
+    )
+    assert state["sources"]
+    messages = completion_messages(config, history=state["history"], sources=state["sources"])
+    assert (
+        state["estimate"]
+        == sum(len(m["content"]) for m in messages) // 4 + config.max_output_tokens
+    )
