@@ -17,8 +17,20 @@ interface AuthSession {
 
 export const authState = reactive<{ user: AuthUser | null }>({ user: null });
 
-function readToken(): string | null {
+/** 读取本地会话令牌；账户与个人资料模块共用同一存储键。 */
+export function readAuthToken(): string | null {
   return localStorage.getItem('livelife.auth.token') || sessionStorage.getItem('livelife.auth.token');
+}
+
+/** 保存或清除本地会话令牌；“记住登录”写 localStorage，否则写 sessionStorage。 */
+export function writeAuthToken(token: string | null, remember = false): void {
+  localStorage.removeItem('livelife.auth.token');
+  sessionStorage.removeItem('livelife.auth.token');
+  if (token) (remember ? localStorage : sessionStorage).setItem('livelife.auth.token', token);
+}
+
+function readToken(): string | null {
+  return readAuthToken();
 }
 
 function saveSession(data: AuthSession, remember: boolean): void {
@@ -34,7 +46,12 @@ export function clearSession(): void {
   authState.user = null;
 }
 
-async function request<T>(path: string, body?: unknown, authenticated = false): Promise<T> {
+async function request<T>(
+  path: string,
+  body?: unknown,
+  authenticated = false,
+  method?: 'GET' | 'POST' | 'DELETE',
+): Promise<T> {
   await checkAndroidStatus();
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
@@ -44,7 +61,7 @@ async function request<T>(path: string, body?: unknown, authenticated = false): 
   let response: Response;
   try {
     response = await fetch(apiUrl, {
-      method: body === undefined ? 'GET' : 'POST',
+      method: method ?? (body === undefined ? 'GET' : 'POST'),
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(15_000),
@@ -74,6 +91,7 @@ async function request<T>(path: string, body?: unknown, authenticated = false): 
 function authError(data: unknown, status: number, path: string): string {
   if (status === 403 && typeof data === 'object' && data !== null && 'detail' in data
     && data.detail === 'Test login is disabled') return '临时测试登录未启用，请填写校园邮箱和密码。';
+  if (status === 400 && path === '/auth/me') return '密码错误，账号未注销。';
   if (status === 400) return '验证码错误或已过期，请重新获取。';
   if (status === 401) return '邮箱或密码错误，或登录状态已失效。';
   if (status === 409) return '该邮箱已注册，请直接登录。';
@@ -127,4 +145,10 @@ export async function logout(): Promise<void> {
   } finally {
     clearSession();
   }
+}
+
+/** 注销账号：密码二次确认后删除账户，本地令牌随即清除。 */
+export async function deleteAccount(password: string): Promise<void> {
+  await request('/auth/me', { password }, true, 'DELETE');
+  clearSession();
 }

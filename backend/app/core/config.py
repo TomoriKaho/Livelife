@@ -1,6 +1,10 @@
 import os
 from dataclasses import dataclass
 
+from app.core.environment import load_backend_environment
+
+load_backend_environment()
+
 
 def get_database_url() -> str | None:
     value = os.getenv("DATABASE_URL", "").strip()

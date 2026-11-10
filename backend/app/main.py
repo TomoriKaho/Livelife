@@ -34,7 +34,7 @@ def create_app() -> FastAPI:
             "http://localhost:8766",
             "http://127.0.0.1:8766",
         ],
-        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Accept", "Authorization", "Content-Type"],
         expose_headers=["X-Livelife-Backend-SHA"],
     )

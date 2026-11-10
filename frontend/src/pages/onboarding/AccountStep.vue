@@ -86,6 +86,8 @@ async function submit() {
       >{{ item.label }}</button>
     </div>
 
+    <p class="form-message">目前仅支持 @pku.edu.cn 与 @stu.pku.edu.cn 校园邮箱注册登录；用户名登录将在后续版本增加。</p>
+
     <div class="field">
       <div class="field-head">
         <label for="account-email">校园邮箱</label>

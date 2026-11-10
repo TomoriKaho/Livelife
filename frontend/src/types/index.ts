@@ -24,3 +24,16 @@ export interface PageMeta {
 export interface HelloResponse {
   message: string;
 }
+
+/** 兴趣标签目录项，标识与 onboarding/options.js 的 interests 一致 */
+export interface InterestTag {
+  tag: string;
+  label: string;
+}
+
+/** 当前用户个人资料，契约见 backend/app/api/profile/API.md */
+export interface Profile {
+  display_name: string;
+  bio: string;
+  interests: string[];
+}

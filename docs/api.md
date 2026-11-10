@@ -12,6 +12,7 @@
 | --- | --- | --- |
 | 连通性检查 | [连通性检查 API](../backend/app/api/demo/API.md) | 客户端与后端连通性测试 |
 | 健康检查 | [健康检查 API](../backend/app/api/health/API.md) | 进程存活及数据库就绪检查 |
+| 个人资料 | [个人资料 API](../backend/app/api/profile/API.md) | 兴趣标签目录、当前用户资料读取与更新 |
 | Agent 对话 | [Agent API](../backend/app/api/agent/API.md) | 匿名短期会话、SSE 回答、公开来源及反馈 |
 | 账户与认证 | [账户与认证 API](../backend/app/api/accounts/API.md) | 校园邮箱验证、注册、登录、会话与用户身份 |
 

@@ -11,6 +11,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from app.db.models.accounts import EmailVerificationCode, User, UserSession
+from app.db.models.profile import UserInterest, UserProfile
 from app.db.session import Database
 from app.main import app
 from app.services.accounts.auth import TEST_USER_EMAIL, code_digest, token_digest, utcnow
@@ -325,3 +326,51 @@ async def test_auth_cors_allows_authorized_browser_requests(client: httpx.AsyncC
     allowed_headers = response.headers["access-control-allow-headers"].lower()
     assert "authorization" in allowed_headers
     assert "content-type" in allowed_headers
+
+
+@pytest.mark.anyio
+async def test_delete_account_requires_password_and_removes_account(
+    client: httpx.AsyncClient, database: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AUTH_TEST_LOGIN_ENABLED", "false")
+    with patch("app.services.accounts.auth.send_verification_email"):
+        await client.post("/auth/email-codes", json={"email": "gone@pku.edu.cn"})
+    with database.session_factory() as session:
+        code = session.scalar(select(EmailVerificationCode))
+        assert code is not None
+        code.code_hash = code_digest(TEST_CODE, code.salt)
+        session.commit()
+
+    registered = await client.post(
+        "/auth/register",
+        json={"email": "gone@pku.edu.cn", "code": TEST_CODE, "password": "StrongPassword123"},
+    )
+    assert registered.status_code == 201
+    headers = {"Authorization": f"Bearer {registered.json()['access_token']}"}
+    assert (
+        await client.patch("/profile/me", headers=headers, json={"display_name": "待注销"})
+    ).status_code == 200
+
+    assert (await client.request("DELETE", "/auth/me", headers=headers)).status_code == 422
+    wrong = await client.request(
+        "DELETE", "/auth/me", headers=headers, json={"password": "WrongPassword123"}
+    )
+    assert wrong.status_code == 400
+    assert (await client.get("/auth/me", headers=headers)).status_code == 200
+
+    deleted = await client.request(
+        "DELETE", "/auth/me", headers=headers, json={"password": "StrongPassword123"}
+    )
+    assert deleted.status_code == 204
+    assert (await client.get("/auth/me", headers=headers)).status_code == 401
+    with database.session_factory() as session:
+        assert session.scalar(select(User)) is None
+        assert session.scalar(select(UserSession)) is None
+        assert session.scalar(select(UserProfile)) is None
+        assert session.scalar(select(UserInterest)) is None
+        assert session.scalar(select(EmailVerificationCode)) is None
+
+    with patch("app.services.accounts.auth.send_verification_email"):
+        assert (
+            await client.post("/auth/email-codes", json={"email": "gone@pku.edu.cn"})
+        ).status_code == 202
