@@ -91,7 +91,8 @@ function expand() {
   for (const model of meshes.values()) model.visible = !building || scenic || model === focusedModel || !!model.userData.transition;
   contextBuildings.visible = vegetation.visible = !building || !!scenic;
   const locationVisible = !building && Boolean(props.deviceLocation);
-  locationMarker.visible = locationRing.visible = headingCone.visible = locationVisible;
+  locationMarker.visible = locationRing.visible = locationVisible;
+  headingCone.visible = locationVisible && Number.isFinite(props.deviceLocation?.heading);
   renderer.shadowMap.needsUpdate = true; invalidate();
   // 收起只合拢模型；终止尚未完成的聚焦，保留当前相机与观察目标。
   // 返回示例位置由显式 locate() 操作负责。
@@ -185,13 +186,17 @@ function updateDeviceLocation() {
   locationRing.geometry.dispose();
   locationRing.geometry = new THREE.CircleGeometry(accuracyRadius(location.accuracy), 48);
   if (Number.isFinite(location.heading)) {
-    const arc = Math.PI / 3;
-    headingCone.position.set(location.point[0], .28, location.point[1]);
+    const height = 34;
+    headingCone.position.set(location.point[0], 6.5, location.point[1]);
     headingCone.geometry.dispose();
-    headingCone.geometry = new THREE.CircleGeometry(40, 40, Math.PI / 2 - arc / 2, arc);
+    headingCone.geometry = new THREE.ConeGeometry(6.2, height, 16);
+    // 底面贴近蓝点，尖端沿北向（-z）伸出；再随航向绕 y 轴旋转。
+    headingCone.geometry.translate(0, height / 2, 0);
     headingCone.geometry.rotateX(-Math.PI / 2);
     headingCone.geometry.rotateY(-location.heading * Math.PI / 180);
   }
+  renderer.shadowMap.needsUpdate = true;
+  invalidate();
 }
 function locate(point = props.deviceLocation?.point) {
   if (!scene || !point) return;
@@ -299,7 +304,7 @@ onMounted(async () => {
     vegetation = createVegetation(campus); scene.add(vegetation); renderer.shadowMap.needsUpdate = true;
     locationMarker = new THREE.Mesh(new THREE.SphereGeometry(4.5, 16, 10), new THREE.MeshBasicMaterial({ color: 0x4387bb })); locationMarker.visible = false; scene.add(locationMarker);
     locationRing = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshBasicMaterial({ color: 0x77a5c6, transparent: true, opacity: .28, side: THREE.DoubleSide, depthWrite: false })); locationRing.rotation.x = -Math.PI / 2; locationRing.visible = false; scene.add(locationRing);
-    headingCone = new THREE.Mesh(new THREE.CircleGeometry(1, 3), new THREE.MeshBasicMaterial({ color: 0x4387bb, transparent: true, opacity: .3, side: THREE.DoubleSide, depthWrite: false })); headingCone.visible = false; scene.add(headingCone);
+    headingCone = new THREE.Mesh(new THREE.ConeGeometry(1, 1, 3), new THREE.MeshStandardMaterial({ color: 0x2f7fbc, roughness: .42, metalness: .06, flatShading: true })); headingCone.castShadow = true; headingCone.visible = false; scene.add(headingCone);
     updateDeviceLocation();
     observer = new ResizeObserver(resizeViewport); observer.observe(host.value);
     renderer.domElement.addEventListener('pointerdown', e => { pointerStart = { x: e.clientX, y: e.clientY, time: performance.now() }; });
