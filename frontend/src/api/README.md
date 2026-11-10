@@ -18,7 +18,7 @@
 [profile.ts](profile.ts) 维护 `/profile/interests`、`/profile/me` 的读取与更新，服务端契约见[个人资料 API](../../../backend/app/api/profile/API.md)。
 
 - 令牌与账户模块共用 `livelife.auth.token`（`[auth.ts](auth.ts)`）：勾选“记住登录”写 `localStorage`，否则写 `sessionStorage`；没有令牌时不发请求，页面按界面预览处理。
-- 请求沿用 10 秒超时。`401` 提示重新登录并清除本地令牌，`503` 提示数据库未配置，`400`/`422` 提示内容不符合要求，其它状态与网络异常返回可显示原因。
+- 请求沿用 10 秒超时。`401` 由页面提示重新登录并调用账户模块的 `clearSession()`，同时清除本地令牌与当前用户；`503` 提示数据库未配置，`400`/`422` 提示内容不符合要求，其它状态与网络异常返回可显示原因。
 - `PATCH` 只提交出现的字段，兴趣整体替换；保存成功后用响应回填昵称、简介和兴趣顺序。
 - 请求前核对 Android 安装包状态；测试配置启用时校验响应的 `X-Livelife-Backend-SHA`，固定版本必须一致，staging 接受有效的更新 SHA。状态或版本失败不回填资料，也不把配置错误当成登录失效。独立 Vite 日历页可执行 `await (await import('/scripts/profile.browser.mjs')).verifyProfileConfiguration()` 验证版本与安装包门禁；网页替身检查不代表 Android 真机验收。
 

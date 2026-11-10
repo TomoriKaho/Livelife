@@ -10,7 +10,7 @@ export const pageMeta = {
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { registerBackHandler } from '../platform/android-navigation';
-import { fetchProfile, readAccessToken, updateProfile, writeAccessToken } from '../api/profile';
+import { fetchProfile, readAccessToken, updateProfile } from '../api/profile';
 import ElasticList from './agent/ElasticList.vue';
 import FavoritesList from './more/FavoritesList.vue';
 import { savedActivities, activityStatus } from '../data/favorites.js';
@@ -21,7 +21,7 @@ import MoreIcon from './more/MoreIcon.vue';
 import PreferenceSwitch from './more/PreferenceSwitch.vue';
 import InterestPreferences from './more/InterestPreferences.vue';
 import { initialProfile, initialInterests, menuItems, titles } from './more/demo.js';
-import { authState, deleteAccount, logout as logoutAccount } from '../api/auth';
+import { authState, clearSession, deleteAccount, logout as logoutAccount } from '../api/auth';
 
 const showInternalTools = import.meta.env.VITE_INTERNAL_TOOLS === 'true';
 const HelloConnectionTest = showInternalTools
@@ -32,6 +32,8 @@ const router = useRouter(), route = useRoute(), root = ref(null), pane = ref(rou
 const paneTrail = [];
 // 会话令牌由账户系统（#65）写入；没有令牌时整页保持界面预览，不发起资料请求。
 const hasSession = ref(Boolean(readAccessToken()));
+const profileLoading = ref(hasSession.value), profileLoaded = ref(false), profileError = ref('');
+const canEditProfile = computed(() => !hasSession.value || (profileLoaded.value && !profileLoading.value));
 const profile = reactive({ ...initialProfile }), profileDraft = reactive({ ...initialProfile });
 const selectedInterests = ref([...initialInterests]);
 const pickedInterests = computed(() => interests.filter(item => selectedInterests.value.includes(item.id)));
@@ -44,6 +46,7 @@ const favoritesSummary = computed(() => `收藏 ${savedActivities.value.length} 
 function notify(text) { clearTimeout(noticeTimer); notice.value = text; noticeTimer = setTimeout(() => { notice.value = ''; }, 2400); }
 function open(id) {
   if (id === pane.value) return;
+  if ((id === 'profile' || id === 'interests') && !canEditProfile.value) return;
   paneTrail.push(pane.value);
   if (id === 'profile') Object.assign(profileDraft, profile);
   pane.value = id;
@@ -58,24 +61,35 @@ const removeNativeBack = registerBackHandler(() => {
 onBeforeUnmount(removeNativeBack);
 function forgetSession(message) {
   hasSession.value = false;
-  writeAccessToken(null);
+  clearSession();
+  profileError.value = '';
   notify(message);
 }
-onMounted(async () => {
+let mounted = true;
+onBeforeUnmount(() => { mounted = false; });
+async function loadProfile() {
   if (!hasSession.value) return;
-  const result = await fetchProfile();
-  if (result.ok) {
-    profile.nickname = result.data.display_name || initialProfile.nickname;
-    profile.bio = result.data.bio;
-    Object.assign(profileDraft, profile);
-    selectedInterests.value = [...result.data.interests];
-    return;
+  profileLoading.value = true; profileError.value = '';
+  try {
+    const result = await fetchProfile();
+    if (!mounted) return;
+    if (result.ok) {
+      profile.nickname = result.data.display_name || initialProfile.nickname;
+      profile.bio = result.data.bio;
+      Object.assign(profileDraft, profile);
+      selectedInterests.value = [...result.data.interests];
+      profileLoaded.value = true;
+      return;
+    }
+    if (result.status === 401) { forgetSession('登录状态已失效，当前为界面预览。'); return; }
+    profileError.value = result.error;
+  } finally {
+    if (mounted) profileLoading.value = false;
   }
-  if (result.status === 401) { forgetSession('登录状态已失效，当前为界面预览。'); return; }
-  notify(result.error);
-});
+}
+onMounted(loadProfile);
 async function saveProfile() {
-  if (!profileDraft.nickname.trim()) return;
+  if (!canEditProfile.value || !profileDraft.nickname.trim()) return;
   const draft = { ...profileDraft, nickname: profileDraft.nickname.trim(), bio: profileDraft.bio.trim() };
   if (hasSession.value) {
     const result = await updateProfile({ display_name: draft.nickname, bio: draft.bio });
@@ -92,6 +106,7 @@ async function saveProfile() {
   notify(hasSession.value ? '资料已保存' : '已保存到界面（未登录，仅本页有效）');
 }
 async function saveInterests(value) {
+  if (!canEditProfile.value) return;
   if (hasSession.value) {
     const result = await updateProfile({ interests: value.selected });
     if (!result.ok) {
@@ -141,13 +156,18 @@ onBeforeUnmount(() => { clearTimeout(noticeTimer); });
 <template>
   <ElasticList :key="pane" class="more-page" aria-label="个人资料与设置内容"><div ref="root" class="more-content">
     <template v-if="pane === 'home'">
+      <p v-if="profileLoading" class="profile-status" role="status">正在加载个人资料…</p>
+      <div v-else-if="profileError" class="profile-status">
+        <p role="alert">{{ profileError }}</p>
+        <button type="button" @click="loadProfile">重新加载资料</button>
+      </div>
       <section class="profile-header" aria-label="个人资料">
         <ProfileAvatar :kind="profile.avatar" />
         <div class="profile-copy"><h1 tabindex="-1">{{ profile.nickname }}</h1><p class="profile-identity">北京大学 · {{ profile.identity }}</p><p class="profile-bio">{{ profile.bio || '在燕园，遇见更多有趣的事。' }}</p></div>
-        <button class="edit-profile" type="button" aria-label="编辑个人资料" @click="open('profile')"><MoreIcon name="edit" /></button>
+        <button class="edit-profile" type="button" aria-label="编辑个人资料" :disabled="!canEditProfile" @click="open('profile')"><MoreIcon name="edit" /></button>
       </section>
       <section v-sketch class="interest-card sketch sketch-white" aria-labelledby="home-interest-title">
-        <header class="section-heading"><h2 id="home-interest-title">兴趣小档案</h2><button type="button" @click="open('interests')">调整 <MoreIcon name="chevron" /></button></header>
+        <header class="section-heading"><h2 id="home-interest-title">兴趣小档案</h2><button type="button" :disabled="!canEditProfile" @click="open('interests')">调整 <MoreIcon name="chevron" /></button></header>
         <div v-if="pickedInterests.length" class="interest-tags" :class="{ muted: !prefs.personalized }"><span v-for="item in pickedInterests" :key="item.id" v-sketch class="interest-tag sketch pencil-fill" :data-pencil="item.pencil"><OnboardingIcon :name="item.icon" />{{ item.label }}</span></div>
         <p v-else class="empty-interests">还没圈定兴趣？点击“调整”，找到喜欢的事。</p>
         <p class="card-footnote">{{ prefs.personalized ? '把喜欢的事，留一点位置。' : '个性化推荐已关闭，点击调整可重新开启。' }}</p>
@@ -223,6 +243,10 @@ onBeforeUnmount(() => { clearTimeout(noticeTimer); });
 <style scoped>
 .more-page { flex: 1; min-height: 0; width: 100%; }
 .more-content { padding: 8px 17px 18px; }
+.profile-status { margin: 8px 2px 14px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.profile-status p { margin: 0 0 6px; }
+.profile-status button { min-height: 44px; padding: 6px 0; border: 0; background: transparent; color: var(--ink); text-decoration: underline; }
+.edit-profile:disabled, .section-heading button:disabled { opacity: .45; cursor: default; }
 .interest-tags.muted { opacity: .5; }
 .profile-header { position: relative; display: flex; align-items: center; gap: 13px; margin: 2px 0 21px; padding: 7px 3px; min-height: 106px; }
 .profile-copy { flex: 1; min-width: 0; padding-right: 23px; }.profile-copy h1 { margin: 0 0 9px; font-size: 24px; line-height: 1.35; letter-spacing: 0; overflow-wrap: anywhere; -webkit-text-stroke: 0; }
