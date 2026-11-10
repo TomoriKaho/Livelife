@@ -186,10 +186,14 @@ function draw(time) {
     const { point, accuracy, heading } = props.deviceLocation;
     ctx.beginPath(); ctx.arc(...point, accuracyRadius(accuracy), 0, Math.PI * 2); ctx.fillStyle = '#84bdf85c'; ctx.fill(); ctx.strokeStyle = '#428bd188'; ctx.lineWidth = 1 / view.scale; ctx.stroke();
     if (Number.isFinite(heading)) {
-      const radius = 34 / view.scale;
+      const radius = 42 / view.scale, halfAngle = Math.PI / 5, chevron = 14 / view.scale;
       ctx.save(); ctx.translate(...point); ctx.rotate(heading * Math.PI / 180);
-      ctx.beginPath(); ctx.moveTo(0, -radius); ctx.lineTo(radius * .54, radius * .22); ctx.lineTo(0, radius * .08); ctx.lineTo(-radius * .54, radius * .22); ctx.closePath();
-      ctx.fillStyle = '#428bd14d'; ctx.fill(); ctx.restore();
+      // 类似地图应用的定位 beam：从蓝点出发的圆弧扇区，而非菱形箭头。
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, radius, -Math.PI / 2 - halfAngle, -Math.PI / 2 + halfAngle); ctx.closePath();
+      ctx.fillStyle = '#428bd133'; ctx.fill();
+      // 收紧的 chevron 在光束顶端给出明确的前进方向，蓝点仍是位置锚点。
+      ctx.beginPath(); ctx.moveTo(0, -chevron); ctx.lineTo(chevron * .45, -chevron * .36); ctx.lineTo(chevron * .19, -chevron * .43); ctx.lineTo(chevron * .19, -chevron * .08); ctx.lineTo(-chevron * .19, -chevron * .08); ctx.lineTo(-chevron * .19, -chevron * .43); ctx.lineTo(-chevron * .45, -chevron * .36); ctx.closePath();
+      ctx.fillStyle = '#2f7fbc'; ctx.fill(); ctx.restore();
     }
     ctx.beginPath(); ctx.arc(...point, 4.5 / view.scale, 0, Math.PI * 2); ctx.fillStyle = '#428bd1'; ctx.fill(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.8 / view.scale; ctx.stroke();
   }
