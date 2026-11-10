@@ -5,7 +5,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import campus from '../../assets/maps/campus.json';
 import { center, constrainToBoundary } from './geometry.mjs';
-import { accuracyRadius, buildingAtDeviceLocation } from './device-location.mjs';
+import { accuracyRadius, buildingsAtDeviceLocation } from './device-location.mjs';
 import { venues } from './demo.js';
 import { initialView } from './view.mjs';
 import { mapPalette } from './map-palette.mjs';
@@ -21,7 +21,7 @@ const emit = defineEmits(['select', 'floor', 'ready']);
 const host = ref(null), failed = ref(false), loading = ref(true), labels = ref([]);
 const modelIdentity = ref(''), modelProgress = ref('0');
 const panTarget = ref(initialView.target.filter((_, i) => i !== 1).join(','));
-let renderer, scene, camera, controls, observer, frame, buildings = [], focusedModel, floorMeshes = [], tween, pointerStart, disposed = false, locationMarker, locationRing, headingCone, contextBuildings, vegetation, centeredOnDevice = false, translucentLocationBuilding = null;
+let renderer, scene, camera, controls, observer, frame, buildings = [], focusedModel, floorMeshes = [], tween, pointerStart, disposed = false, locationMarker, locationRing, headingCone, contextBuildings, vegetation, centeredOnDevice = false, translucentLocationBuildings = [];
 let storeysWorker, needsRender = true;
 let locationBuildingMaterials = [];
 function invalidate() {
@@ -198,29 +198,30 @@ function restoreLocationBuilding() {
     material.needsUpdate = true;
   }
   locationBuildingMaterials = [];
-  translucentLocationBuilding = null;
+  translucentLocationBuildings = [];
 }
-function revealLocationInside(building) {
-  const model = building && meshes.get(building.id);
-  if (model === translucentLocationBuilding) return;
+function revealLocationOverlap(locationBuildings) {
+  const models = locationBuildings.map(building => meshes.get(building.id)).filter(Boolean);
+  if (models.length === translucentLocationBuildings.length && models.every((model, index) => model === translucentLocationBuildings[index])) return;
   restoreLocationBuilding();
-  if (!model) return;
-  model.traverse(object => {
-    const materials = object.material ? (Array.isArray(object.material) ? object.material : [object.material]) : [];
-    for (const material of materials) {
-      locationBuildingMaterials.push({ material, opacity: material.opacity, transparent: material.transparent, depthWrite: material.depthWrite });
-      material.opacity = Math.min(material.opacity, .3);
-      material.transparent = true;
-      material.depthWrite = false;
-      material.needsUpdate = true;
-    }
-  });
-  translucentLocationBuilding = model;
+  for (const model of models) {
+    model.traverse(object => {
+      const materials = object.material ? (Array.isArray(object.material) ? object.material : [object.material]) : [];
+      for (const material of materials) {
+        locationBuildingMaterials.push({ material, opacity: material.opacity, transparent: material.transparent, depthWrite: material.depthWrite });
+        material.opacity = Math.min(material.opacity, .3);
+        material.transparent = true;
+        material.depthWrite = false;
+        material.needsUpdate = true;
+      }
+    });
+  }
+  translucentLocationBuildings = models;
 }
 function updateDeviceLocation() {
   if (!locationMarker || !locationRing || !headingCone) return;
   const location = props.deviceLocation;
-  revealLocationInside(location && buildingAtDeviceLocation(location.point, buildings));
+  revealLocationOverlap(location ? buildingsAtDeviceLocation(location.point, location.accuracy, buildings) : []);
   const visible = Boolean(location);
   locationMarker.visible = locationRing.visible = visible;
   headingCone.visible = visible && Number.isFinite(location?.heading);

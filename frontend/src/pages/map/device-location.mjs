@@ -37,8 +37,21 @@ export function preserveHeading(location, fallbackHeading) {
   return { ...location, ...(heading === null ? {} : { heading }) };
 }
 
-/** Return the campus building containing a projected device point, if any. */
-export function buildingAtDeviceLocation(point, buildings) {
-  if (!Array.isArray(point) || point.length !== 2 || !point.every(Number.isFinite) || !Array.isArray(buildings)) return null;
-  return buildings.find(building => insideFootprint(point, building)) || null;
+function distanceToRing(point, ring) {
+  let distance = Infinity;
+  for (let index = 0; index < ring.length; index++) {
+    const [ax, az] = ring[index], [bx, bz] = ring[(index + 1) % ring.length];
+    const dx = bx - ax, dz = bz - az, lengthSquared = dx ** 2 + dz ** 2;
+    const ratio = lengthSquared ? Math.max(0, Math.min(1, ((point[0] - ax) * dx + (point[1] - az) * dz) / lengthSquared)) : 0;
+    distance = Math.min(distance, Math.hypot(point[0] - ax - dx * ratio, point[1] - az - dz * ratio));
+  }
+  return distance;
+}
+
+/** Return every building whose footprint intersects the displayed accuracy circle. */
+export function buildingsAtDeviceLocation(point, accuracy, buildings) {
+  if (!Array.isArray(point) || point.length !== 2 || !point.every(Number.isFinite) || !Array.isArray(buildings)) return [];
+  const radius = accuracyRadius(accuracy);
+  return buildings.filter(building => insideFootprint(point, building)
+    || [building.points, ...(building.holes || [])].some(ring => distanceToRing(point, ring) <= radius));
 }
