@@ -29,8 +29,8 @@ function invalidate() {
 }
 const meshes = new Map(), selectable = [], raycaster = new THREE.Raycaster();
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-// 方向锥体明显小于蓝点，并在球面外留出间隙，避免遮挡当前位置本体。
-const locationBlue = 0x4387bb, locationMarkerRadius = 4.5, headingConeBaseRadius = 2.7, headingConeLength = 4, headingConeSurfaceGap = 1;
+// 圆锥底部沿蓝点球面向上拱起，并在球面外保留细微间隙。
+const locationBlue = 0x4387bb, locationMarkerRadius = 4.5, headingConeRadius = 2, headingConeLength = 4, headingConeSurfaceGap = .9;
 const initialTarget = new THREE.Vector3(...initialView.target);
 const initialCamera = initialTarget.clone().add(new THREE.Vector3(...initialView.offset));
 function shape(points) { return footprintShape(points); }
@@ -176,6 +176,16 @@ function tick(now) {
   if (moved || animating) invalidate();
 }
 function zoom(scale) { if (!camera) return; tween = null; camera.position.sub(controls.target).multiplyScalar(scale).add(controls.target); invalidate(); }
+function headingGeometry() {
+  // 底面中心比圆周高，形成与蓝点同曲率、朝锥尖拱起的球冠（纵剖面为 ∩）。
+  const base = Array.from({ length: 13 }, (_, index) => {
+    const radius = headingConeRadius * index / 12;
+    const height = Math.sqrt(locationMarkerRadius ** 2 - radius ** 2) + headingConeSurfaceGap;
+    return new THREE.Vector2(radius, height);
+  });
+  base.push(new THREE.Vector2(0, locationMarkerRadius + headingConeSurfaceGap + headingConeLength));
+  return new THREE.LatheGeometry(base, 32);
+}
 function updateDeviceLocation() {
   if (!locationMarker || !locationRing || !headingCone) return;
   const location = props.deviceLocation;
@@ -188,20 +198,7 @@ function updateDeviceLocation() {
   locationRing.geometry.dispose();
   locationRing.geometry = new THREE.CircleGeometry(accuracyRadius(location.accuracy), 48);
   if (Number.isFinite(location.heading)) {
-    const headingRadians = location.heading * Math.PI / 180;
-    const surfaceOffset = locationMarkerRadius + headingConeSurfaceGap;
-    // 底面中心悬浮在航向一侧的球面外，避免锥体穿过蓝点。
-    headingCone.position.set(
-      location.point[0] + Math.sin(headingRadians) * surfaceOffset,
-      locationMarkerRadius,
-      location.point[1] - Math.cos(headingRadians) * surfaceOffset,
-    );
-    headingCone.geometry.dispose();
-    headingCone.geometry = new THREE.ConeGeometry(headingConeBaseRadius, headingConeLength, 16);
-    // 底面中心位于局部原点，尖端沿北向（-z）短距离伸出；再随航向绕 y 轴旋转。
-    headingCone.geometry.translate(0, headingConeLength / 2, 0);
-    headingCone.geometry.rotateX(-Math.PI / 2);
-    headingCone.geometry.rotateY(-headingRadians);
+    headingCone.position.set(location.point[0], locationMarkerRadius, location.point[1]);
   }
   renderer.shadowMap.needsUpdate = true;
   invalidate();
@@ -312,7 +309,7 @@ onMounted(async () => {
     vegetation = createVegetation(campus); scene.add(vegetation); renderer.shadowMap.needsUpdate = true;
     locationMarker = new THREE.Mesh(new THREE.SphereGeometry(locationMarkerRadius, 16, 10), new THREE.MeshBasicMaterial({ color: locationBlue })); locationMarker.visible = false; scene.add(locationMarker);
     locationRing = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshBasicMaterial({ color: 0x77a5c6, transparent: true, opacity: .28, side: THREE.DoubleSide, depthWrite: false })); locationRing.rotation.x = -Math.PI / 2; locationRing.visible = false; scene.add(locationRing);
-    headingCone = new THREE.Mesh(new THREE.ConeGeometry(1, 1, 3), new THREE.MeshBasicMaterial({ color: locationBlue })); headingCone.castShadow = true; headingCone.visible = false; scene.add(headingCone);
+    headingCone = new THREE.Mesh(headingGeometry(), new THREE.MeshBasicMaterial({ color: locationBlue })); headingCone.castShadow = true; headingCone.visible = false; scene.add(headingCone);
     updateDeviceLocation();
     observer = new ResizeObserver(resizeViewport); observer.observe(host.value);
     renderer.domElement.addEventListener('pointerdown', e => { pointerStart = { x: e.clientX, y: e.clientY, time: performance.now() }; });
