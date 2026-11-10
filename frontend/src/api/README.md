@@ -33,4 +33,6 @@
 
 [`auth.ts`](auth.ts) 调用[账户与认证 API](../../../backend/app/api/accounts/API.md)，实现校园邮箱验证码、注册、登录、会话恢复和退出。记住登录时令牌写入 `localStorage`；普通登录使用 `sessionStorage`，退出时请求服务端撤销并清理两种存储。前端仅持有 Bearer 令牌，不保存密码或邮箱验证码。通过 HTTPS 连接非本机服务；不要将令牌或其他秘密写入日志。
 
+注销账号只有在服务端确认成功后才清理本地会话；密码错误、服务故障或网络失败均保留令牌和当前用户，供修改密码或重试。独立 Vite 日历测试页的 Console 可执行 `await (await import('/scripts/profile.browser.mjs')).verifyDeletionSession()`，使用虚构响应验证失败保留和成功清理；它与主动退出登录的本地清理策略不同。
+
 临时联调时，在登录页将邮箱和密码均留空可进入后端内置测试账号；这仍是一次真实登录请求，页面不会伪造身份。只填一项时表单要求补齐；注册保持必填和验证码校验。测试入口的关闭配置、共享用户及会话限制见[账户契约](../../../backend/app/api/accounts/API.md#post-authlogin)。

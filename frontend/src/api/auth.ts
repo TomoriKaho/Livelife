@@ -149,9 +149,6 @@ export async function logout(): Promise<void> {
 
 /** 注销账号：密码二次确认后删除账户，本地令牌随即清除。 */
 export async function deleteAccount(password: string): Promise<void> {
-  try {
-    await request('/auth/me', { password }, true, 'DELETE');
-  } finally {
-    clearSession();
-  }
+  await request('/auth/me', { password }, true, 'DELETE');
+  clearSession();
 }
