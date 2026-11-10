@@ -9,7 +9,8 @@ export const pageMeta = {
 <script setup>
 import { registerBackHandler } from '../platform/android-navigation';
 import { sessionShuffle } from '../data/session-style';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { loadAgentSession, rateAgentMessage, sendAgentMessage } from '../api/agent';
 import AgentIcon from './agent/AgentIcon.vue';
 import LiLiAvatar from './agent/LiLiAvatar.vue';
 import UserPlaneAvatar from './agent/UserPlaneAvatar.vue';
@@ -17,32 +18,16 @@ import ElasticList from './agent/ElasticList.vue';
 import ElasticTextarea from './agent/ElasticTextarea.vue';
 import { composerPlacement } from './agent/composer-layout.mjs';
 
-const originals = [
-  { id: 1, role: 'user', text: '哈喽哈喽LiLi，百讲人好多啊，现在有什么活动吗' },
-  { id: 2, role: 'agent', text: '百周年纪念讲堂今天和明天的上午和下午都有**百团大战**社团招新活动，你有喜欢的社团活动可以和我分享吗，我可以为你推荐一些' },
-  { id: 3, role: 'user', text: '好啊，我对苏协的掼蛋比赛很感兴趣' },
-  { id: 4, role: 'agent', text: '', thinking: true },
-];
 const colors = sessionShuffle('agent-demo-colors', ['mint', 'blue', 'pink', 'lavender', 'yellow']);
-const messages = ref(originals.map((message, i) => ({ ...message, color: colors[i], rating: null, withdrawn: false })));
-const history = [
-  { label: '今天', title: '百讲的百团大战', summary: '一起找找感兴趣的社团', current: true },
-  { label: '昨天', title: '周末，去看一场展览', summary: '校园和附近的展览活动' },
-  { label: '', title: '想找人一起打羽毛球', summary: '运动场上的新朋友' },
-  { label: '更早', title: '第一次来燕园逛逛', summary: '从未名湖开始的校园漫游' },
-];
+const messages = ref([]), session = ref(null), loading = ref(true), sending = ref(false);
+const history = computed(() => messages.value.length ? [{
+  label: '当前会话',
+  title: messages.value.find(message => message.role === 'user')?.text.slice(0, 22) || '新的对话',
+  summary: '会话将在 24 小时后过期', current: true,
+}] : []);
 const historyOpen = ref(false), drawer = ref(null), historyTrigger = ref(null), mounted = ref(false);
-const moreOpen = ref(false), imageInput = ref(null), fileInput = ref(null), composer = ref(null);
-const draft = ref(''), attachments = ref([]), editingId = ref(null), editText = ref(''), notice = ref('');
-const ready = computed(() => draft.value.trim() || attachments.value.length);
-const showExamples = ref(true);
-const attachmentExamples = ref([
-  { id: 'example-image-1', name: '上传图片1.jpg', kind: 'image', example: true },
-  { id: 'example-image-2', name: '上传图片2.jpg', kind: 'image', example: true },
-  { id: 'example-file-1', name: '上传文件1.jpg', kind: 'file', example: true },
-  { id: 'example-file-2', name: '上传文件2.jpg', kind: 'file', example: true },
-]);
-const displayedAttachments = computed(() => showExamples.value ? attachmentExamples.value : attachments.value);
+const composer = ref(null), draft = ref(''), notice = ref('');
+const ready = computed(() => Boolean(draft.value.trim()) && !sending.value && !loading.value);
 const conversation = ref(null);
 const composerPanel = ref(null), expanded = ref(false), longDraft = ref(false);
 const panelBottom = ref(86), panelTop = ref(0), panelInset = ref(17), reservedHeight = ref(140);
@@ -72,13 +57,37 @@ function focusInput() {
 }
 function blurInput() { inputFocused = false; queueLayout(); }
 function toggleExpanded() {
-  expanded.value = !expanded.value; moreOpen.value = false;
+  expanded.value = !expanded.value;
   // Focus synchronously inside the tap, so iOS retains its open keyboard.
   composer.value?.focus(); nextTick(queueLayout);
 }
-let noticeTimer, previousFocus, inerted = [], attachmentId = 0;
+let noticeTimer, previousFocus, inerted = [], activeRequestController = null;
 function notify(text) { clearTimeout(noticeTimer); notice.value = text; noticeTimer = setTimeout(() => { notice.value = ''; }, 2400); }
 const segments = text => text.split(/(\*\*[^*]+\*\*)/g).map(value => ({ text: value.startsWith('**') ? value.slice(2, -2) : value, bold: value.startsWith('**') }));
+function viewMessage(message, index) {
+  return {
+    id: message.id,
+    role: message.role === 'assistant' ? 'agent' : 'user',
+    text: message.content,
+    status: message.status,
+    citations: message.citations || [],
+    rating: message.rating || null,
+    color: colors[index % colors.length],
+    requestId: message.request_id || message.client_request_id,
+  };
+}
+async function loadConversation() {
+  loading.value = true;
+  try {
+    const result = await loadAgentSession();
+    session.value = result.session;
+    messages.value = result.messages.map(viewMessage);
+    for (const message of messages.value) if (message.status === 'pending') message.status = 'failed';
+    await nextTick(); conversation.value?.scrollToBottom();
+  } catch {
+    notify('无法连接智能助手，请检查后端和数据库配置。');
+  } finally { loading.value = false; }
+}
 async function copy(message) {
   const text = message.text.replace(/\*\*/g, '');
   try {
@@ -91,32 +100,65 @@ async function copy(message) {
     notify('已复制这条消息');
   } catch { notify('复制失败，请长按消息复制'); }
 }
-async function edit(message) {
-  editingId.value = message.id; editText.value = message.text;
-  await nextTick(); document.querySelector(`#lili-edit-${message.id}`)?.focus();
-}
-function saveEdit(message) { if (!editText.value.trim()) return; message.text = editText.value.trim(); editingId.value = null; notify('消息已编辑'); }
-function withdraw(message) { message.withdrawn = true; if (editingId.value === message.id) editingId.value = null; notify('消息已撤回'); }
-function rate(message, value) { message.rating = message.rating === value ? null : value; }
-function pick(kind) { moreOpen.value = false; (kind === 'image' ? imageInput.value : fileInput.value)?.click(); }
-function addFiles(event, kind) {
-  for (const file of event.target.files || []) {
-    if (kind === 'image' && !file.type.startsWith('image/')) { notify('请选择图片文件'); continue; }
-    showExamples.value = false;
-    attachments.value.push({ id: ++attachmentId, name: file.name, file, kind, preview: kind === 'image' ? URL.createObjectURL(file) : '' });
+async function send(retryMessage = null) {
+  if (!session.value || sending.value) return;
+  const text = (retryMessage?.text || draft.value).trim();
+  if (!text) return;
+  let userMessage = retryMessage;
+  if (!userMessage) {
+    userMessage = { id: crypto.randomUUID(), role: 'user', text, status: 'completed', citations: [], color: colors[messages.value.length % colors.length] };
+    messages.value.push(userMessage);
+    draft.value = '';
   }
-  event.target.value = ''; nextTick(() => composer.value?.focus());
+  const assistant = reactive({
+    id: crypto.randomUUID(), role: 'agent', text: '', status: 'pending', citations: [],
+    color: colors[messages.value.length % colors.length], requestId: crypto.randomUUID(),
+  });
+  messages.value.push(assistant);
+  sending.value = true;
+  const controller = new AbortController();
+  activeRequestController = controller;
+  try {
+    await sendAgentMessage(session.value.session_token, text, assistant.requestId, {
+      message_start: data => { assistant.id = data.message_id; },
+      citation: data => assistant.citations.push(data),
+      delta: data => { assistant.text += data.text; },
+      usage: () => {},
+      done: () => { assistant.status = 'completed'; },
+      error: data => { assistant.status = 'failed'; throw new Error(data.code); },
+    }, controller.signal);
+    assistant.status = 'completed';
+    conversation.value?.scrollToBottom();
+  } catch (error) {
+    assistant.status = 'failed';
+    if (!controller.signal.aborted) {
+      notify(error.message === 'token_quota_exceeded' ? '这段对话今日的使用额度已用完。' : '回答失败，请点击重试。');
+    }
+  } finally {
+    if (activeRequestController === controller) activeRequestController = null;
+    if (mounted.value) {
+      sending.value = false;
+      await nextTick(); conversation.value?.refresh();
+    }
+  }
 }
-function removeFile(item) {
-  if (item.example) attachmentExamples.value = attachmentExamples.value.filter(row => row.id !== item.id);
-  else { if (item.preview) URL.revokeObjectURL(item.preview); attachments.value = attachments.value.filter(row => row.id !== item.id); }
+function retry(message) {
+  const index = messages.value.indexOf(message);
+  const previous = messages.value.slice(0, index).reverse().find(item => item.role === 'user');
+  if (previous) send(previous);
 }
-function send() { if (ready.value) notify('发送功能将在后续开放'); }
-function chooseHistory(item) { historyOpen.value = false; if (!item.current) notify('这是一条历史对话示例'); }
-function outside(event) { if (!event.target.closest('.composer-more')) moreOpen.value = false; }
+async function rate(message, value) {
+  if (!session.value || message.status !== 'completed') return;
+  const next = message.rating === value ? null : value;
+  try {
+    await rateAgentMessage(session.value.session_token, message.id, next);
+    message.rating = next;
+  } catch { notify('暂时无法保存反馈，请稍后再试。'); }
+}
+function chooseHistory() { historyOpen.value = false; conversation.value?.scrollToBottom(); }
 function keydown(event) {
   if (event.isComposing) return;
-  if (event.key === 'Escape') { if (!historyOpen.value && expanded.value) toggleExpanded(); historyOpen.value = false; moreOpen.value = false; editingId.value = null; }
+  if (event.key === 'Escape') { if (!historyOpen.value && expanded.value) toggleExpanded(); historyOpen.value = false; }
   if (!historyOpen.value || event.key !== 'Tab') return;
   const nodes = [...drawer.value.querySelectorAll('button,a,input,textarea')].filter(node => !node.disabled);
   const first = nodes[0], last = nodes.at(-1);
@@ -126,7 +168,7 @@ function keydown(event) {
 function releaseDrawer() { for (const [node, value] of inerted) node.inert = value; inerted = []; }
 watch(historyOpen, async open => {
   if (open) {
-    conversation.value?.stop(); moreOpen.value = false; previousFocus = document.activeElement; await nextTick();
+    conversation.value?.stop(); previousFocus = document.activeElement; await nextTick();
     if (!mounted.value || !historyOpen.value || !drawer.value) return;
     inerted = [...document.querySelector('.phone-shell').children].filter(node => !node.classList.contains('history-overlay')).map(node => [node, node.inert]);
     for (const [node] of inerted) node.inert = true;
@@ -134,8 +176,9 @@ watch(historyOpen, async open => {
   } else { releaseDrawer(); if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true }); }
 });
 onMounted(async () => {
+  void loadConversation();
   restingViewportHeight = viewportHeight(); mounted.value = true;
-  document.addEventListener('pointerdown', outside); document.addEventListener('keydown', keydown);
+  document.addEventListener('keydown', keydown);
   window.addEventListener('resize', queueLayout); window.addEventListener('scroll', queueLayout, { passive: true });
   window.visualViewport?.addEventListener('resize', queueLayout); window.visualViewport?.addEventListener('scroll', queueLayout);
   await nextTick(); if (!mounted.value) return;
@@ -145,18 +188,16 @@ onMounted(async () => {
 });
 onBeforeUnmount(() => {
   mounted.value = false; clearTimeout(noticeTimer); cancelAnimationFrame(layoutFrame); layoutObserver?.disconnect(); releaseDrawer();
-  document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', keydown);
+  activeRequestController?.abort(); activeRequestController = null;
+  document.removeEventListener('keydown', keydown);
   window.removeEventListener('resize', queueLayout); window.removeEventListener('scroll', queueLayout);
   window.visualViewport?.removeEventListener('resize', queueLayout); window.visualViewport?.removeEventListener('scroll', queueLayout);
-  for (const file of attachments.value) if (file.preview) URL.revokeObjectURL(file.preview);
 });
 
 const removeNativeBack = registerBackHandler(() => {
-  if (historyOpen.value || expanded.value || moreOpen.value || editingId.value !== null) {
+  if (historyOpen.value || expanded.value) {
     if (historyOpen.value) historyOpen.value = false;
     else if (expanded.value) toggleExpanded();
-    else if (moreOpen.value) moreOpen.value = false;
-    else editingId.value = null;
     return true;
   }
   return false;
@@ -172,20 +213,24 @@ onBeforeUnmount(removeNativeBack);
     </header>
 
     <ElasticList ref="conversation" class="conversation" role="region" aria-label="当前对话">
-      <p class="conversation-date">今天</p>
-      <article v-for="message in messages" :key="message.id" class="message" :class="[`message-${message.role}`, { 'is-withdrawn': message.withdrawn }]" :aria-label="message.role === 'user' ? '你的消息' : 'LiLi 的消息'">
+      <p v-if="loading" class="conversation-date">正在连接 LiLi…</p>
+      <p v-else-if="!messages.length" class="conversation-date">校园里的事情，可以问问 LiLi</p>
+      <article v-for="message in messages" :key="message.id" class="message" :class="`message-${message.role}`" :aria-label="message.role === 'user' ? '你的消息' : 'LiLi 的消息'">
         <div class="message-avatar" aria-hidden="true"><LiLiAvatar v-if="message.role === 'agent'" /><UserPlaneAvatar v-else /></div>
         <div class="message-content">
-          <p v-if="message.withdrawn" class="withdrawn-message">你撤回了一条消息</p>
-          <div v-else v-sketch class="sketch pencil-fill message-bubble" :data-pencil="message.color">
-            <template v-if="editingId === message.id"><textarea :id="`lili-edit-${message.id}`" v-model="editText" class="edit-message" rows="3" aria-label="编辑消息内容"></textarea><div class="edit-actions"><button type="button" @click="editingId = null">取消</button><button type="button" :disabled="!editText.trim()" @click="saveEdit(message)">保存</button></div></template>
-            <div v-else-if="message.thinking" class="thinking-message" role="status" aria-label="LiLi 正在准备回答"><span class="thinking-orbit" aria-hidden="true"><i></i><i></i><i></i></span><span>正在准备回答<span class="thinking-dots" aria-hidden="true"><i>·</i><i>·</i><i>·</i></span></span></div>
+          <div v-sketch class="sketch pencil-fill message-bubble" :data-pencil="message.color">
+            <div v-if="message.status === 'pending' && !message.text" class="thinking-message" role="status" aria-label="LiLi 正在准备回答"><span class="thinking-orbit" aria-hidden="true"><i></i><i></i><i></i></span><span>正在准备回答<span class="thinking-dots" aria-hidden="true"><i>·</i><i>·</i><i>·</i></span></span></div>
             <p v-else class="message-text"><template v-for="(part, i) in segments(message.text)" :key="i"><strong v-if="part.bold">{{ part.text }}</strong><template v-else>{{ part.text }}</template></template></p>
           </div>
-          <div v-if="!message.withdrawn && editingId !== message.id" class="message-actions" :aria-label="message.role === 'agent' ? '助手消息操作' : '你的消息操作'">
-            <button type="button" :disabled="message.thinking" aria-label="复制消息" @click="copy(message)"><AgentIcon name="copy" /><span>复制</span></button>
-            <template v-if="message.role === 'user'"><button type="button" @click="edit(message)"><AgentIcon name="edit" /><span>编辑</span></button><button type="button" @click="withdraw(message)"><AgentIcon name="withdraw" /><span>撤回</span></button></template>
-            <template v-else><button type="button" :disabled="message.thinking" @click="notify('重新生成将在后续开放')"><AgentIcon name="regenerate" /><span>重新生成</span></button><button type="button" class="rating-action" :disabled="message.thinking" :class="{ selected: message.rating === 'like' }" :aria-pressed="message.rating === 'like'" aria-label="点赞这条回答" title="点赞" @click="rate(message, 'like')"><AgentIcon name="like" /><span class="sr-only">点赞</span></button><button type="button" class="rating-action" :disabled="message.thinking" :class="{ selected: message.rating === 'dislike' }" :aria-pressed="message.rating === 'dislike'" aria-label="点踩这条回答" title="点踩" @click="rate(message, 'dislike')"><AgentIcon name="dislike" /><span class="sr-only">点踩</span></button></template>
+          <div class="message-actions" :aria-label="message.role === 'agent' ? '助手消息操作' : '你的消息操作'">
+            <button type="button" :disabled="!message.text" aria-label="复制消息" @click="copy(message)"><AgentIcon name="copy" /><span>复制</span></button>
+            <button v-if="message.role === 'agent' && message.status === 'failed'" type="button" @click="retry(message)"><AgentIcon name="regenerate" /><span>重试</span></button>
+            <template v-if="message.role === 'agent' && message.status === 'completed'"><button type="button" class="rating-action" :class="{ selected: message.rating === 'like' }" :aria-pressed="message.rating === 'like'" aria-label="点赞回答" @click="rate(message, 'like')"><AgentIcon name="like" /></button><button type="button" class="rating-action" :class="{ selected: message.rating === 'dislike' }" :aria-pressed="message.rating === 'dislike'" aria-label="点踩回答" @click="rate(message, 'dislike')"><AgentIcon name="dislike" /></button></template>
+          </div>
+          <div v-if="message.role === 'agent' && message.citations.length" class="citation-list" aria-label="回答来源">
+            <a v-for="citation in message.citations" :key="citation.information_id" class="citation-link" :href="citation.source_url || undefined" :target="citation.source_url ? '_blank' : undefined" :rel="citation.source_url ? 'noopener noreferrer' : undefined">
+              <AgentIcon name="file" /><span><strong>[S{{ citation.rank }}] {{ citation.title || citation.platform + ' 信息' }}</strong><small>{{ citation.published_at ? new Date(citation.published_at).toLocaleDateString('zh-CN') : citation.platform }} · {{ citation.snippet }}</small></span>
+            </a>
           </div>
         </div>
       </article>
@@ -194,22 +239,20 @@ onBeforeUnmount(removeNativeBack);
     <div class="composer-reservation" :style="{ height: `${reservedHeight}px` }" aria-hidden="true"></div>
     <Teleport v-if="mounted" to=".phone-shell">
     <section ref="composerPanel" class="composer-section" :class="{ 'is-expanded': expanded }" :style="{ bottom: `${panelBottom}px`, top: expanded ? `${panelTop}px` : undefined, '--composer-inset': `${panelInset}px` }" aria-label="消息输入区">
-      <div v-if="displayedAttachments.length" class="attachments" :aria-label="showExamples ? '附件样例' : '已选择的附件'" tabindex="0"><div v-for="item in displayedAttachments" :key="item.id" v-sketch class="sketch attachment" :data-pencil="item.kind === 'image' ? 'pink' : 'mint'"><img v-if="item.preview" :src="item.preview" :alt="item.name" /><AgentIcon v-else :name="item.kind === 'image' ? 'image' : 'file'" /><span :title="item.name">{{ item.name }}</span><button type="button" :aria-label="`移除 ${item.name}`" @click="removeFile(item)"><AgentIcon name="close" /></button></div></div>
       <div v-sketch class="sketch composer-box">
         <ElasticTextarea ref="composer" v-model="draft" :expanded="expanded" @overflow="longDraft = $event" @focus="focusInput" @blur="blurInput" @send="send" />
         <button v-if="longDraft || expanded" class="composer-expand" type="button" :aria-label="expanded ? '取消全屏输入' : '全屏输入'" :title="expanded ? '取消全屏' : '全屏输入'" aria-controls="lili-draft-editor" :aria-expanded="expanded" @pointerdown.prevent @click="toggleExpanded"><AgentIcon :name="expanded ? 'contract' : 'expand'" /></button>
         <div class="composer-tools">
-          <div class="composer-more"><button v-sketch class="sketch composer-tool" type="button" :data-pencil="moreOpen ? 'blue' : undefined" aria-label="添加图片或文件" aria-controls="lili-attachments-menu" :aria-expanded="moreOpen" @click="moreOpen = !moreOpen"><AgentIcon name="plus" /></button><Transition name="attachment-pop"><div v-if="moreOpen" id="lili-attachments-menu" v-sketch class="sketch attachment-menu" data-pencil="mint" role="group" aria-label="添加附件"><button type="button" @click="pick('image')"><AgentIcon name="image" /><span>上传图片</span></button><button type="button" @click="pick('file')"><AgentIcon name="file" /><span>上传文件</span></button></div></Transition></div>
-          <button v-sketch class="sketch composer-tool send-button" data-pencil="yellow" type="button" :disabled="!ready" aria-label="发送消息（设计占位）" @click="send"><AgentIcon name="send" /></button>
+          <span class="composer-hint">回答基于公开信息</span>
+          <button v-sketch class="sketch composer-tool send-button" data-pencil="yellow" type="button" :disabled="!ready" aria-label="发送消息" @click="send()"><AgentIcon name="send" /></button>
         </div>
       </div>
-      <input ref="imageInput" class="sr-only" type="file" accept="image/*" multiple tabindex="-1" aria-label="选择图片" @change="addFiles($event, 'image')" /><input ref="fileInput" class="sr-only" type="file" multiple tabindex="-1" aria-label="选择文件" @change="addFiles($event, 'file')" />
     </section>
     </Teleport>
 
     <Transition name="chat-toast"><p v-if="notice" v-sketch class="sketch chat-notice" data-pencil="yellow" role="status">{{ notice }}</p></Transition>
 
-    <Teleport v-if="mounted" to=".phone-shell"><Transition name="history-slide"><div v-if="historyOpen" class="history-overlay" @click.self="historyOpen = false"><aside id="lili-history" ref="drawer" v-sketch class="sketch history-drawer" data-pencil="mint" role="dialog" aria-modal="true" aria-labelledby="lili-history-title"><header><div><p>和 LiLi 的</p><h2 id="lili-history-title">小小对话簿</h2></div><button type="button" class="drawer-close" aria-label="关闭历史对话" @click="historyOpen = false"><AgentIcon name="close" /></button></header><ElasticList class="history-list" role="region" aria-label="历史对话列表"><template v-for="(item, index) in history" :key="index"><h3 v-if="item.label">{{ item.label }}</h3><button v-sketch class="sketch history-item" :data-pencil="item.current ? 'yellow' : undefined" type="button" :aria-current="item.current ? 'true' : undefined" @click="chooseHistory(item)"><AgentIcon name="chat" /><span><strong>{{ item.title }}</strong><small>{{ item.summary }}</small></span></button></template></ElasticList><footer><div class="drawer-avatar"><LiLiAvatar /></div><p>校园生活，慢慢聊。</p></footer></aside></div></Transition></Teleport>
+    <Teleport v-if="mounted" to=".phone-shell"><Transition name="history-slide"><div v-if="historyOpen" class="history-overlay" @click.self="historyOpen = false"><aside id="lili-history" ref="drawer" v-sketch class="sketch history-drawer" data-pencil="mint" role="dialog" aria-modal="true" aria-labelledby="lili-history-title"><header><div><p>和 LiLi 的</p><h2 id="lili-history-title">小小对话簿</h2></div><button type="button" class="drawer-close" aria-label="关闭历史对话" @click="historyOpen = false"><AgentIcon name="close" /></button></header><ElasticList class="history-list" role="region" aria-label="历史对话列表"><p v-if="!history.length" class="history-empty">这里还没有对话</p><template v-for="(item, index) in history" :key="index"><h3>{{ item.label }}</h3><button v-sketch class="sketch history-item" data-pencil="yellow" type="button" aria-current="true" @click="chooseHistory"><AgentIcon name="chat" /><span><strong>{{ item.title }}</strong><small>{{ item.summary }}</small></span></button></template></ElasticList><footer><div class="drawer-avatar"><LiLiAvatar /></div><p>校园生活，慢慢聊。</p></footer></aside></div></Transition></Teleport>
   </section>
 </template>
 
@@ -227,6 +270,7 @@ onBeforeUnmount(removeNativeBack);
 .message-content { max-width: calc(100% - 49px); min-width: 0; }.message-user .message-content { max-width: calc(100% - 49px); }
 .message-bubble { padding: 11px 16px 12px; min-height: 49px; background: transparent; }.message-text { margin: 0; font-size: 14px; line-height: 1.85; overflow-wrap: anywhere; white-space: pre-wrap; }.message-text strong { font-weight: 400; -webkit-text-stroke: .35px var(--ink); text-decoration: underline; text-decoration-color: #20304b44; text-decoration-thickness: 3px; text-underline-offset: 3px; }
 .message-actions { display: flex; align-items: center; gap: 0; margin: 1px 1px 0; min-height: 34px; }.message-user .message-actions { justify-content: flex-end; }.message-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 3px; padding: 7px 6px; min-height: 34px; border: 0; background: transparent; color: var(--muted); font-size: 10px; white-space: nowrap; }.message-actions .agent-icon { width: 14px; height: 14px; stroke-width: 1.8; }.message-actions .rating-action { min-width: 34px; }.message-actions .rating-action .agent-icon { width: 16px; height: 16px; }.message-actions .selected { color: #245888; }.message-actions .selected .agent-icon { fill: #9ac8f244; stroke-width: 2.2; }.message-actions button:disabled { opacity: .35; cursor: default; }
+.citation-list { display: grid; gap: 6px; margin: 6px 2px 2px; }.citation-link { display: flex; align-items: flex-start; gap: 7px; padding: 8px 10px; border: 1px solid #7c9eb433; border-radius: 10px; color: var(--ink); text-decoration: none; background: #fff8; }.citation-link .agent-icon { width: 16px; height: 16px; flex: none; margin-top: 1px; }.citation-link span { min-width: 0; }.citation-link strong,.citation-link small { display: block; }.citation-link strong { font-size: 11px; font-weight: 600; }.citation-link small { margin-top: 3px; color: var(--muted); font-size: 10px; line-height: 1.4; }.citation-link:hover { background: #fff; }
 .thinking-message { display: flex; align-items: center; gap: 8px; min-height: 24px; font-size: 13px; white-space: nowrap; }.thinking-orbit { position: relative; display: block; width: 22px; height: 22px; flex: none; }.thinking-orbit i { position: absolute; width: 5px; height: 5px; background: var(--ink); border-radius: 45% 55% 50% 48%; opacity: .6; }.thinking-orbit i:nth-child(1) { left: 8px; top: 1px; }.thinking-orbit i:nth-child(2) { left: 1px; top: 13px; }.thinking-orbit i:nth-child(3) { right: 1px; top: 13px; }.thinking-dots { display: inline-flex; margin-left: 2px; }.thinking-dots i { font-style: normal; margin: 0 1px; }
 .withdrawn-message { font-size: 11px; color: var(--muted); margin: 14px 8px; }.is-withdrawn .message-avatar { opacity: .45; }
 .edit-message { display: block; width: 100%; resize: vertical; min-height: 60px; border: 0; background: transparent; font: inherit; font-size: 14px; line-height: 1.8; color: var(--ink); outline-offset: 2px; }.edit-actions { display: flex; gap: 15px; justify-content: flex-end; margin-top: 8px; }.edit-actions button { padding: 6px; background: transparent; border: 0; font-size: 12px; }.edit-actions button:last-child { color: #245888; }
@@ -235,6 +279,7 @@ onBeforeUnmount(removeNativeBack);
 .composer-box { position: relative; display: flex; align-items: flex-end; padding: 9px 9px 9px 15px; gap: 6px; background: transparent; }
 .composer-box:focus-within { outline: 2px solid #456e9955; outline-offset: 1px; border-radius: 15px; }
 .composer-tools { display: flex; flex: none; align-items: center; gap: 2px; }
+.composer-hint { padding: 0 8px; color: var(--muted); font-size: 10px; white-space: nowrap; }
 .composer-tool { display: grid; place-items: center; width: 44px; height: 44px; padding: 9px; background: transparent; }
 .send-button .agent-icon { width: 24px; height: 24px; }.send-button:disabled { opacity: .65; cursor: default; }
 .composer-expand { position: absolute; top: 8px; right: 10px; display: grid; place-items: center; width: 44px; height: 44px; padding: 11px; border: 0; background: transparent; color: var(--ink); }
@@ -247,6 +292,7 @@ onBeforeUnmount(removeNativeBack);
 .attachments { display: flex; flex-wrap: nowrap; gap: 8px; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; padding: 0 1px 2px; max-height: 65px; }.attachment { display: flex; flex: none; align-items: center; gap: 6px; padding: 9px 8px 9px 11px; max-width: 210px; font-size: 11px; background: transparent; }.attachment>span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.attachment img { display: block; width: 30px; height: 30px; object-fit: cover; border-radius: 5px; }.attachment>.agent-icon { width: 24px; height: 24px; }.attachment button { display: grid; place-items: center; width: 28px; height: 28px; padding: 5px; flex: none; background: transparent; border: 0; }.attachment button .agent-icon { width: 16px; height: 16px; }
 .chat-notice { position: absolute; z-index: 70; left: 50%; bottom: 90px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 34px); padding: 13px 18px; font-size: 12px; text-align: center; background: transparent; backdrop-filter: blur(12px); border-radius: 15px; }
 .history-overlay { position: absolute; inset: 0; z-index: 80; background: #20304b28; }.history-drawer { display: flex; flex-direction: column; width: 66.6667%; height: 100%; margin: 0; padding: calc(24px + env(safe-area-inset-top, 0px)) 15px 24px; background: transparent; backdrop-filter: blur(22px); border-radius: 15px; overflow: hidden; }.history-drawer header { display: flex; align-items: center; justify-content: space-between; gap: 3px; margin-bottom: 22px; }.history-drawer header p { font-size: 11px; margin: 0 0 6px; color: var(--muted); }.history-drawer h2 { margin: 0; font-size: 22px; font-weight: 400; white-space: nowrap; }.drawer-close { display: grid; place-items: center; flex: none; width: 38px; height: 44px; padding: 8px; background: transparent; border: 0; }.drawer-close .agent-icon { width: 22px; height: 22px; }.history-list { min-height: 0; flex: 1; }.history-list h3 { font-size: 11px; color: var(--muted); font-weight: 400; margin: 15px 8px 8px; }.history-list h3:first-child { margin-top: 0; }.history-item { display: flex; gap: 7px; align-items: flex-start; width: 100%; padding: 15px 10px; margin-bottom: 10px; background: transparent; text-align: left; }.history-item>.agent-icon { width: 19px; height: 19px; margin-top: 2px; }.history-item>span { min-width: 0; flex: 1; }.history-item strong { font-size: 13px; font-weight: 400; display: block; line-height: 1.6; }.history-item small { display: block; font-size: 10px; color: var(--muted); margin-top: 5px; line-height: 1.6; }.history-drawer footer { display: flex; align-items: center; gap: 7px; margin-top: 12px; flex: none; }.drawer-avatar { width: 48px; height: 52px; }.history-drawer footer p { font-size: 11px; margin: 0; color: var(--muted); }
+.history-empty { padding: 14px 8px; color: var(--muted); font-size: 12px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .history-slide-enter-active,.history-slide-leave-active { transition: background-color .35s ease; }.history-slide-enter-active .history-drawer,.history-slide-leave-active .history-drawer { transition: transform .38s cubic-bezier(.22,1,.36,1); }.history-slide-enter-from,.history-slide-leave-to { background: transparent; }.history-slide-enter-from .history-drawer,.history-slide-leave-to .history-drawer { transform: translateX(-102%); }
 .attachment-pop-enter-active,.attachment-pop-leave-active { transition: transform .18s ease, opacity .18s ease; }.attachment-pop-enter-from,.attachment-pop-leave-to { opacity: 0; transform: translateY(6px) scale(.97); }.chat-toast-enter-active,.chat-toast-leave-active { transition: opacity .2s ease; }.chat-toast-enter-from,.chat-toast-leave-to { opacity: 0; }
