@@ -17,6 +17,7 @@ from .build_queue import BuildQueue
 
 REPOSITORY = "https://github.com/TomoriKaho/Livelife.git"
 NPM = "https://registry.npmmirror.com"
+NPM_FALLBACK = "https://registry.npmjs.org"
 PYPI = "https://mirrors.aliyun.com/pypi/simple"
 PYPI_FALLBACK = "https://pypi.tuna.tsinghua.edu.cn/simple"
 
@@ -38,6 +39,16 @@ def extract_source(data, destination):
             archive.extract(item, destination, filter="data")
 
 
+def rewrite_npm_registry(workspace, registry=NPM):
+    """Keep locked versions and integrity hashes when switching npm registries."""
+    lock = workspace / "frontend/package-lock.json"
+    if lock.exists():
+        content = lock.read_text()
+        for source in (NPM, NPM_FALLBACK):
+            content = content.replace(source + "/", registry + "/")
+        lock.write_text(content)
+
+
 def rewrite_mirrors(workspace, index=PYPI):
     """Only transient checkouts change URLs; lock versions/hashes are preserved."""
     lock = workspace / "backend/uv.lock"
@@ -52,11 +63,7 @@ def rewrite_mirrors(workspace, index=PYPI):
             "https://files.pythonhosted.org/", index.removesuffix("simple")
         )
         lock.write_text(content)
-    lock = workspace / "frontend/package-lock.json"
-    if lock.exists():
-        lock.write_text(
-            lock.read_text().replace("https://registry.npmjs.org/", NPM + "/")
-        )
+    rewrite_npm_registry(workspace)
 
 
 def sandbox_command(root, workspace, command):
@@ -314,7 +321,7 @@ class Runner:
             "UV_LINK_MODE": "copy",
             "PIP_INDEX_URL": job.get("pypi_source", PYPI),
             "PIP_CACHE_DIR": str(cache / "pip"),
-            "npm_config_registry": NPM,
+            "npm_config_registry": job.get("npm_registry", NPM),
             "npm_config_cache": str(cache / "npm"),
             "npm_config_audit": "false",
             "npm_config_fund": "false",
@@ -386,6 +393,20 @@ class Runner:
                 os.killpg(process.pid, signal.SIGKILL)
                 process.wait()
             process.stdout.close()
+
+    def install_frontend_dependencies(self, job, workspace, log):
+        command = ["npm", "ci", "--prefix", "frontend", "--no-audit", "--no-fund"]
+        try:
+            self.run_command(job, workspace, command, log)
+        except RuntimeError:
+            # Retry only dependency installation, never tests or builds. Both
+            # the registry and locked tarball URLs must switch together.
+            job["npm_registry"] = NPM_FALLBACK
+            rewrite_npm_registry(workspace, NPM_FALLBACK)
+            log.write(
+                b"\nPrimary npm install failed; retrying locked dependencies with registry.npmjs.org.\n"
+            )
+            self.run_command(job, workspace, command, log)
 
     def execute(self, job):
         directory = self.queue.jobs / job["id"]
@@ -463,19 +484,7 @@ class Runner:
                     if job["component"] == "android":
                         from .android_build import prepare
                         prepare(workspace, json.loads(job["options"]))
-                    self.run_command(
-                        job,
-                        workspace,
-                        [
-                            "npm",
-                            "ci",
-                            "--prefix",
-                            "frontend",
-                            "--no-audit",
-                            "--no-fund",
-                        ],
-                        log,
-                    )
+                    self.install_frontend_dependencies(job, workspace, log)
                     if job["component"] == "android":
                         self.run_command(job, workspace, ["/bin/sh", "-c",
                             "cd frontend && node --test scripts/*.test.mjs && npm run build:preview && npx --no-install cap sync android && cd android && gradle --init-script /runner/android-mirrors.gradle --no-daemon --max-workers=2 -Dorg.gradle.jvmargs=-Xmx1536m assembleRelease"], log)
