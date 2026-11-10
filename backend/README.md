@@ -75,7 +75,21 @@ uv run --locked --group local-db python -m app.dev --port 18000 --reload
 
 ### 使用已有数据库或部署入口
 
-`DATABASE_URL` 是可选服务端环境变量，由 `app/core/config.py` 从进程环境读取；当前代码不自动加载后端 `.env` 文件。标准入口 `uv run uvicorn app.main:app --host 127.0.0.1 --port 8000` 不安装、启动或迁移数据库；未设置连接串时 hello 和存活检查可用，就绪检查返回 HTTP 503。开发入口发现已有非空 `DATABASE_URL` 时拒绝自动准备，提示切换标准入口，避免迁移错误目标。
+`app/core/environment.py` 在配置模块初始化时自动读取本仓库 `backend/.env`，API、开发入口和 Alembic 共用该逻辑；路径按源码位置确定，不搜索启动目录或上级目录。文件不存在时无需创建，沿用进程环境；已有进程环境变量（包括空字符串）优先，文件不会覆盖部署注入的 `DATABASE_URL`。支持 UTF-8 和 Windows UTF-8 BOM，修改后重启后端，不需要额外加 `--env-file`。
+
+首次配置可复制 [.env.example](.env.example) 为 `.env`；已有文件时只补充需要的键，不覆盖原配置。SMTP 示例键如下，填入邮件服务商提供的真实值即可：
+
+```dotenv
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_FROM=
+SMTP_USERNAME=
+SMTP_PASSWORD=
+```
+
+`.env` 已被 Git 忽略，不提交真实邮箱凭证，也不要写进前端环境文件。本机 `.env` 不会自动上传到 Actions 或预览服务器；预览的 SMTP 注入仍按[部署边界](../deploy/README.md#预览数据库与启动门禁)处理。本加载器的固定路径、环境优先级、BOM 和跨目录启动/迁移行为由 `tests/test_environment.py` 验证，不发送真实邮件。
+
+`DATABASE_URL` 是可选配置。标准入口 `uv run uvicorn app.main:app --host 127.0.0.1 --port 8000` 不安装、启动或迁移数据库；未设置连接串时 hello 和存活检查可用，就绪检查返回 HTTP 503。开发入口发现进程环境或 `.env` 已配置非空 `DATABASE_URL` 时拒绝自动准备，提示切换标准入口，避免迁移错误目标。希望继续自动准备本地库时，不要在 `.env` 中配置外部数据库连接。
 
 需要测试已有本地 PostgreSQL 时，在启动服务的同一终端设置 SQLAlchemy URL：
 
