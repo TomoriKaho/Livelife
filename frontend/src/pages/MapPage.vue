@@ -4,8 +4,7 @@ export const pageMeta = { key: 'map', id: 'D-02', title: '活动地图', placeho
 
 <script setup>
 import { registerBackHandler } from '../platform/android-navigation';
-import { computed, defineAsyncComponent, inject, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue';
-import { sketchWarmupKey } from '../plugins/sketch-warmup';
+import { computed, defineAsyncComponent, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue';
 import { sessionShuffle } from '../data/session-style';
 import { RouterLink, useRoute } from 'vue-router';
 import { saved, toggleSave, activityDetailRoute } from '../data/favorites.js';
@@ -20,13 +19,12 @@ import { profileFor } from './map/model-profiles.mjs';
 const CampusScene = defineAsyncComponent(() => import('./map/CampusScene.vue'));
 const CampusPlan = defineAsyncComponent(() => import('./map/CampusPlan.vue'));
 const route = useRoute(), focusPoint = ref(null), routedActivity = ref(null);
-const warming = inject(sketchWarmupKey, false);
 const mode = ref('3d'), filter = ref('all'), search = ref(''), selected = ref(null), floor = ref(2), scene = ref(null), located = ref(false), detail = ref(null);
-const drawer = ref(null), mapFocusInset = ref(180), drawerOcclusion = ref(180), drawerState = ref('middle');
-const mapAttributionVisible = computed(() => isMapAttributionVisible(drawerState.value));
-function onDrawerLayout({ state, occlusionHeight }) {
-  drawerState.value = state;
+const drawer = ref(null), mapFocusInset = ref(180), drawerOcclusion = ref(180), drawerExpandedHeight = ref(540);
+const mapAttributionVisible = computed(() => isMapAttributionVisible(drawerOcclusion.value, drawerExpandedHeight.value));
+function onDrawerLayout({ occlusionHeight, expandedHeight }) {
   drawerOcclusion.value = occlusionHeight;
+  drawerExpandedHeight.value = expandedHeight;
 }
 const planView = ref(null);
 let drawerBeforeSelection = null;
@@ -92,7 +90,6 @@ function openActivity(activity, { expand = true } = {}) {
   detail.value = activity;
   search.value = '';
   drawer.value?.setState(expand ? 'expanded' : 'middle');
-  nextTick(() => window.HandDrawn?.refresh());
 }
 const removeBackHandler = registerBackHandler(() => {
   if (detail.value) { closeDetail(); return true; }
@@ -104,7 +101,6 @@ onBeforeUnmount(removeBackHandler);
 function closeDetail() {
   detail.value = null;
   drawer.value?.setState(drawer.value?.getState() || 'expanded');
-  nextTick(() => window.HandDrawn?.refresh());
 }
 function select(id) {
   focusPoint.value = null; routedActivity.value = null; detail.value = null;
@@ -130,7 +126,6 @@ async function setMode(value) {
   // 两种地图共用建筑、楼层和抽屉状态，切换后继续查看同一处活动。
   mode.value = value; search.value = '';
   await nextTick();
-  window.HandDrawn?.refresh();
 }
 async function applyActivityRoute() {
   const raw = route.query.activity;
@@ -153,10 +148,8 @@ watch(() => route.query.activity, applyActivityRoute);
   <section id="page-title" class="map-page" aria-label="燕园活动探索" tabindex="-1">
     <div class="map-rule" aria-hidden="true"></div>
     <div class="map-stage" :class="{ 'building-focus': selected, 'plan-mode': mode === '2d' }" :style="{ '--drawer-occlusion': `${drawerOcclusion}px` }">
-      <template v-if="!warming">
         <CampusScene v-if="mode === '3d'" ref="scene" :focus-inset="mapFocusInset" :focus-point="focusPoint" :selected="selected" :floor="floor" :activities="visibleActivities" @select="select" @floor="floor = $event" />
         <CampusPlan v-else ref="scene" :focus-inset="mapFocusInset" :focus-point="focusPoint" :selected="selected" :activities="visibleActivities" :starting-view="planView" @select="select" />
-      </template>
         <span v-if="mode === '3d'" class="campus-caption">北京大学 · 燕园</span>
         <div class="map-hint">{{ routedActivity ? `${routedActivity.title}${focusPoint ? ' · 地点示意' : ` · ${floor}F`}` : mode === '2d' ? selected ? '俯视建筑 · 在下方切换楼层查看活动' : '点建筑查看活动 · 拖动平移 · 双指缩放' : currentBuilding?.scenic ? '拖动环绕博雅塔 · 缩小看看未名湖' : selected ? '点楼层查看活动 · 拖动查看另一侧' : '点建筑，看看楼层里正在发生什么' }}</div>
       <OsmAttribution v-if="mapAttributionVisible" class="map-attribution" />

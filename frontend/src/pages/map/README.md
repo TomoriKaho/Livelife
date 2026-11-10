@@ -72,7 +72,7 @@ npm run preview        # dist 中包含地图、字体和 Three.js
 
 OSM 署名及 ODbL 许可证说明见 `src/assets/maps/LICENSE.md`。生产构建保留原始地图、转换数据、来源说明和许可证，便于团队分发和追溯。
 
-客户端地图在地图仍可见时，于地图区右下角显示 `© OpenStreetMap contributors` 署名及版权链接。署名与左下提示跟随当前抽屉遮挡高度 `--drawer-occlusion`（由 `ActivityDrawer` 的 `layout` 事件驱动，策略在 `map-drawer-layout.mjs`），隐藏档贴在把手上方、默认档贴在半展开高度上方，不与搜索框或缩放控件重叠。全展开遮盖地图时不显示署名。相机视口仍用默认档 `middle` 作 `focusInset`，与浮层位置解耦。共用 `OsmAttribution.vue`，文案与链接只在 `osm-attribution.ts` 维护。构建保留地图来源和许可文件。分发时保留这些入口，参考 [OSMF 署名指南](https://osmfoundation.org/wiki/Licence/Attribution_Guidelines#Introduction)。
+客户端地图在地图仍可见时，于地图区右下角显示 `© OpenStreetMap contributors` 署名及版权链接。署名与左下提示跟随当前抽屉遮挡高度 `--drawer-occlusion`（由 `ActivityDrawer` 的 `layout` 事件驱动，包含当前档位 `state`、实际遮挡高度 `occlusionHeight` 和全展开高度 `expandedHeight`），隐藏档贴在把手上方、默认档贴在半展开高度上方，不与搜索框或缩放控件重叠。通过 `ResizeObserver` 观察抽屉实际尺寸，使署名在拖动和松手后的吸附动画中持续跟随；`map-drawer-layout.mjs` 根据实际高度判断地图是否露出，全展开遮盖地图时不显示署名。相机视口仍用默认档 `middle` 作 `focusInset`，与浮层位置解耦。共用 `OsmAttribution.vue`，文案与链接只在 `osm-attribution.ts` 维护。构建保留地图来源和许可文件。分发时保留这些入口，参考 [OSMF 署名指南](https://osmfoundation.org/wiki/Licence/Attribution_Guidelines#Introduction)。
 
 ## 视觉基线
 
@@ -108,10 +108,10 @@ Canvas 按设备密度绘制（最高 2 倍），预缓存 Path2D 和色面图�
 
 地图静止时不持续绘制；相机拖动/惯性、定位/缩放、建筑展开、楼层高亮、活动更新及窗口尺寸变化安排下一帧。GPU 编译、上传和 Three.js 的部分场景准备仍在主线程，应单独记录实际设备的加载时长、短暂停顿和加载时操作列表的响应，不能用网页构建成功替代实机响应验证。
 
-公共手绘装饰和磁盘缓存见[手绘渲染](../../plugins/README.md)及[缓存模块](../../platform/SKETCH_CACHE.md)。
+公共手绘装饰见[手绘渲染](../../plugins/README.md)及[静态资源](../../assets/sketch/README.md)。
 
 ## 外部网页与地图故障区分
 
-地图使用包内数据，不依赖在线 OpenStreetMap 瓦片。地图右下角与展开档抽屉把手右侧的署名链接通向外部版权页；Android 的 Capacitor 默认导航策略把外部地址交给系统浏览器，配置不应把外部域名加入 `server.allowNavigation`。验收时点击署名、返回应用，再检查地图与底部导航。外部网站超时应只影响浏览器，不应替换应用的本地页面。
+地图使用包内数据，不依赖在线 OpenStreetMap 瓦片。地图露出时，右下角的署名链接通向外部版权页；Android 的 Capacitor 默认导航策略把外部地址交给系统浏览器，配置不应把外部域名加入 `server.allowNavigation`。验收时点击署名、返回应用，再检查地图与底部导航。外部网站超时应只影响浏览器，不应替换应用的本地页面。
 
 临时绘制诊断应用使用普通 WebView，与正式测试包的外链策略不同，不能用其外部网页错误认定 APK 地图崩溃。若实际 APK 出现同样问题，记录包版本、完整错误地址和操作步骤，并检查 WebView 错误与进程退出日志；不要仅凭网站超时推断地图渲染进程崩溃。

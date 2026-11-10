@@ -189,6 +189,23 @@ class RunnerBoundaryTests(unittest.TestCase):
             self.assertEqual(
                 json.loads((release / "release.json").read_text())["job"], job["id"]
             )
+            self.assertEqual(
+                json.loads((release / "release.json").read_text())["runtime_mode"], "legacy"
+            )
+            marked = io.BytesIO()
+            with tarfile.open(fileobj=marked, mode="w") as archive:
+                for name, data in (
+                    ("backend/app/main.py", b"hello"),
+                    ("backend/preview-runtime.json", b'{"runtime_mode":"postgres-v1"}'),
+                ):
+                    item = tarfile.TarInfo(name)
+                    item.size = len(data)
+                    archive.addfile(item, io.BytesIO(data))
+            with patch("livelife.course.subprocess.check_output", return_value=marked.getvalue()):
+                course.install_built(job["id"], A, 18000, release)
+            self.assertEqual(
+                json.loads((release / "release.json").read_text())["runtime_mode"], "postgres-v1"
+            )
             with self.assertRaises(ValueError):
                 course.install_built(job["id"], B, 18001, release)
 

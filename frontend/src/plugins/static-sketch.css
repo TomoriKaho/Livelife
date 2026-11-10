@@ -1,0 +1,54 @@
+:root[data-sketch-theme='default'] {
+  --sketch-surface: #f8f4ea;
+  --sketch-asset-outline: url('../assets/sketch/default/outline.png');
+  --sketch-asset-fill-yellow: url('../assets/sketch/default/fill-yellow.png');
+  --sketch-asset-fill-blue: url('../assets/sketch/default/fill-blue.png');
+  --sketch-asset-fill-mint: url('../assets/sketch/default/fill-mint.png');
+  --sketch-asset-fill-pink: url('../assets/sketch/default/fill-pink.png');
+  --sketch-asset-fill-lavender: url('../assets/sketch/default/fill-lavender.png');
+  --sketch-asset-outline-yellow: url('../assets/sketch/default/outline-yellow.png');
+  --sketch-asset-outline-blue: url('../assets/sketch/default/outline-blue.png');
+  --sketch-asset-outline-mint: url('../assets/sketch/default/outline-mint.png');
+  --sketch-asset-outline-pink: url('../assets/sketch/default/outline-pink.png');
+  --sketch-asset-outline-lavender: url('../assets/sketch/default/outline-lavender.png');
+  --sketch-asset-navigation-top: url('../assets/sketch/default/navigation-top.png');
+}
+/* Default theme. Keep the frame's corners at 20 CSS px; only edge segments
+   stretch. Pigment repeats at its own scale instead of stretching with content. */
+.static-sketch > .sketch-decoration {
+  position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  container-type: size;
+  --sketch-frame: var(--sketch-asset-outline);
+  --sketch-fill: none;
+}
+.sketch-decoration::before {
+  content: ''; position: absolute;
+  inset: min(4px, 10cqw, 10cqh);
+  border-radius: min(11px, 27.5cqw, 27.5cqh);
+  background: var(--sketch-paper, transparent) var(--sketch-fill) repeat;
+  background-size: 64px 64px;
+}
+.sketch-decoration::after {
+  /* A real 20px border imposes a 40px minimum border box even when inset:0
+     targets a shorter chip. Paint the nine-slice frame without a layout border.
+     Match both the image edges and fill geometry to the same small-box scale. */
+  content: ''; position: absolute; inset: 0; border: 0 solid transparent;
+  border-image: var(--sketch-frame) 60 / min(20px, 50cqw, 50cqh) / 0 stretch;
+}
+.sketch-decoration.fill-only::after { display: none; }
+.sketch-decoration.faint::after { opacity: .4; }
+.sketch-decoration[data-color='yellow'] { --sketch-fill: var(--sketch-asset-fill-yellow); }
+.sketch-decoration[data-color='blue'] { --sketch-fill: var(--sketch-asset-fill-blue); }
+.sketch-decoration[data-color='mint'] { --sketch-fill: var(--sketch-asset-fill-mint); }
+.sketch-decoration[data-color='pink'] { --sketch-fill: var(--sketch-asset-fill-pink); }
+.sketch-decoration[data-color='lavender'] { --sketch-fill: var(--sketch-asset-fill-lavender); }
+.sketch-decoration[data-cast='yellow'] { --sketch-frame: var(--sketch-asset-outline-yellow); }
+.sketch-decoration[data-cast='blue'] { --sketch-frame: var(--sketch-asset-outline-blue); }
+.sketch-decoration[data-cast='mint'] { --sketch-frame: var(--sketch-asset-outline-mint); }
+.sketch-decoration[data-cast='pink'] { --sketch-frame: var(--sketch-asset-outline-pink); }
+.sketch-decoration[data-cast='lavender'] { --sketch-frame: var(--sketch-asset-outline-lavender); }
+
+/* Navigation states are ordinary DOM/CSS layers. The paper beneath the blue
+   pigment covers yellow within the selected contour, without masks or encoding. */
+.bottom-nav > .sketch-decoration { --sketch-frame: var(--sketch-asset-navigation-top); }
+.bottom-nav > .sketch-decoration::before { inset: 0; border-radius: 14px 14px 0 0; }

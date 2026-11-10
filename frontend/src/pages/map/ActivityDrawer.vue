@@ -1,13 +1,12 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { drawerStates, drawerHeights, draggedHeight, nextDrawerState, snapDrawerState } from './drawer-gesture.mjs';
-import { drawerOcclusionHeight } from './map-drawer-layout.mjs';
 
 const emit = defineEmits(['measure', 'layout']);
 const state = ref('middle'), dragging = ref(false), dragHeight = ref(0);
 const heights = ref({ hidden: 38, middle: 180, expanded: 540 }), bottom = ref(86);
 const root = ref(null), content = ref(null);
-let gesture, observer, lastDragEnd = -Infinity;
+let gesture, observer, layoutObserver, lastDragEnd = -Infinity;
 const height = computed(() => dragging.value ? dragHeight.value : heights.value[state.value]);
 const handleLabel = computed(() => state.value === 'hidden' ? '显示活动信息' : state.value === 'expanded' ? '收起活动信息' : '展开活动信息');
 
@@ -69,9 +68,12 @@ function chrome(shell) {
   };
 }
 function publishLayout() {
+  if (!root.value) return;
   emit('layout', {
     state: state.value,
-    occlusionHeight: drawerOcclusionHeight(state.value, heights.value, { dragging: dragging.value, dragHeight: dragHeight.value }),
+    // 档位在松手时才更新，CSS 吸附动画也晚于目标高度；以实际尺寸驱动浮层。
+    occlusionHeight: root.value.getBoundingClientRect().height,
+    expandedHeight: heights.value.expanded,
   });
 }
 function measure() {
@@ -84,13 +86,18 @@ function measure() {
   emit('measure', heights.value.middle);
   publishLayout();
 }
-watch([state, height, dragging], publishLayout);
+watch(state, publishLayout, { flush: 'post' });
 onMounted(() => {
   measure(); observer = new ResizeObserver(measure);
+  layoutObserver = new ResizeObserver(publishLayout);
+  layoutObserver.observe(root.value);
   const shell = root.value.closest('.phone-shell');
   [shell, ...Object.values(chrome(shell))].filter(Boolean).forEach(element => observer.observe(element));
 });
-onBeforeUnmount(() => observer?.disconnect());
+onBeforeUnmount(() => {
+  observer?.disconnect();
+  layoutObserver?.disconnect();
+});
 </script>
 
 <template>

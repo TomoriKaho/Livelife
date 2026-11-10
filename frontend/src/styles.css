@@ -23,8 +23,11 @@
   font-synthesis: none;
 }
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 280px; background: transparent; }
-#app { width: 100%; }
+/* The viewport includes native insets; reserve them inside the body, rather
+   than adding them to a second viewport-height shell. Only page content scrolls. */
+html { height: 100%; height: 100dvh; overflow: hidden; overscroll-behavior: none; }
+body { margin: 0; min-width: 280px; height: 100%; overflow: hidden; overscroll-behavior: none; background: transparent; padding: var(--safe-top) 0 var(--safe-bottom); }
+#app { width: 100%; height: 100%; min-height: 0; display: grid; place-items: center; overflow: hidden; }
 button, a { -webkit-tap-highlight-color: transparent; }
 button { font: inherit; color: inherit; cursor: pointer; }
 a { color: inherit; text-decoration: none; }
@@ -33,10 +36,9 @@ button:active, .nav-item:active { transform: translateY(1px); }
 [hidden] { display: none !important; }
 .svg-library { position: absolute; width: 0; height: 0; overflow: hidden; }
 .icon { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 2.1; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
-.phone-shell { position: relative; width: min(100%, var(--phone-width)); height: 100vh; height: 100dvh; margin: 0 auto; display: flex; flex-direction: column; background-color: #f8f4ea; overflow: hidden; }
+.phone-shell { position: relative; width: min(100%, var(--phone-width)); height: 100%; min-height: 0; margin: 0 auto; display: flex; flex-direction: column; background-color: #f8f4ea; overflow: hidden; }
 .sketch { position: relative; border: 1.8px solid transparent; }
 .has-sketch { isolation: isolate; }
-.sketch-render { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; overflow: visible; }
 .pencil-fill { background: transparent; }
 .app-header { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 6px; position: relative; }
 .app-header.map-header { padding-bottom: 2px; }
@@ -52,7 +54,7 @@ button:active, .nav-item:active { transform: translateY(1px); }
 .notification-button .icon { width: 26px; height: 26px; stroke-width: 2.2; }
 .notification-button::after { content: ''; position: absolute; right: -1px; top: 14px; width: 5px; height: 2.5px; background: var(--yellow); box-shadow: -2px 8px 0 var(--yellow); transform: rotate(-25deg); }
 .notification-dot { position: absolute; width: 7px; height: 7px; background: #fb837a; border-radius: 48% 52% 45% 55%; right: 6px; top: 6px; }
-.page-main { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 17px 0; display: flex; flex-direction: column; scrollbar-width: thin; }
+.page-main { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; padding: 12px 17px 0; display: flex; flex-direction: column; scrollbar-width: thin; }
 .page-main.immersive-main { padding: 6px 0 0; overflow: hidden; }
 .page-main.map-main { padding: 0; }
 .immersive-main .page-heading { margin: 0 17px 10px; }
@@ -91,8 +93,8 @@ h1 { font-size: 28px; letter-spacing: .5px; margin: 0; font-weight: 400; line-he
 .nav-item[aria-current='page'] .icon { color: #245888; }
 .toast { position: fixed; bottom: calc(105px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); width: max-content; max-width: min(360px, calc(100% - 40px)); padding: 13px 18px; font-size: 13px; background: transparent; text-align: center; z-index: 10; }
 @media (min-width: 600px) {
-  body { display: grid; place-items: center; min-height: 100vh; min-height: 100dvh; padding: 24px; }
-  .phone-shell { height: min(880px, calc(100dvh - 48px)); }
+  body { padding: max(24px, var(--safe-top)) 24px max(24px, var(--safe-bottom)); }
+  .phone-shell { height: min(880px, 100%); }
 }
 @media (max-width: 359px) {
   .app-header { gap: 6px; padding-left: 14px; padding-right: 14px; }
@@ -112,4 +114,3 @@ h1 { font-size: 28px; letter-spacing: .5px; margin: 0; font-weight: 400; line-he
 
 /* Capacitor 8 exposes native system-bar insets as CSS variables. */
 html { --safe-top: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)); --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)); }
-body { padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); box-sizing: border-box; }

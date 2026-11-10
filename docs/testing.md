@@ -74,6 +74,14 @@ Actions 的 Artifacts 保存日志及版本/校验记录，Android APK 从独立
 - 未登录被拒绝，不可修改其他用户数据。
 - 前后端字段一致，接口文档与实现一致。
 
+### 账户与会话
+
+- 允许的校园邮箱能够收取验证码并注册；非法域名、错误/过期验证码、重复邮箱和弱密码被拒绝。
+- 邮箱密码登录、普通/记住会话有效期、刷新恢复、登出撤销和过期令牌行为符合[账号 API 契约](../backend/app/api/accounts/API.md)。
+- 临时空白登录：两项留空可进入同一内置测试用户，刷新后恢复、退出后令牌失效；只填一项和空白注册被拒绝，普通密码错误不回退。设置 `AUTH_TEST_LOGIN_ENABLED=false` 后空白登录被拒绝、普通登录不受影响；此测试无需 SMTP。
+- 未认证请求无法读取当前用户；密码、验证码和原始会话令牌不落入数据库明文或应用日志。
+- 测试使用邮件发送替身；真实 SMTP 投递及共享环境数据库迁移需在目标环境单独记录。
+
 ### 地图
 
 - 地点坐标和地图坐标系一致，标记位置正确。
@@ -135,12 +143,13 @@ versionCode / APK SHA-256：
 
 | 修改范围 | 检查入口 |
 | --- | --- |
+| Agent 会话、检索、限额和 SSE | [Agent API 与配置](../backend/app/api/agent/API.md)、后端 `tests/test_agent.py` |
 | 前后端基本检查 | [前端 README](../frontend/README.md#构建预览与检查)、[后端 README](../backend/README.md#后端安装启动与检查) |
 | 信息采集接口、持久化、查询与迁移 | [信息系统验证](../backend/app/services/content/README.md#迁移验证与回滚) |
 | 本地 PostgreSQL 自动准备、持久化与停止 | [后端开发入口及集成测试](../backend/README.md#本地数据库自动准备)；真实数据库测试用 `uv run --locked --group local-db pytest --local-postgres` |
 | 内部工具与构建剔除 | [个人页验收](../frontend/src/pages/more/README.md#前端内部工具开关验收) |
 | Android 手绘渲染 | [手绘回归](../frontend/src/plugins/README.md#android-手绘渲染回归) |
-| 磁盘缓存与完整恢复 | [缓存回归](../frontend/src/platform/SKETCH_CACHE.md#手绘磁盘缓存验证) |
+| 静态手绘资源、尺寸与导航状态 | [手绘回归](../frontend/src/plugins/README.md#android-手绘渲染回归)、[资源与旧缓存迁移](../frontend/src/assets/sketch/README.md) |
 | 个人页返回键 | [页面回归](../frontend/src/pages/more/README.md#android-个人页返回回归) |
 | 地图与外链 | [地图说明](../frontend/src/pages/map/README.md#外部网页与地图故障区分) |
 | 部署、网关、队列和 SSH | [部署工具测试](../deploy/tests/README.md) |

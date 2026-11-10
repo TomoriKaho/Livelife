@@ -1,12 +1,5 @@
-/** 抽屉档位与地图页浮层（署名、提示）的布局策略；新增档位时在此扩展，避免 MapPage 硬编码。 */
-
-export function drawerOcclusionHeight(state, heights, { dragging = false, dragHeight = 0 } = {}) {
-  if (dragging && Number.isFinite(dragHeight)) return dragHeight;
-  const value = heights?.[state];
-  return Number.isFinite(value) ? value : heights?.middle ?? 0;
-}
-
-/** 地图区域仍可见时展示 OSM 署名；全展开遮盖地图时不重复展示。 */
-export function isMapAttributionVisible(drawerState) {
-  return drawerState !== 'expanded';
+/** 依据实际遮挡判断，包含拖动和吸附动画；忽略全展开时的亚像素误差。 */
+export function isMapAttributionVisible(occlusionHeight, expandedHeight) {
+  return Number.isFinite(occlusionHeight) && Number.isFinite(expandedHeight)
+    && occlusionHeight >= 0 && expandedHeight - occlusionHeight > 1;
 }

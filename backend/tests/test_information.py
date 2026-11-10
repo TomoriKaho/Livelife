@@ -329,7 +329,21 @@ def test_internal_information_services_do_not_add_http_routes():
     from app.main import app
 
     paths = set(app.openapi()["paths"])
-    assert paths == {"/test/hello", "/health/live", "/health/ready"}
+    assert paths == {
+        "/test/hello",
+        "/health/live",
+        "/health/ready",
+        "/agent/sessions",
+        "/agent/sessions/current",
+        "/agent/sessions/close",
+        "/agent/messages/stream",
+        "/agent/messages/{message_id}/rating",
+        "/auth/email-codes",
+        "/auth/register",
+        "/auth/login",
+        "/auth/me",
+        "/auth/logout",
+    }
 
 
 def test_record_remains_unique_after_repeated_ingestion(sessions):
