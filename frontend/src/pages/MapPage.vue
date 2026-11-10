@@ -24,7 +24,7 @@ const mode = ref('3d'), filter = ref('all'), search = ref(''), selected = ref(nu
 const deviceLocation = ref(null), outsideCampus = ref(false);
 const drawer = ref(null), drawerPeek = ref(180);
 const planView = ref(null);
-let drawerBeforeSelection = null, latestOrientation = null;
+let drawerBeforeSelection = null, latestOrientation = null, deviceHeadingFrame = 0;
 const campusActivities = activities.filter(item => item.building);
 const visibleActivities = computed(() => campusActivities.filter(item => filter.value === 'all' || item.category === filter.value));
 const locationState = computed(() => outsideCampus.value ? 'outside-campus' : locationTrackingState.value);
@@ -45,12 +45,20 @@ function applyDeviceHeading() {
   const heading = orientationHeading(latestOrientation, screenAngle());
   if (heading === null) return;
   const previous = deviceLocation.value.heading;
-  if (Number.isFinite(previous) && Math.abs((heading - previous + 540) % 360 - 180) < 2) return;
+  if (previous === heading) return;
   deviceLocation.value = { ...deviceLocation.value, heading };
+}
+function scheduleDeviceHeading() {
+  // 传感器可在一帧内给出多次读数；合并到下一次绘制，既不丢弃细微转向，也不重复重画地图。
+  if (deviceHeadingFrame) return;
+  deviceHeadingFrame = requestAnimationFrame(() => {
+    deviceHeadingFrame = 0;
+    applyDeviceHeading();
+  });
 }
 function updateDeviceHeading(event) {
   latestOrientation = { alpha: event.alpha, webkitCompassHeading: event.webkitCompassHeading };
-  applyDeviceHeading();
+  scheduleDeviceHeading();
 }
 async function requestDeviceHeadingPermission() {
   const orientationEvent = globalThis.DeviceOrientationEvent;
@@ -127,10 +135,11 @@ const removeBackHandler = registerBackHandler(() => {
 });
 onBeforeUnmount(() => {
   removeBackHandler();
+  cancelAnimationFrame(deviceHeadingFrame);
   window.removeEventListener('deviceorientationabsolute', updateDeviceHeading, true);
   window.removeEventListener('deviceorientation', updateDeviceHeading, true);
-  window.removeEventListener('orientationchange', applyDeviceHeading, true);
-  window.screen?.orientation?.removeEventListener('change', applyDeviceHeading);
+  window.removeEventListener('orientationchange', scheduleDeviceHeading, true);
+  window.screen?.orientation?.removeEventListener('change', scheduleDeviceHeading);
 });
 function closeDetail() {
   detail.value = null;
@@ -195,8 +204,8 @@ async function applyActivityRoute() {
 onMounted(async () => {
   window.addEventListener('deviceorientationabsolute', updateDeviceHeading, true);
   window.addEventListener('deviceorientation', updateDeviceHeading, true);
-  window.addEventListener('orientationchange', applyDeviceHeading, true);
-  window.screen?.orientation?.addEventListener('change', applyDeviceHeading);
+  window.addEventListener('orientationchange', scheduleDeviceHeading, true);
+  window.screen?.orientation?.addEventListener('change', scheduleDeviceHeading);
   await applyActivityRoute();
 });
 watch(() => route.query.activity, applyActivityRoute);
