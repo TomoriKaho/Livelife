@@ -30,7 +30,7 @@ function invalidate() {
 const meshes = new Map(), selectable = [], raycaster = new THREE.Raycaster();
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 // 方向锥体保持低于蓝点截面，但底面接近蓝点直径，确保在三维场景中清晰可辨。
-const locationBlue = 0x4387bb, locationMarkerRadius = 4.5, headingConeBaseRadius = 3.8, headingConeLength = 13;
+const locationBlue = 0x4387bb, locationMarkerRadius = 4.5, headingConeBaseRadius = 3.8, headingConeLength = 13, headingConeSurfaceGap = .6;
 const initialTarget = new THREE.Vector3(...initialView.target);
 const initialCamera = initialTarget.clone().add(new THREE.Vector3(...initialView.offset));
 function shape(points) { return footprintShape(points); }
@@ -188,13 +188,20 @@ function updateDeviceLocation() {
   locationRing.geometry.dispose();
   locationRing.geometry = new THREE.CircleGeometry(accuracyRadius(location.accuracy), 48);
   if (Number.isFinite(location.heading)) {
-    headingCone.position.set(location.point[0], locationMarkerRadius, location.point[1]);
+    const headingRadians = location.heading * Math.PI / 180;
+    const surfaceOffset = locationMarkerRadius + headingConeSurfaceGap;
+    // 底面中心悬浮在航向一侧的球面外，避免锥体穿过蓝点。
+    headingCone.position.set(
+      location.point[0] + Math.sin(headingRadians) * surfaceOffset,
+      locationMarkerRadius,
+      location.point[1] - Math.cos(headingRadians) * surfaceOffset,
+    );
     headingCone.geometry.dispose();
     headingCone.geometry = new THREE.ConeGeometry(headingConeBaseRadius, headingConeLength, 16);
-    // 底面中心与蓝点球心重合，尖端沿北向（-z）短距离伸出；再随航向绕 y 轴旋转。
+    // 底面中心位于局部原点，尖端沿北向（-z）短距离伸出；再随航向绕 y 轴旋转。
     headingCone.geometry.translate(0, headingConeLength / 2, 0);
     headingCone.geometry.rotateX(-Math.PI / 2);
-    headingCone.geometry.rotateY(-location.heading * Math.PI / 180);
+    headingCone.geometry.rotateY(-headingRadians);
   }
   renderer.shadowMap.needsUpdate = true;
   invalidate();
