@@ -168,7 +168,8 @@ test('设备 WGS-84 位置投影到地图米制坐标并保留精度范围', () 
   assert.equal(accuracyRadius(0), 1);
   assert.equal(normalizeHeading(-90), 270);
   assert.equal(orientationHeading({ absolute: true, alpha: 270 }), 90);
-  assert.equal(orientationHeading({ alpha: 270 }), null);
+  assert.equal(orientationHeading({ alpha: 270 }), 90);
+  assert.equal(orientationHeading({ alpha: 60 }), 300);
   assert.equal(toDeviceMapLocation({ latitude: Number.NaN, longitude: 116.3, accuracy: 3 }), null);
 });
 test('本地校区资源完整，演示活动映射到实际 OSM 建筑且楼层合法', () => {

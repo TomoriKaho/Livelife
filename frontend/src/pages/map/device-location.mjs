@@ -21,5 +21,8 @@ export function normalizeHeading(heading) {
 export function orientationHeading(event) {
   const compassHeading = normalizeHeading(event?.webkitCompassHeading);
   if (compassHeading !== null) return compassHeading;
-  return event?.absolute ? normalizeHeading(360 - event.alpha) : null;
+  // Chromium DevTools and many Android browsers expose alpha without marking
+  // it absolute. It still represents a useful, continuously changing device
+  // direction when no calibrated compass heading is available.
+  return normalizeHeading(360 - event?.alpha);
 }
