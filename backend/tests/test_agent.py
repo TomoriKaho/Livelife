@@ -234,6 +234,48 @@ def test_chinese_information_retrieval_prefers_title_matches(sessions):
     assert results[0].citation(1)["source_url"] == "https://example.test/source"
 
 
+def test_follow_up_retrieval_uses_history_as_query_hint(sessions, monkeypatch):
+    config = settings()
+    created = create_session(sessions, config, "127.0.0.1")
+    first_id = uuid4()
+    begin_request(
+        sessions,
+        config,
+        token=created["session_token"],
+        content="二教101现在上什么课？",
+        client_request_id=first_id,
+        ip="127.0.0.1",
+    )
+    finish_request(
+        sessions,
+        config,
+        token=created["session_token"],
+        request_id=str(first_id),
+        answer="公开资料显示，二教101有《数据结构》课程。",
+        status="completed",
+        input_tokens=1,
+        output_tokens=1,
+        estimated_usage=False,
+    )
+    captured = {}
+
+    def fake_search(_session, query):
+        captured["query"] = query
+        return ()
+
+    monkeypatch.setattr("app.services.agent.service.search_information", fake_search)
+    begin_request(
+        sessions,
+        config,
+        token=created["session_token"],
+        content="这个课的老师是什么？",
+        client_request_id=uuid4(),
+        ip="127.0.0.1",
+    )
+    assert "数据结构" in captured["query"]
+    assert "这个课的老师是什么" in captured["query"]
+
+
 class _FakeStreamResponse:
     def __init__(self, lines=(), *, status_code=200, enter_error=None):
         self.lines = lines
@@ -303,6 +345,10 @@ async def test_model_stream_parses_text_and_usage(monkeypatch):
     ]
     assert fake.calls[0][0:2] == ("POST", "https://llm.example.test/v1/chat/completions")
     assert fake.calls[0][2]["json"]["stream"] is True
+    system_prompt = fake.calls[0][2]["json"]["messages"][0]["content"]
+    assert "校园信息助手" in system_prompt
+    assert "历史对话只帮助理解上下文" in system_prompt
+    assert "实时课表" in system_prompt
 
 
 @pytest.mark.anyio

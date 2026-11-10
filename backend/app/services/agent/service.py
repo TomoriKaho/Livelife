@@ -19,6 +19,25 @@ SESSION_TTL = timedelta(hours=24)
 REQUEST_WINDOW = timedelta(minutes=1)
 IP_WINDOW = timedelta(hours=1)
 ACTIVE_LEASE = timedelta(minutes=3)
+_FOLLOW_UP_MARKERS = (
+    "这个课",
+    "这门课",
+    "这节课",
+    "这个老师",
+    "这位老师",
+    "他是谁",
+    "她是谁",
+    "它的",
+    "这个活动",
+    "这个地点",
+    "这个呢",
+    "那它",
+    "那这个",
+)
+
+
+def _is_contextual_follow_up(content: str) -> bool:
+    return any(marker in content for marker in _FOLLOW_UP_MARKERS)
 
 
 class AgentError(RuntimeError):
@@ -188,9 +207,20 @@ def begin_request(
         if row.request_count >= settings.requests_per_minute:
             raise AgentError("session_rate_limited", 429, retry_after=60)
 
+        # Use prior dialogue only as a retrieval hint for explicit follow-ups. The
+        # model still receives this turn's newly retrieved public records as evidence.
+        completed = [
+            message
+            for message in messages
+            if message.get("status") == "completed" and message.get("role") in {"user", "assistant"}
+        ]
+        retrieval_query = content
+        if completed and _is_contextual_follow_up(content):
+            prior_context = " ".join(message.get("content", "") for message in completed[-2:])
+            retrieval_query = f"{prior_context} {content}"
         # Retrieval uses only public information records. A capped scan keeps the
         # synchronous repository query bounded until a dedicated search index exists.
-        sources = search_information(session, content)
+        sources = search_information(session, retrieval_query)
         context_chars = sum(len(source.content) for source in sources)
         if context_chars > settings.max_context_chars:
             sources = _limit_sources(sources, settings.max_context_chars)
@@ -200,9 +230,15 @@ def begin_request(
         user_id = str(uuid4())
         assistant_id = str(uuid4())
         estimate = (
-            0
-            if not sources
-            else (len(content) + context_chars + settings.max_output_tokens * 4) // 4
+            (
+                sum(len(message.get("content", "")) for message in messages[-8:])
+                + len(content)
+                + context_chars
+                + settings.max_output_tokens * 4
+            )
+            // 4
+            if settings.llm_configured
+            else 0
         )
         today = now.date()
         if row.usage_day != today:

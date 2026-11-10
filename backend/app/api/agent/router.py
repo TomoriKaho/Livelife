@@ -172,7 +172,7 @@ async def send_message(request: Request, payload: SendMessageRequest):
             yield _sse("citation", citation)
 
         try:
-            if not state["sources"]:
+            if not state["sources"] and not settings.llm_configured:
                 answer = "我目前没有找到足够的公开资料来回答这个问题。"
                 yield _sse("delta", {"text": answer})
             elif not settings.llm_configured:
@@ -192,7 +192,8 @@ async def send_message(request: Request, payload: SendMessageRequest):
                     raise AgentModelError("model_empty_response")
                 if estimated:
                     input_tokens = (
-                        len(payload.content) + sum(len(s.content) for s in state["sources"])
+                        sum(len(message["content"]) for message in state["history"])
+                        + sum(len(s.content) for s in state["sources"])
                     ) // 4
                     output_tokens = len(answer) // 4
 
