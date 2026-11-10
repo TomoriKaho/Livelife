@@ -66,9 +66,9 @@ onMounted(async () => {
   const result = await fetchProfile();
   if (result.ok) {
     profile.nickname = result.data.display_name || initialProfile.nickname;
-    profile.bio = result.data.bio || initialProfile.bio;
+    profile.bio = result.data.bio;
     Object.assign(profileDraft, profile);
-    if (result.data.interests.length) selectedInterests.value = [...result.data.interests];
+    selectedInterests.value = [...result.data.interests];
     return;
   }
   if (result.status === 401) { forgetSession('登录状态已失效，当前为界面预览。'); return; }
