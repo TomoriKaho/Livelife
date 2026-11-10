@@ -2,5 +2,6 @@
 
 from app.db.models.base import Base
 from app.db.models.information import InformationRecord
+from app.db.models.profile import UserInterest, UserProfile
 
-__all__ = ["Base", "InformationRecord"]
+__all__ = ["Base", "InformationRecord", "UserInterest", "UserProfile"]

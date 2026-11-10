@@ -329,7 +329,15 @@ def test_internal_information_services_do_not_add_http_routes():
     from app.main import app
 
     paths = set(app.openapi()["paths"])
-    assert paths == {"/test/hello", "/health/live", "/health/ready"}
+    # 期望集合只列已确认契约的对外路由（个人信息契约见
+    # backend/app/api/profile/API.md）；信息系统本身仍不得新增 HTTP 路由。
+    assert paths == {
+        "/test/hello",
+        "/health/live",
+        "/health/ready",
+        "/profile/interests",
+        "/profile/me",
+    }
 
 
 def test_record_remains_unique_after_repeated_ingestion(sessions):

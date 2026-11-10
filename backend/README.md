@@ -115,9 +115,14 @@ app/api/
 │   ├── __init__.py
 │   ├── router.py         # hello 连通性检查
 │   └── API.md
-└── health/
+├── health/
+│   ├── __init__.py
+│   ├── router.py         # 存活与数据库就绪检查
+│   └── API.md
+└── profile/
     ├── __init__.py
-    ├── router.py         # 存活与数据库就绪检查
+    ├── router.py         # 兴趣标签目录与当前用户资料
+    ├── deps.py           # 临时身份依赖，账户系统合并后替换
     └── API.md
 ```
 

@@ -7,9 +7,10 @@ export const pageMeta = {
 </script>
 
 <script setup>
-import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { registerBackHandler } from '../platform/android-navigation';
+import { fetchProfile, readAccessToken, updateProfile, writeAccessToken } from '../api/profile';
 import ElasticList from './agent/ElasticList.vue';
 import FavoritesList from './more/FavoritesList.vue';
 import { savedActivities, activityStatus } from '../data/favorites.js';
@@ -28,6 +29,8 @@ const HelloConnectionTest = showInternalTools
 
 const router = useRouter(), route = useRoute(), root = ref(null), pane = ref(route.query.pane === 'favorites' ? 'favorites' : 'home');
 const paneTrail = [];
+// 会话令牌由账户系统（#65）写入；没有令牌时整页保持界面预览，不发起资料请求。
+const hasSession = ref(Boolean(readAccessToken()));
 const profile = reactive({ ...initialProfile }), profileDraft = reactive({ ...initialProfile });
 const selectedInterests = ref([...initialInterests]);
 const pickedInterests = computed(() => interests.filter(item => selectedInterests.value.includes(item.id)));
@@ -53,12 +56,55 @@ const removeNativeBack = registerBackHandler(() => {
   return true;
 });
 onBeforeUnmount(removeNativeBack);
-function saveProfile() {
-  if (!profileDraft.nickname.trim()) return;
-  Object.assign(profile, profileDraft, { nickname: profileDraft.nickname.trim(), bio: profileDraft.bio.trim() });
-  paneTrail.length = 0; pane.value = 'home'; notify('资料已保存');
+function forgetSession(message) {
+  hasSession.value = false;
+  writeAccessToken(null);
+  notify(message);
 }
-function saveInterests(value) { selectedInterests.value = [...value.selected]; prefs.personalized = value.personalized; recommendationMode.value = value.mode; paneTrail.length = 0; pane.value = 'home'; notify('兴趣与推荐设置已保存'); }
+onMounted(async () => {
+  if (!hasSession.value) return;
+  const result = await fetchProfile();
+  if (result.ok) {
+    profile.nickname = result.data.display_name || initialProfile.nickname;
+    profile.bio = result.data.bio || initialProfile.bio;
+    Object.assign(profileDraft, profile);
+    if (result.data.interests.length) selectedInterests.value = [...result.data.interests];
+    return;
+  }
+  if (result.status === 401) { forgetSession('登录状态已失效，当前为界面预览。'); return; }
+  notify(result.error);
+});
+async function saveProfile() {
+  if (!profileDraft.nickname.trim()) return;
+  const draft = { ...profileDraft, nickname: profileDraft.nickname.trim(), bio: profileDraft.bio.trim() };
+  if (hasSession.value) {
+    const result = await updateProfile({ display_name: draft.nickname, bio: draft.bio });
+    if (!result.ok) {
+      if (result.status === 401) forgetSession('登录状态已失效，请重新登录后再保存。');
+      else notify(result.error);
+      return;
+    }
+    Object.assign(profile, draft, { nickname: result.data.display_name, bio: result.data.bio });
+  } else {
+    Object.assign(profile, draft);
+  }
+  paneTrail.length = 0; pane.value = 'home';
+  notify(hasSession.value ? '资料已保存' : '已保存到界面（未登录，仅本页有效）');
+}
+async function saveInterests(value) {
+  if (hasSession.value) {
+    const result = await updateProfile({ interests: value.selected });
+    if (!result.ok) {
+      if (result.status === 401) forgetSession('登录状态已失效，请重新登录后再保存。');
+      else notify(result.error);
+      return;
+    }
+    selectedInterests.value = [...result.data.interests];
+  } else {
+    selectedInterests.value = [...value.selected];
+  }
+  prefs.personalized = value.personalized; recommendationMode.value = value.mode; paneTrail.length = 0; pane.value = 'home'; notify('兴趣与推荐设置已保存');
+}
 function savePassword() {
   if (!password.value || !confirmPassword.value) return;
   if (password.value !== confirmPassword.value) { notify('两次输入的密码不一致'); return; }
