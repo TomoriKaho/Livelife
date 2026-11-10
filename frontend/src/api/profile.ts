@@ -4,6 +4,8 @@
  */
 import { readAuthToken, writeAuthToken } from './auth';
 import { getApiBaseUrl } from '../platform/web';
+import { checkAndroidStatus } from '../platform/android-config';
+import { previewState } from '../platform/runtime-config';
 import type { InterestTag, Profile } from '../types';
 
 const REQUEST_TIMEOUT = 10_000;
@@ -29,6 +31,14 @@ async function request<T>(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
   try {
+    try { await checkAndroidStatus(); }
+    catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : '无法确认安装包状态，请联网重试。' };
+    }
+    const expectedConfig = previewState.enabled ? previewState.config : null;
+    if (previewState.enabled && !expectedConfig) {
+      return { ok: false, error: previewState.error || '测试配置不可用，请先重新读取配置。' };
+    }
     const baseUrl = getApiBaseUrl().replace(/\/+$/, '');
     const headers: Record<string, string> = {
       Accept: 'application/json',
@@ -36,6 +46,11 @@ async function request<T>(
     };
     if (token) headers.Authorization = `Bearer ${token}`;
     const resp = await fetch(`${baseUrl}${path}`, { ...init, headers, signal: controller.signal });
+    const responseSha = resp.headers.get('X-Livelife-Backend-SHA');
+    if (expectedConfig && (responseSha === null || !/^[0-9a-f]{40}$/.test(responseSha)
+      || (expectedConfig.backend_mode !== 'staging' && responseSha !== expectedConfig.backend_sha))) {
+      return { ok: false, error: '响应后端版本与测试配置不符，请刷新配置并检查部署状态。' };
+    }
     if (resp.status === 401) return { ok: false, error: '登录状态已失效，请重新登录。', status: 401 };
     if (resp.status === 503) return { ok: false, error: '后端数据库未配置，资料暂时不可用。', status: 503 };
     if (resp.status === 400 || resp.status === 422) {
