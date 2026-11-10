@@ -17,11 +17,15 @@ export type LocationResult =
 
 export type CurrentLocationOptions = Pick<PositionOptions, 'enableHighAccuracy' | 'timeout' | 'maximumAge'>;
 
+type PositionLike = Pick<Position, 'timestamp'> & {
+  coords: Pick<Position['coords'], 'latitude' | 'longitude' | 'accuracy'>;
+};
+
 /** The plugin surface used by the requester; the optional argument makes behavior testable. */
 export interface LocationProvider {
   checkPermissions(): Promise<PermissionStatus>;
   requestPermissions(): Promise<PermissionStatus>;
-  getCurrentPosition(options?: PositionOptions): Promise<Position>;
+  getCurrentPosition(options?: PositionOptions): Promise<PositionLike>;
 }
 
 export const defaultCurrentLocationOptions: Required<CurrentLocationOptions> = {
@@ -44,7 +48,7 @@ function mapError(error: unknown): LocationErrorCode {
   return 'unavailable';
 }
 
-function toLocation(position: Position): CurrentLocation | null {
+function toLocation(position: PositionLike): CurrentLocation | null {
   const { latitude, longitude, accuracy } = position.coords;
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !Number.isFinite(accuracy) || accuracy < 0
     || !Number.isFinite(position.timestamp)) return null;
@@ -55,6 +59,12 @@ function platformSupportsLocation(provider: LocationProvider) {
   if (provider !== Geolocation) return true;
   return Capacitor.isNativePlatform()
     || (typeof navigator !== 'undefined' && 'geolocation' in navigator);
+}
+
+function browserPosition(options: PositionOptions): Promise<PositionLike> {
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, options);
+  });
 }
 
 /**
@@ -70,6 +80,14 @@ export async function getCurrentLocation(
   if (!platformSupportsLocation(provider)) return { status: 'error', error: 'unsupported' };
 
   try {
+    // Capacitor's Web implementation intentionally leaves requestPermissions()
+    // unimplemented. The standard browser call both prompts and obtains one
+    // foreground position, while native containers retain the plugin path.
+    if (provider === Geolocation && !Capacitor.isNativePlatform()) {
+      const location = toLocation(await browserPosition({ ...defaultCurrentLocationOptions, ...options }));
+      return location ? { status: 'success', location } : { status: 'error', error: 'unavailable' };
+    }
+
     let permission = await provider.checkPermissions();
     if (!permissionGranted(permission)) permission = await provider.requestPermissions();
     if (!permissionGranted(permission)) return { status: 'error', error: 'permission-denied' };

@@ -25,6 +25,22 @@ test('reports unsupported before calling the default plugin outside a location-c
   assert.deepEqual(await getCurrentLocation(), { status: 'error', error: 'unsupported' });
 });
 
+test('uses the browser geolocation API to prompt for and obtain a web position', async () => {
+  const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const calls = [];
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: { geolocation: { getCurrentPosition(resolve, reject, options) { calls.push(options); resolve(position); } } },
+  });
+  try {
+    assert.deepEqual(await getCurrentLocation(), { status: 'success', location: { latitude: 39.991, longitude: 116.304, accuracy: 12.5, timestamp: 1_700_000_000_000 } });
+    assert.deepEqual(calls, [defaultCurrentLocationOptions]);
+  } finally {
+    if (originalNavigator) Object.defineProperty(globalThis, 'navigator', originalNavigator);
+    else delete globalThis.navigator;
+  }
+});
+
 test('requests permission once and returns a minimal current location', async () => {
   const api = provider({ check: prompt });
   const result = await getCurrentLocation({}, api);
