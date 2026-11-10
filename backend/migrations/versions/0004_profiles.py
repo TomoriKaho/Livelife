@@ -3,11 +3,8 @@
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0002_profiles"
-# #65（PR #68）合入 main 后：该分支已含 0002_accounts 与 0002_agent_sessions，
-# 再由 0003_merge_account_agent 合并两条 head。届时把本文件与 revision 改名为
-# 0004_profiles，并将 down_revision 改为 "0003_merge_account_agent"，避免第三个 head。
-down_revision = "0001_information"
+revision = "0004_profiles"
+down_revision = "0003_merge_account_agent"
 branch_labels = None
 depends_on = None
 
@@ -19,6 +16,7 @@ def upgrade() -> None:
         sa.Column("display_name", sa.String(32), nullable=False),
         sa.Column("bio", sa.String(200), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("user_id"),
     )
     op.create_table(

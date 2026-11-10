@@ -2,7 +2,7 @@
 
 基址使用后端 API 基址，不含部署前缀。本模块维护兴趣标签目录，以及当前登录用户的资料读取与更新；成功及错误响应遵循 FastAPI 的 JSON 结构，不增加统一响应包裹。
 
-身份说明：`GET /profile/me` 与 `PATCH /profile/me` 使用 `Authorization: Bearer <access_token>`。当前身份依赖是 [deps.py](deps.py) 中的临时实现（由 Bearer 令牌摘要派生稳定用户标识），只用于在账户系统合并前保持路由、契约与前端调用稳定。账户系统（#65）合入 main 后，该文件整体替换为真实登录校验，并把 `user_profiles.user_id` 补到 `users.id` 外键；替换前不得用于正式环境。
+身份说明：`GET /profile/me` 与 `PATCH /profile/me` 使用 `Authorization: Bearer <access_token>`，令牌由[账户与认证 API](../accounts/API.md)签发。[deps.py](deps.py) 复用账户模块的 `get_current_user` 完成会话校验并返回用户标识，缺少、撤销或过期会话返回 401；`user_profiles.user_id` 通过 `0004_profiles` 迁移关联 `users.id`（级联删除）。
 
 ## `GET /profile/interests`
 

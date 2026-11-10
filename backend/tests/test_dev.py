@@ -109,7 +109,11 @@ def test_real_local_postgresql_migrates_persists_and_stops(request, tmp_path):
             with database.engine.connect() as connection:
                 assert connection.scalar(text("SELECT version()")).startswith("PostgreSQL")
                 assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-                    "0001_information"
+                    "0003_merge_account_agent"
+                )
+                assert connection.scalar(text("SELECT to_regclass('public.users') IS NOT NULL"))
+                assert connection.scalar(
+                    text("SELECT to_regclass('public.agent_sessions') IS NOT NULL")
                 )
             with database.session_factory() as session:
                 saved = InformationAggregator(session).ingest(

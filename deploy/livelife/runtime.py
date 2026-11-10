@@ -51,19 +51,24 @@ class Runtime:
         request = {"op": "ensure", "instance": ident, "sha": commit, "port": port}
         if bundle is not None:
             request.update(bundle=base64.b64encode(bundle).decode(), digest=hashlib.sha256(bundle).hexdigest())
-        self.rpc(request)
+        policy = self.rpc(request)
         remote = f"{self.config['course_user']}@{self.config['course_host']}"
         command = self.ssh() + ["-N", "-L", f"127.0.0.1:{self.tunnel_port(port)}:127.0.0.1:{port}", remote]
         self.supervisor.configure(ident, shlex.join(command), self.root)
-        self.health(port)
+        self.health(port, policy=policy)
 
     def ensure_built(self, ident, commit, port, job):
         self.rpc({'op': 'ensure', 'instance': instance(ident), 'sha': commit, 'port': port, 'job': job})
         # Standard ensure now recovers the already installed tested release.
         self.ensure(ident, commit, port, None)
 
-    def health(self, port):
-        check_health(self.tunnel_port(port))
+    def health(self, port, *, policy=None):
+        if policy is None:
+            policy = self.rpc({"op": "health_policy", "port": port})
+        mode = policy.get("runtime_mode")
+        if mode not in ("legacy", "postgres-v1"):
+            raise ValueError("missing or unsupported preview health policy")
+        check_health(self.tunnel_port(port), require_database=mode == "postgres-v1")
 
     def remove(self, ident, port):
         instance(ident)

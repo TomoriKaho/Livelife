@@ -1,6 +1,6 @@
 # 后端开发
 
-后端使用 FastAPI 和 Pydantic，采用模块化单体。当前提供 `GET /test/hello` 连通性接口、存活与数据库就绪检查，以及[通用信息系统](app/services/content/README.md)的内部采集协议、持久化与查询服务。信息系统尚未接入真实平台或前端；无业务登录。HTTP 契约见[连通性检查 API](app/api/demo/API.md)和[健康检查 API](app/api/health/API.md)，共享约定与接口索引见[API 入口](../docs/api.md)，整体技术路线见[架构说明](../docs/architecture.md)。
+后端使用 FastAPI 和 Pydantic，采用模块化单体。当前提供 `GET /test/hello`、存活与数据库就绪检查、[校园邮箱账号与会话 API](app/api/accounts/API.md)、[Agent 对话 API](app/api/agent/API.md)，以及[通用信息系统](app/services/content/README.md)的内部采集协议、持久化与查询服务。Agent 模型调用只有在环境提供凭证后可用；信息系统尚未接入真实采集平台。HTTP 契约见[连通性检查 API](app/api/demo/API.md)、[健康检查 API](app/api/health/API.md)、[账户与认证 API](app/api/accounts/API.md)和[Agent API](app/api/agent/API.md)，共享约定与接口索引见[API 入口](../docs/api.md)，整体技术路线见[架构说明](../docs/architecture.md)。
 
 ## 后端安装、启动与检查
 
@@ -36,9 +36,11 @@ uv run ruff format --check .
 uv lock --check
 ```
 
+已安装依赖且不需要改动依赖时，也可直接使用虚拟环境运行检查：Windows PowerShell 执行 `.venv\Scripts\python.exe -m pytest`、`.venv\Scripts\ruff.exe check .` 和 `.venv\Scripts\ruff.exe format --check .`；macOS/Linux 对应执行 `.venv/bin/python -m pytest`、`.venv/bin/ruff check .` 和 `.venv/bin/ruff format --check .`。这样即使 `uv` 未加入 PATH，也能复用已准备好的环境。
+
 测试默认把临时数据库放在 `backend/.pytest_cache/tmp/` 下，每次运行使用独立子目录，避免 Windows 全局 `Temp/pytest-of-<用户名>` 的权限问题及并行运行互相清理。该目录已被 Git 忽略，测试产物会保留在对应子目录中供排查。显式传入 `--basetemp` 或设置 `PYTEST_DEBUG_TEMPROOT` 时沿用调用方的配置。
 
-测试覆盖 hello、CORS、健康检查、开发启动流程，以及信息系统的迁移、持久化、批次回滚、幂等和查询。默认测试使用 SQLite 和模拟异常，不启动 PostgreSQL；另检查 PostgreSQL 离线迁移 SQL。可用 `uv run --locked --group local-db pytest --local-postgres` 验证真实本地 PostgreSQL 的迁移、写入、重启保留与进程停止；真实并发和渠道接入另行验证。专项步骤见[信息系统](app/services/content/README.md#迁移验证与回滚)。
+测试覆盖账号验证码、注册登录、会话撤销与有效期、Agent 匿名会话与流式对话、hello、CORS、健康检查、开发启动，以及信息系统的迁移和数据行为。默认测试使用独立 SQLite，不启动 PostgreSQL；另检查 PostgreSQL 离线迁移 SQL。可用 `uv run --locked --group local-db pytest --local-postgres` 验证真实本地 PostgreSQL 的迁移、写入、重启保留与进程停止。账号 SMTP 使用测试替身；真实 SMTP 投递需在目标环境配置并单独验收。
 
 ## CORS 与浏览器联调
 
@@ -47,7 +49,7 @@ uv lock --check
 - `http://localhost` 和 `http://127.0.0.1` 的 5173、8765、8766 端口；
 - Android / Capacitor 原生来源 `https://localhost`。
 
-仅允许 GET 和 Accept 请求头，暴露 `X-Livelife-Backend-SHA` 响应头。该版本头由测试部署网关注入，本地 Uvicorn 不自动生成。Origin 的协议、主机和端口必须完全匹配；自定义前端端口或手机局域网网页需明确添加对应来源。`curl` 成功不等于浏览器 CORS 已通过。
+允许 GET、POST、OPTIONS 和 Accept、Authorization、Content-Type 请求头，暴露 `X-Livelife-Backend-SHA` 响应头。该版本头由测试部署网关注入，本地 Uvicorn 不自动生成。Origin 的协议、主机和端口必须完全匹配；自定义前端端口或手机局域网网页需明确添加对应来源。`curl` 成功不等于浏览器 CORS 已通过。
 
 前端地址配置和界面操作见[前端联调教程](../frontend/README.md#api-地址与联调)。公网预览通过同源网关访问 API，路由前缀、版本头和环境配对由[部署文档](../docs/deployment.md#api-地址与前端关联)维护。
 
@@ -63,7 +65,7 @@ Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue
 uv run --locked --group local-db python -m app.dev --port 18000 --reload
 ```
 
-`local-db` 依赖组固定 `pgembed==0.2.0`，由 uv 下载并校验锁文件中的平台安装包；包内带真正的 PostgreSQL 程序，不替换为 SQLite，也不安装 Windows 系统服务。普通 API 和部署依赖不包含该组。当前安装包覆盖 Python 3.12 的 Windows x64、Linux x64/ARM64 和 macOS 15+ ARM64；其他平台使用下节的独立 PostgreSQL。安装包来源与平台列表见 [pgembed](https://pypi.org/project/pgembed/0.2.0/)。
+`local-db` 依赖组固定 `pgembed==0.2.0`，由 uv 下载并校验锁文件中的平台安装包；包内带真正的 PostgreSQL 程序，不替换为 SQLite，也不安装 Windows 系统服务。普通 API 依赖不包含该组；预览部署在控制 venv 单独安装固定 pgembed，见[部署说明](../deploy/README.md#预览数据库与启动门禁)。当前安装包覆盖 Python 3.12 的 Windows x64、Linux x64/ARM64 和 macOS 15+ ARM64；其他平台使用下节的独立 PostgreSQL。安装包来源与平台列表见 [pgembed](https://pypi.org/project/pgembed/0.2.0/)。
 
 首次启动创建独立 PostgreSQL 集群及 `livelife` 数据库，自动执行 `alembic upgrade head`；之后复用已有数据并补齐新迁移。程序位于 `.venv` 的依赖包内，数据和数据库日志位于 `backend/.local/postgres/`，均已被 Git 忽略。迁移失败会中止 API 启动并清理数据库进程，不报告虚假的就绪状态。`--reload` 只重启 API 子进程，父进程保持数据库运行。
 
@@ -91,19 +93,45 @@ curl -i http://127.0.0.1:8000/health/live
 curl -i http://127.0.0.1:8000/health/ready
 ```
 
-存活检查不访问数据库；就绪检查执行 `SELECT 1`，仅验证连接，不验证业务表或迁移状态。响应和失败行为见[健康检查契约](app/api/health/API.md#健康检查)。现有自动部署仍通过 hello 检查服务，部署启用状态见[部署入口](../docs/deployment.md#当前实施状态)。
+存活检查不访问数据库；就绪检查执行 `SELECT 1`，仅验证连接，不验证业务表或迁移状态。响应和失败行为见[健康检查契约](app/api/health/API.md#健康检查)。新的[预览部署启动器](../deploy/README.md#预览数据库与启动门禁)在 API 启动前还执行迁移和业务表校验，发布同时要求 hello 及就绪检查通过；服务器控制程序升级与实际启用状态见[部署入口](../docs/deployment.md#当前实施状态)。
 
-已提供 `migrations/`、Alembic 环境和首个信息表迁移。独立数据库需要设置 `DATABASE_URL` 后，在 backend 目录手动执行 `uv run alembic upgrade head` 和 `uv run alembic current`；开发入口只对自动管理的本地库执行升级。迁移、使用和会删除信息数据的回退操作见[信息系统说明](app/services/content/README.md#迁移验证与回滚)。连接就绪检查仍只执行 `SELECT 1`，不验证迁移版本。
+已提供 `migrations/`、Alembic 环境和信息、账户及 Agent 迁移。标准 Uvicorn 入口连接的独立数据库需要设置 `DATABASE_URL` 后，在 backend 目录手动执行 `uv run alembic upgrade head` 和 `uv run alembic current`；开发入口只对自动管理的本地库执行升级。预览部署的自动迁移仅针对其按 SHA 隔离的测试库，不迁移外部或正式库。账户降级会删除用户、验证码与会话数据，Agent 降级会删除匿名会话；执行前先备份并核对目标库。
+
+账号接口还需要在后端进程环境设置 `SMTP_HOST`、`SMTP_PORT`、`SMTP_FROM`；需要认证时设置 `SMTP_USERNAME`、`SMTP_PASSWORD`。默认端口 587 使用 STARTTLS，端口 465 使用 SMTP SSL。SMTP 密码只由部署密钥配置注入，不写入仓库、前端变量或日志。共享/部署数据库须先执行 `uv run alembic upgrade head` 并检查 `uv run alembic current`，再启用账号 API；SMTP 配置不自动注入；预览数据库自动迁移的实现与服务器启用步骤见[部署说明](../deploy/README.md#预览数据库与启动门禁)。缺少 SMTP 配置时验证码发送返回 503。
+
+### 临时内置测试账号
+
+尚未配置 SMTP 时，在登录页让邮箱和密码都留空，点击“登录并进入”，后端会创建并复用 `builtin-test@livelife.invalid`，签发正常会话；刷新、记住登录及退出仍走账户接口。需要后端和已完成迁移的数据库，不需要验证码或邮件服务，不新增数据库迁移。所有测试登录共享这个普通用户，不能用它存放私人数据；只填写一项或普通密码错误不会进入测试账号，注册仍需验证码。
+
+`AUTH_TEST_LOGIN_ENABLED` 默认 `true`，正式环境在后端进程中设为 `false` 关闭入口；现有测试会话需退出或等待过期，关闭配置本身不撤销令牌。接口行为见[账户契约](app/api/accounts/API.md#post-authlogin)。
+
+### Agent 服务配置
+
+Agent 默认关闭模型请求，直到提供服务端密钥。开发时在后端进程环境设置：
+
+```powershell
+$env:AGENT_SESSION_SECRET = '<至少 32 字节随机值>'
+$env:AGENT_LLM_BASE_URL = 'https://api.example.com/v1'
+$env:AGENT_LLM_API_KEY = '<服务端密钥>'
+$env:AGENT_LLM_MODEL = '<兼容模型名>'
+uv run --locked --group local-db python -m app.dev --port 18000 --reload
+```
+
+不要把这些变量写进前端 `.env` 或提交到仓库。自建兼容端点也可填写对应服务地址；用户问题、有限对话上下文和命中的公开信息片段会发送给模型服务。会话和 token 使用统计写入 PostgreSQL，24 小时后过期；无需额外 Redis。
+
+限制项及默认值：`AGENT_LLM_TIMEOUT_SECONDS=60`、`AGENT_LLM_MAX_OUTPUT_TOKENS=1024`、`AGENT_MAX_MESSAGE_CHARS=4000`、`AGENT_MAX_CONTEXT_CHARS=24000`、`AGENT_RATE_REQUESTS_PER_WINDOW=5`、`AGENT_IP_REQUESTS_PER_HOUR=30`、`AGENT_DAILY_TOKEN_QUOTA=100000`。每个会话固定只允许一个活跃模型请求，以保持单表状态简单。频率和 token 窗口按 UTC 计；token 用量优先使用模型返回值，缺失时按字符数估算。每日额度按匿名会话计，不代表供应商结算账单。
+
+数据库迁移由本地开发入口自动执行。独立数据库先设置 `DATABASE_URL`，再运行 `uv run alembic upgrade head`。Agent 契约、SSE 事件和错误码见[Agent API](app/api/agent/API.md)。限流 IP 使用 Uvicorn 仅对可信代理解析后的 `request.client.host`；部署代理变化时先核对可信代理配置，不在应用层直接采信 `X-Forwarded-For`。
 
 ## 目录职责与请求处理
 
-- `app/main.py`：创建应用、生命周期和 CORS；`app/api/router.py`：统一注册 hello 和健康检查 router。
-- `app/dev.py`、`app/db/local.py`：本地开发启动入口、专属 PostgreSQL 生命周期和自动迁移；部署仍使用 `app.main:app`。
-- `app/api/`：按模块组织路由包，模块内的 `router.py` 处理 HTTP 路径、参数校验、依赖注入和响应映射，`API.md` 维护契约；`app/schemas/`：Pydantic 请求与响应模型。
+- `app/main.py`：创建应用、生命周期和 CORS；`app/api/router.py`：统一注册账号、Agent、hello 和健康检查 router。
+- `app/dev.py`、`app/db/local.py`：本地开发启动入口、专属 PostgreSQL 生命周期和自动迁移；预览受信启动器准备测试库后仍运行 `app.main:app`。
+- `app/api/`：按模块组织路由包，`accounts/` 提供校园邮箱注册、登录、登出和当前用户查询，`agent/` 提供匿名会话与对话；模块 `API.md` 维护契约；`app/schemas/`：Pydantic 请求与响应模型。
 - `app/core/`：配置；`app/db/`：Engine、Session 工厂、UTC 时间类型及请求依赖；`app/db/models/`：共享 ORM Base 与信息模型。
 - `app/services/`：按业务域组织服务用例，`content/` 实现信息汇总和提供，`ingestion/` 定义信源适配协议；`app/repositories/sql/`：集中信息查询与原子写入。
 - `alembic.ini`、`migrations/`：迁移配置、环境与版本脚本，导入完整模型 metadata。
-- `tests/`：接口、CORS、健康检查、信息服务与迁移行为测试。
+- `tests/`：账号与会话、接口、CORS、健康检查、信息服务和迁移测试。
 
 当前已实现的路由模块如下；`demo` 是代码模块名，对外路径仍为 `/test/hello`：
 
@@ -111,6 +139,12 @@ curl -i http://127.0.0.1:8000/health/ready
 app/api/
 ├── __init__.py
 ├── router.py             # 汇总注册各模块 router
+├── accounts/
+│   ├── router.py         # 校园邮箱认证接口
+│   └── API.md
+├── agent/
+│   ├── router.py         # 匿名会话与 Agent 对话
+│   └── API.md
 ├── demo/
 │   ├── __init__.py
 │   ├── router.py         # hello 连通性检查
@@ -122,9 +156,11 @@ app/api/
 └── profile/
     ├── __init__.py
     ├── router.py         # 兴趣标签目录与当前用户资料
-    ├── deps.py           # 临时身份依赖，账户系统合并后替换
+    ├── deps.py           # 复用账户模块的真实登录态
     └── API.md
 ```
+
+Agent 路由位于 `app/api/agent/`，会话和模型服务位于 `app/services/agent/`；相关短期会话与 IP 限额表通过 Alembic 管理。
 
 需要数据库的路由通过 `app/db/dependencies.py` 的 `get_session` 获取 Session；未配置时返回 HTTP 503。依赖在请求结束时关闭 Session，不负责提交事务。后续业务用例显式接收 Session，并负责提交或回滚；repository 只执行数据操作，不提交事务。
 

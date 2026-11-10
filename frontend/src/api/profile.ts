@@ -2,10 +2,10 @@
  * 个人资料与兴趣标签请求：GET /profile/interests、GET /profile/me、PATCH /profile/me。
  * 服务端契约见 backend/app/api/profile/API.md；客户端行为见本目录 README.md。
  */
+import { readAuthToken, writeAuthToken } from './auth';
 import { getApiBaseUrl } from '../platform/web';
 import type { InterestTag, Profile } from '../types';
 
-const ACCESS_TOKEN_KEY = 'livelife.access_token';
 const REQUEST_TIMEOUT = 10_000;
 
 /** 成功返回数据；失败返回可显示原因，status 用于区分未登录与其它错误。 */
@@ -13,16 +13,12 @@ export type ProfileResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string; status?: number };
 
-/** 读取本地会话令牌；“记住登录”写 localStorage，否则写 sessionStorage。 */
-export function readAccessToken(): string | null {
-  return window.localStorage.getItem(ACCESS_TOKEN_KEY) ?? window.sessionStorage.getItem(ACCESS_TOKEN_KEY);
-}
+/** 读取本地会话令牌；与账户模块共用 `livelife.auth.token`，不另存一套。 */
+export const readAccessToken = readAuthToken;
 
-/** 保存或清除本地会话令牌；令牌来自账户系统（#65）的登录响应。 */
+/** 清除或写入本地会话令牌（与账户模块同一存储键）。 */
 export function writeAccessToken(token: string | null, remember = false): void {
-  window.localStorage.removeItem(ACCESS_TOKEN_KEY);
-  window.sessionStorage.removeItem(ACCESS_TOKEN_KEY);
-  if (token) (remember ? window.localStorage : window.sessionStorage).setItem(ACCESS_TOKEN_KEY, token);
+  writeAuthToken(token, remember);
 }
 
 async function request<T>(

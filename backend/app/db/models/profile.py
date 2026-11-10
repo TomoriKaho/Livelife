@@ -13,7 +13,9 @@ class UserProfile(Base):
 
     __tablename__ = "user_profiles"
 
-    user_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
     display_name: Mapped[str] = mapped_column(String(32))
     bio: Mapped[str] = mapped_column(String(200))
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime())

@@ -1,7 +1,10 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.router import router as api_router
 from app.db.session import Database
@@ -31,12 +34,22 @@ def create_app() -> FastAPI:
             "http://localhost:8766",
             "http://127.0.0.1:8766",
         ],
-        allow_methods=["GET", "PATCH"],
+        allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
         allow_headers=["Accept", "Authorization", "Content-Type"],
         expose_headers=["X-Livelife-Backend-SHA"],
     )
 
     app.include_router(api_router)
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_response(
+        _request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        errors = [
+            {key: value for key, value in error.items() if key != "input"} for error in exc.errors()
+        ]
+        return JSONResponse(status_code=422, content=jsonable_encoder({"detail": errors}))
+
     return app
 
 

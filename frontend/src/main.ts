@@ -7,11 +7,13 @@ import { Capacitor } from '@capacitor/core';
 import { loadAndroidConfig } from './platform/android-config';
 import { setupAndroidNavigation } from './platform/android-navigation';
 import { loadPreviewConfig } from './platform/runtime-config';
+import { restoreSession } from './api/auth';
 
 // Configuration errors leave demo pages usable; the real API test stays disabled.
 const configReady = Capacitor.isNativePlatform() && import.meta.env.VITE_ANDROID_TEST === 'true'
   ? loadAndroidConfig() : loadPreviewConfig();
-configReady.then(() => {
+configReady.then(async () => {
+  await restoreSession();
   document.documentElement.dataset.sketchTheme ||= 'default';
   const app = createApp(App).use(router).use(createSketchPlugin());
   app.mount('#app');

@@ -39,6 +39,11 @@ function stop() {
   scroll?.stop();
   scroll?.resetPosition(motion?.matches ? 0 : 800);
 }
+function scrollToBottom() {
+  if (!scroll) return;
+  scroll.refresh();
+  scroll.scrollTo(0, scroll.maxScrollY, motion?.matches ? 0 : 240);
+}
 function keyboard(event) {
   if (event.target !== viewport.value || !scroll || event.ctrlKey || event.metaKey || event.altKey) return;
   const page = viewport.value.clientHeight * .85;
@@ -80,7 +85,7 @@ onBeforeUnmount(() => {
   motion?.removeEventListener('change', createScroll);
   scroll?.destroy();
 });
-defineExpose({ stop });
+defineExpose({ stop, refresh, scrollToBottom });
 </script>
 
 <template>

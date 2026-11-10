@@ -329,12 +329,23 @@ def test_internal_information_services_do_not_add_http_routes():
     from app.main import app
 
     paths = set(app.openapi()["paths"])
-    # 期望集合只列已确认契约的对外路由（个人信息契约见
+    # 期望集合只列已确认契约的对外路由（账户见 backend/app/api/accounts/API.md，
+    # Agent 见 backend/app/api/agent/API.md，个人资料见
     # backend/app/api/profile/API.md）；信息系统本身仍不得新增 HTTP 路由。
     assert paths == {
         "/test/hello",
         "/health/live",
         "/health/ready",
+        "/agent/sessions",
+        "/agent/sessions/current",
+        "/agent/sessions/close",
+        "/agent/messages/stream",
+        "/agent/messages/{message_id}/rating",
+        "/auth/email-codes",
+        "/auth/register",
+        "/auth/login",
+        "/auth/me",
+        "/auth/logout",
         "/profile/interests",
         "/profile/me",
     }

@@ -13,7 +13,17 @@ deploy/.venv/bin/python -m unittest discover -s deploy/tests -v
 deploy/.venv/bin/ruff check deploy
 ```
 
-Python 3.12，控制工具使用标准库和固定版本 Supervisor；验证场景见[测试说明](#回归范围)。
+Python 3.12，控制工具使用标准库和固定版本 Supervisor，预览数据库另用固定 pgembed；验证场景见[测试说明](#回归范围)。
+
+新增预览数据库的普通测试在 `test_backend_runtime.py`，不需要 PostgreSQL。真实生命周期测试在普通 Linux 用户下显式启用，先在独立测试 venv 安装仓库锁定的后端依赖及 `local-db` 组、`supervisor==4.3.0`，然后从仓库根目录执行：
+
+`test_runtime_compatibility.py` 覆盖旧 release 配置不被恢复操作改写、显式管理员 opt-in、新产物标记持久化、无标记历史产物保持 legacy、未知模式拒绝，以及公网 ensure 和全新控制进程的独立健康策略查询。
+
+```bash
+LIVELIFE_PREVIEW_DB_INTEGRATION=1 <测试venv>/bin/python -m unittest discover -s deploy/tests -p test_backend_runtime.py -v
+```
+
+该测试只用临时目录、可用的预览端口及真实 PostgreSQL：验证空白登录、正常停止后数据库退出、同 SHA 重启保留账号/令牌，以及迁移记录正确但 ORM 列缺失时拒绝启动 API。普通测试另覆盖不同 SHA 的目录/密钥隔离、迁移失败清理、hello 成功但数据库未就绪时拒绝发布，以及回收 release 后保留数据。不要使用正式数据库或 root 用户运行；Linux 完整部署测试不能用 Windows 的部分测试结果替代。
 
 ## 回归范围
 

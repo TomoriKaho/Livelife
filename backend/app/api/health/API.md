@@ -15,4 +15,4 @@
 | `GET /health/ready` | 数据库连接或查询触发 SQLAlchemy 异常 | 503 | `{"status":"not_ready","database":"unavailable"}` |
 | `GET /health/ready` | 数据库 `SELECT 1` 成功 | 200 | `{"status":"ok","database":"connected"}` |
 
-就绪成功仅表示连接可用，不代表业务表、迁移或业务功能就绪。未配置数据库时 hello 仍可调用；当前部署探针仍使用 hello。配置、调用命令和迁移限制见[后端说明](../../../README.md#数据库配置与健康检查)。
+就绪成功仅表示连接可用，不代表业务表、迁移或业务功能就绪。未配置数据库时 hello 仍可调用；新的预览启动器在启动 API 前另核对 Alembic heads 及全部 ORM 表列，发布探针要求 hello 和本接口均成功。该启动器需要升级服务器控制程序后启用，不改变本接口的响应契约。配置和迁移限制见[后端说明](../../../README.md#数据库配置与健康检查)，实际启用状态见[部署入口](../../../../docs/deployment.md#当前实施状态)。
