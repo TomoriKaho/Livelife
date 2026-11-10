@@ -7,6 +7,8 @@ export interface CurrentLocation {
   longitude: number;
   accuracy: number;
   timestamp: number;
+  /** Degrees clockwise from true north, when the platform supplies it. */
+  heading?: number;
 }
 
 export type LocationErrorCode = 'unsupported' | 'permission-denied' | 'unavailable' | 'timeout';
@@ -18,7 +20,7 @@ export type LocationResult =
 export type CurrentLocationOptions = Pick<PositionOptions, 'enableHighAccuracy' | 'timeout' | 'maximumAge'>;
 
 type PositionLike = Pick<Position, 'timestamp'> & {
-  coords: Pick<Position['coords'], 'latitude' | 'longitude' | 'accuracy'>;
+  coords: Pick<Position['coords'], 'latitude' | 'longitude' | 'accuracy'> & { heading?: number | null };
 };
 
 /** The plugin surface used by the requester; the optional argument makes behavior testable. */
@@ -49,10 +51,12 @@ function mapError(error: unknown): LocationErrorCode {
 }
 
 function toLocation(position: PositionLike): CurrentLocation | null {
-  const { latitude, longitude, accuracy } = position.coords;
+  const { latitude, longitude, accuracy, heading } = position.coords;
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !Number.isFinite(accuracy) || accuracy < 0
     || !Number.isFinite(position.timestamp)) return null;
-  return { latitude, longitude, accuracy, timestamp: position.timestamp };
+  const normalizedHeading = typeof heading === 'number' && Number.isFinite(heading) ? ((heading % 360) + 360) % 360 : null;
+  return { latitude, longitude, accuracy, timestamp: position.timestamp,
+    ...(normalizedHeading === null ? {} : { heading: normalizedHeading }) };
 }
 
 function platformSupportsLocation(provider: LocationProvider) {

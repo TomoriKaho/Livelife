@@ -183,8 +183,14 @@ function draw(time) {
     ctx.strokeStyle = '#526743'; ctx.globalAlpha = .38; ctx.lineWidth = .6 / view.scale; ctx.stroke(tree.path); ctx.globalAlpha = 1;
   }
   if (props.deviceLocation) {
-    const { point, accuracy } = props.deviceLocation;
+    const { point, accuracy, heading } = props.deviceLocation;
     ctx.beginPath(); ctx.arc(...point, accuracyRadius(accuracy), 0, Math.PI * 2); ctx.fillStyle = '#84bdf85c'; ctx.fill(); ctx.strokeStyle = '#428bd188'; ctx.lineWidth = 1 / view.scale; ctx.stroke();
+    if (Number.isFinite(heading)) {
+      const radius = 34 / view.scale;
+      ctx.save(); ctx.translate(...point); ctx.rotate(heading * Math.PI / 180);
+      ctx.beginPath(); ctx.moveTo(0, -radius); ctx.lineTo(radius * .54, radius * .22); ctx.lineTo(0, radius * .08); ctx.lineTo(-radius * .54, radius * .22); ctx.closePath();
+      ctx.fillStyle = '#428bd14d'; ctx.fill(); ctx.restore();
+    }
     ctx.beginPath(); ctx.arc(...point, 4.5 / view.scale, 0, Math.PI * 2); ctx.fillStyle = '#428bd1'; ctx.fill(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.8 / view.scale; ctx.stroke();
   }
   displayView.value = { center: [...view.center], scale: view.scale }; updateLabels();

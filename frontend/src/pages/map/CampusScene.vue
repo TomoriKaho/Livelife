@@ -21,7 +21,7 @@ const emit = defineEmits(['select', 'floor', 'ready']);
 const host = ref(null), failed = ref(false), loading = ref(true), labels = ref([]);
 const modelIdentity = ref(''), modelProgress = ref('0');
 const panTarget = ref(initialView.target.filter((_, i) => i !== 1).join(','));
-let renderer, scene, camera, controls, observer, frame, buildings = [], focusedModel, floorMeshes = [], tween, pointerStart, disposed = false, locationMarker, locationRing, contextBuildings, vegetation;
+let renderer, scene, camera, controls, observer, frame, buildings = [], focusedModel, floorMeshes = [], tween, pointerStart, disposed = false, locationMarker, locationRing, headingCone, contextBuildings, vegetation;
 let storeysWorker, needsRender = true;
 function invalidate() {
   needsRender = true;
@@ -90,7 +90,8 @@ function expand() {
   const scenic = focusedModel?.userData.profile.scenic;
   for (const model of meshes.values()) model.visible = !building || scenic || model === focusedModel || !!model.userData.transition;
   contextBuildings.visible = vegetation.visible = !building || !!scenic;
-  locationMarker.visible = locationRing.visible = !building && Boolean(props.deviceLocation);
+  const locationVisible = !building && Boolean(props.deviceLocation);
+  locationMarker.visible = locationRing.visible = headingCone.visible = locationVisible;
   renderer.shadowMap.needsUpdate = true; invalidate();
   // 收起只合拢模型；终止尚未完成的聚焦，保留当前相机与观察目标。
   // 返回示例位置由显式 locate() 操作负责。
@@ -173,15 +174,24 @@ function tick(now) {
 }
 function zoom(scale) { if (!camera) return; tween = null; camera.position.sub(controls.target).multiplyScalar(scale).add(controls.target); invalidate(); }
 function updateDeviceLocation() {
-  if (!locationMarker || !locationRing) return;
+  if (!locationMarker || !locationRing || !headingCone) return;
   const location = props.deviceLocation;
   const visible = Boolean(location) && !props.selected;
   locationMarker.visible = locationRing.visible = visible;
+  headingCone.visible = visible && Number.isFinite(location?.heading);
   if (!location) return;
   locationMarker.position.set(location.point[0], 4.5, location.point[1]);
   locationRing.position.set(location.point[0], .25, location.point[1]);
   locationRing.geometry.dispose();
   locationRing.geometry = new THREE.CircleGeometry(accuracyRadius(location.accuracy), 48);
+  if (Number.isFinite(location.heading)) {
+    const arc = Math.PI / 3;
+    headingCone.position.set(location.point[0], .28, location.point[1]);
+    headingCone.geometry.dispose();
+    headingCone.geometry = new THREE.CircleGeometry(40, 40, Math.PI / 2 - arc / 2, arc);
+    headingCone.geometry.rotateX(-Math.PI / 2);
+    headingCone.geometry.rotateY(-location.heading * Math.PI / 180);
+  }
 }
 function locate(point = props.deviceLocation?.point) {
   if (!scene || !point) return;
@@ -289,6 +299,7 @@ onMounted(async () => {
     vegetation = createVegetation(campus); scene.add(vegetation); renderer.shadowMap.needsUpdate = true;
     locationMarker = new THREE.Mesh(new THREE.SphereGeometry(4.5, 16, 10), new THREE.MeshBasicMaterial({ color: 0x4387bb })); locationMarker.visible = false; scene.add(locationMarker);
     locationRing = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshBasicMaterial({ color: 0x77a5c6, transparent: true, opacity: .28, side: THREE.DoubleSide, depthWrite: false })); locationRing.rotation.x = -Math.PI / 2; locationRing.visible = false; scene.add(locationRing);
+    headingCone = new THREE.Mesh(new THREE.CircleGeometry(1, 3), new THREE.MeshBasicMaterial({ color: 0x4387bb, transparent: true, opacity: .3, side: THREE.DoubleSide, depthWrite: false })); headingCone.visible = false; scene.add(headingCone);
     updateDeviceLocation();
     observer = new ResizeObserver(resizeViewport); observer.observe(host.value);
     renderer.domElement.addEventListener('pointerdown', e => { pointerStart = { x: e.clientX, y: e.clientY, time: performance.now() }; });

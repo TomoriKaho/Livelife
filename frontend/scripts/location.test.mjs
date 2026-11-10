@@ -77,3 +77,8 @@ test('rejects malformed plugin coordinates as unavailable', async () => {
   const api = provider({ result: { coords: { latitude: Number.NaN, longitude: 116.304, accuracy: 1 }, timestamp: 1 } });
   assert.deepEqual(await getCurrentLocation({}, api), { status: 'error', error: 'unavailable' });
 });
+
+test('normalizes a supplied compass heading without requiring one', async () => {
+  const api = provider({ result: { ...position, coords: { ...position.coords, heading: 450 } } });
+  assert.deepEqual(await getCurrentLocation({}, api), { status: 'success', location: { latitude: 39.991, longitude: 116.304, accuracy: 12.5, timestamp: 1_700_000_000_000, heading: 90 } });
+});

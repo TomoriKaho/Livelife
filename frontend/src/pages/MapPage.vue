@@ -14,7 +14,7 @@ import mascot from '../assets/mascot.png';
 import campus from '../assets/maps/campus.json';
 import { activities, categories, filters, venues } from './map/demo.js';
 import { contains } from './map/geometry.mjs';
-import { toDeviceMapLocation } from './map/device-location.mjs';
+import { orientationHeading, toDeviceMapLocation } from './map/device-location.mjs';
 import { profileFor } from './map/model-profiles.mjs';
 import { getCurrentLocation } from '../platform/location';
 const CampusScene = defineAsyncComponent(() => import('./map/CampusScene.vue'));
@@ -35,6 +35,14 @@ const locationHint = computed(() => ({
   unsupported: '此设备暂不支持定位。',
   'outside-campus': '当前位置不在燕园离线地图范围内。',
 }[locationState.value] || ''));
+function updateDeviceHeading(event) {
+  if (!deviceLocation.value) return;
+  const heading = orientationHeading(event);
+  if (heading === null) return;
+  const previous = deviceLocation.value.heading;
+  if (Number.isFinite(previous) && Math.abs((heading - previous + 540) % 360 - 180) < 2) return;
+  deviceLocation.value = { ...deviceLocation.value, heading };
+}
 const currentBuilding = computed(() => {
   if (!selected.value) return null;
   const building = campus.buildings.find(b => b.id === selected.value), venue = venues.find(v => v.id === selected.value);
@@ -102,7 +110,11 @@ const removeBackHandler = registerBackHandler(() => {
   if (search.value) { search.value = ''; return true; }
   return false;
 });
-onBeforeUnmount(removeBackHandler);
+onBeforeUnmount(() => {
+  removeBackHandler();
+  window.removeEventListener('deviceorientationabsolute', updateDeviceHeading, true);
+  window.removeEventListener('deviceorientation', updateDeviceHeading, true);
+});
 function closeDetail() {
   detail.value = null;
   drawer.value?.setState(drawer.value?.getState() || 'expanded');
@@ -161,6 +173,8 @@ async function applyActivityRoute() {
   routedActivity.value = item;
 }
 onMounted(async () => {
+  window.addEventListener('deviceorientationabsolute', updateDeviceHeading, true);
+  window.addEventListener('deviceorientation', updateDeviceHeading, true);
   await applyActivityRoute();
   if (!route.query.activity) void locate();
 });
