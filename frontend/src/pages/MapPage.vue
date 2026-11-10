@@ -232,7 +232,7 @@ watch(currentLocation, syncDeviceLocation, { immediate: true });
         <div class="map-tools" aria-label="地图控制">
           <button v-sketch class="sketch" aria-label="放大地图" @click="scene?.zoom(.8)">＋</button>
           <button v-sketch class="sketch" aria-label="缩小地图" @click="scene?.zoom(1.25)">−</button>
-          <button v-sketch class="sketch locate-button" :data-pencil="deviceLocation ? 'blue' : undefined" :aria-label="locationState === 'locating' ? '正在定位' : '定位到我的位置'" :disabled="locationState === 'locating'" @click="locate({ requestHeading: true })">◎</button>
+          <button v-sketch class="sketch locate-button" :aria-label="locationState === 'locating' ? '正在定位' : '定位到我的位置'" :disabled="locationState === 'locating'" @click="locate({ requestHeading: true })">◎</button>
         </div>
       </div>
       <p v-if="locationHint" class="location-hint" :class="{ error: locationState !== 'locating' }" :role="locationState === 'locating' ? 'status' : 'alert'">{{ locationHint }}</p>

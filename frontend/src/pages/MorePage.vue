@@ -104,21 +104,21 @@ onBeforeUnmount(() => { clearTimeout(noticeTimer); password.value = ''; confirmP
       </form>
       <InterestPreferences v-else-if="pane === 'interests'" :selected="selectedInterests" :personalized="prefs.personalized" :mode="recommendationMode" @save="saveInterests" />
       <FavoritesList v-else-if="pane === 'favorites'" @remove="notify" />
-      <section v-else-if="pane === 'permissions'" aria-label="通知与定位设置">
+      <section v-else-if="pane === 'permissions'" aria-label="通知设置">
         <h2 class="field-heading">活动通知</h2>
         <div class="switch-row"><span><strong>活动提醒</strong><small>提醒已收藏活动的开始时间</small></span><PreferenceSwitch v-model="prefs.reminders" label="活动提醒" /></div>
         <div class="switch-row"><span><strong>兴趣推荐通知</strong><small>有新的相关活动时提醒我</small></span><PreferenceSwitch v-model="prefs.recommendations" label="兴趣推荐通知" /></div>
         <div class="switch-row"><span><strong>夜间免打扰</strong><small>22:00—08:00 不发送活动通知</small></span><PreferenceSwitch v-model="prefs.quiet" label="夜间免打扰" /></div>
         <h2 class="field-heading">提前多久提醒？</h2>
         <div class="time-choices" role="group" aria-label="活动提醒提前时间"><button v-for="time in ['15分钟', '30分钟', '1小时']" :key="time" v-sketch class="sketch" :data-pencil="advance === time ? 'blue' : undefined" type="button" :aria-pressed="advance === time" :disabled="!prefs.reminders" @click="advance = time">{{ time }}</button></div>
-        <h2 class="field-heading spaced-heading">定位</h2>
-        <div class="switch-row"><span><strong>使用定位发现附近活动</strong><small>开启后，以当前位置寻找附近信息</small></span><PreferenceSwitch v-model="prefs.location" label="使用定位发现附近活动" /></div>
-        <p class="small-note">当前校区：北京大学燕园校区</p>
       </section>
       <section v-else-if="pane === 'account'" aria-label="账户与隐私设置">
         <h2 class="field-heading">账户信息</h2>
         <dl class="account-info"><div><dt>账户 ID</dt><dd>LL · 20260018</dd></div><div><dt>登录邮箱</dt><dd>yan***@pku.edu.cn</dd></div></dl>
         <button class="plain-setting" type="button" @click="open('password')"><span>登录密码<small>{{ passwordChanged ? '刚刚更新 · 界面预览' : '已设置' }}</small></span><span>修改 <MoreIcon name="chevron" /></span></button>
+        <h2 class="field-heading spaced-heading">定位权限</h2>
+        <div class="switch-row"><span><strong>使用定位发现附近活动</strong><small>开启后，以当前位置寻找附近信息</small></span><PreferenceSwitch v-model="prefs.location" label="使用定位发现附近活动" /></div>
+        <p class="small-note">当前校区：北京大学燕园校区</p>
         <h2 class="field-heading spaced-heading">推荐数据偏好</h2><p class="small-note">你来决定，推荐可以参考哪些信息。</p>
         <div class="switch-row"><span><strong>使用校园身份</strong><small>根据学生、教职工等身份筛选信息</small></span><PreferenceSwitch v-model="prefs.useIdentity" label="推荐使用校园身份" /></div>
         <div class="switch-row"><span><strong>使用兴趣标签</strong><small>根据你圈选的兴趣调整推荐</small></span><PreferenceSwitch v-model="prefs.useInterests" label="推荐使用兴趣标签" /></div>
