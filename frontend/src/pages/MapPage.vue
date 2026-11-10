@@ -16,17 +16,18 @@ import { activities, categories, filters, venues } from './map/demo.js';
 import { contains } from './map/geometry.mjs';
 import { orientationHeading, preserveHeading, toDeviceMapLocation } from './map/device-location.mjs';
 import { profileFor } from './map/model-profiles.mjs';
-import { getCurrentLocation } from '../platform/location';
+import { currentLocation, locationTrackingState, restartLocationTracking } from '../platform/location-tracker';
 const CampusScene = defineAsyncComponent(() => import('./map/CampusScene.vue'));
 const CampusPlan = defineAsyncComponent(() => import('./map/CampusPlan.vue'));
 const route = useRoute(), focusPoint = ref(null), routedActivity = ref(null);
 const mode = ref('3d'), filter = ref('all'), search = ref(''), selected = ref(null), floor = ref(2), scene = ref(null), detail = ref(null);
-const deviceLocation = ref(null), locationState = ref('idle');
+const deviceLocation = ref(null), outsideCampus = ref(false);
 const drawer = ref(null), drawerPeek = ref(180);
 const planView = ref(null);
 let drawerBeforeSelection = null, latestOrientation = null;
 const campusActivities = activities.filter(item => item.building);
 const visibleActivities = computed(() => campusActivities.filter(item => filter.value === 'all' || item.category === filter.value));
+const locationState = computed(() => outsideCampus.value ? 'outside-campus' : locationTrackingState.value);
 const locationHint = computed(() => ({
   locating: '正在获取当前位置…',
   'permission-denied': '未获得位置权限；点击定位按钮可再次尝试。',
@@ -148,27 +149,28 @@ function select(id) {
   selected.value = id; search.value = '';
   floor.value = visibleActivities.value.find(a => a.building === id)?.floor || 1;
 }
+function syncDeviceLocation(location) {
+  if (!location) return;
+  const nextLocation = toDeviceMapLocation(location);
+  if (!nextLocation || !contains(nextLocation.point, campus.boundary)) {
+    deviceLocation.value = null;
+    outsideCampus.value = true;
+    return;
+  }
+  outsideCampus.value = false;
+  deviceLocation.value = preserveHeading(nextLocation, deviceLocation.value?.heading);
+  applyDeviceHeading();
+}
 async function locate({ requestHeading = false } = {}) {
   if (locationState.value === 'locating') return;
   if (requestHeading) await requestDeviceHeadingPermission();
-  locationState.value = 'locating';
-  const result = await getCurrentLocation();
-  if (result.status !== 'success') {
-    locationState.value = result.error;
-    return;
-  }
-  const nextLocation = toDeviceMapLocation(result.location);
-  if (!nextLocation || !contains(nextLocation.point, campus.boundary)) {
-    deviceLocation.value = null;
-    locationState.value = 'outside-campus';
+  if (locationTrackingState.value !== 'located' || !deviceLocation.value) {
+    await restartLocationTracking();
     return;
   }
   // 定位只调整地图，保留操作当下的抽屉档位；结束本次建筑探索记录。
   drawerBeforeSelection = null; selected.value = null; detail.value = null; focusPoint.value = null; routedActivity.value = null;
-  deviceLocation.value = preserveHeading(nextLocation, deviceLocation.value?.heading);
-  applyDeviceHeading();
-  locationState.value = 'located';
-  await nextTick(); scene.value?.locate(nextLocation.point);
+  await nextTick(); scene.value?.locate(deviceLocation.value.point);
 }
 async function setMode(value) {
   if (value === mode.value) return;
@@ -196,9 +198,9 @@ onMounted(async () => {
   window.addEventListener('orientationchange', applyDeviceHeading, true);
   window.screen?.orientation?.addEventListener('change', applyDeviceHeading);
   await applyActivityRoute();
-  if (!route.query.activity) void locate();
 });
 watch(() => route.query.activity, applyActivityRoute);
+watch(currentLocation, syncDeviceLocation, { immediate: true });
 </script>
 
 <template>

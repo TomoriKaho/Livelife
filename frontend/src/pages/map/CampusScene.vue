@@ -21,7 +21,7 @@ const emit = defineEmits(['select', 'floor', 'ready']);
 const host = ref(null), failed = ref(false), loading = ref(true), labels = ref([]);
 const modelIdentity = ref(''), modelProgress = ref('0');
 const panTarget = ref(initialView.target.filter((_, i) => i !== 1).join(','));
-let renderer, scene, camera, controls, observer, frame, buildings = [], focusedModel, floorMeshes = [], tween, pointerStart, disposed = false, locationMarker, locationRing, headingCone, contextBuildings, vegetation;
+let renderer, scene, camera, controls, observer, frame, buildings = [], focusedModel, floorMeshes = [], tween, pointerStart, disposed = false, locationMarker, locationRing, headingCone, contextBuildings, vegetation, centeredOnDevice = false;
 let storeysWorker, needsRender = true;
 function invalidate() {
   needsRender = true;
@@ -238,7 +238,7 @@ watch(() => props.focusPoint, focusPlace);
 watch(() => props.deviceLocation, (location, previous) => {
   updateDeviceLocation();
   const pointChanged = !previous || location?.point?.some((value, index) => value !== previous.point?.[index]);
-  if (!loading.value && location && pointChanged) locate();
+  if (!loading.value && location && pointChanged && !centeredOnDevice) { centeredOnDevice = true; locate(); }
 });
 watch(() => props.focusInset, resizeViewport);
 watch(() => props.floor, highlight);
@@ -330,7 +330,7 @@ onMounted(async () => {
     loading.value = false;
     if (props.selected) expand();
     else if (props.focusPoint) focusPlace();
-    else if (props.deviceLocation) locate();
+    else if (props.deviceLocation) { centeredOnDevice = true; locate(); }
     emit('ready'); invalidate();
   } catch (error) {
     storeysWorker?.dispose(); storeysWorker = null;

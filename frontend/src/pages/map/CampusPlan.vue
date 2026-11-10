@@ -20,7 +20,7 @@ const scaleBar = computed(() => planScaleBar(displayView.value.scale));
 const panTarget = computed(() => displayView.value.center.map(value => value.toFixed(1)).join(','));
 let ctx, patterns, observer, frame, motion, reducedMotion, width = 0, height = 0, dpr = 1;
 let view = { center: [...demoLocation], scale: .54 }, surfaces = [], buildings = [], roads = [], trees = [];
-let gesture, velocity = [0, 0], lastMoveTime = 0;
+let gesture, velocity = [0, 0], lastMoveTime = 0, centeredOnDevice = false;
 const pointers = new Map();
 const anchor = () => planAnchor(width, height, props.focusInset);
 const pointInView = event => { const rect = canvas.value.getBoundingClientRect(); return [event.clientX - rect.left, event.clientY - rect.top]; };
@@ -248,7 +248,7 @@ watch(() => props.selected, focusBuilding);
 watch(() => props.focusPoint, focusPlace);
 watch(() => props.deviceLocation, (location, previous) => {
   const pointChanged = !previous || location?.point?.some((value, index) => value !== previous.point?.[index]);
-  if (location && width && pointChanged) locate(location.point);
+  if (location && width && pointChanged && !centeredOnDevice) { centeredOnDevice = true; locate(location.point); }
   else schedule();
 });
 watch(() => props.activities, schedule);
@@ -256,6 +256,7 @@ watch(() => props.focusInset, schedule);
 onMounted(() => {
   reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)'); ctx = canvas.value.getContext('2d');
   prepare(); resize(); observer = new ResizeObserver(resize); observer.observe(host.value); ready.value = true;
+  centeredOnDevice = Boolean(props.deviceLocation);
   if (props.selected) focusBuilding(); else if (props.focusPoint) focusPlace();
 });
 onBeforeUnmount(() => { cancelAnimationFrame(frame); observer?.disconnect(); pointers.clear(); patterns = null; });

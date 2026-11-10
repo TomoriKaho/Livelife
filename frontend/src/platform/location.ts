@@ -30,6 +30,13 @@ export interface LocationProvider {
   getCurrentPosition(options?: PositionOptions): Promise<PositionLike>;
 }
 
+export interface LocationWatchProvider extends LocationProvider {
+  watchPosition(options: PositionOptions, callback: (position: PositionLike | null, error?: unknown) => void): Promise<string>;
+  clearWatch(options: { id: string }): Promise<void>;
+}
+
+export type LocationWatchStop = () => Promise<void>;
+
 export const defaultCurrentLocationOptions: Required<CurrentLocationOptions> = {
   enableHighAccuracy: false,
   timeout: 10_000,
@@ -71,6 +78,19 @@ function browserPosition(options: PositionOptions): Promise<PositionLike> {
   });
 }
 
+function reportWatchedPosition(
+  listener: (result: LocationResult) => void,
+  position: PositionLike | null,
+  error?: unknown,
+) {
+  if (!position) {
+    listener({ status: 'error', error: mapError(error) });
+    return;
+  }
+  const location = toLocation(position);
+  listener(location ? { status: 'success', location } : { status: 'error', error: 'unavailable' });
+}
+
 /**
  * Request one foreground position when a visible consumer needs it.
  *
@@ -101,5 +121,52 @@ export async function getCurrentLocation(
     return location ? { status: 'success', location } : { status: 'error', error: 'unavailable' };
   } catch (error) {
     return { status: 'error', error: mapError(error) };
+  }
+}
+
+/**
+ * Watch foreground location changes until the returned function is called.
+ *
+ * The watcher only reports normalized results. It does not retain, upload, or
+ * otherwise share coordinates; application lifecycle and state belong to the
+ * caller.
+ */
+export async function watchCurrentLocation(
+  listener: (result: LocationResult) => void,
+  options: CurrentLocationOptions = {},
+  provider: LocationWatchProvider = Geolocation,
+): Promise<LocationWatchStop> {
+  if (!platformSupportsLocation(provider)) {
+    listener({ status: 'error', error: 'unsupported' });
+    return async () => {};
+  }
+
+  const positionOptions = { ...defaultCurrentLocationOptions, ...options };
+  try {
+    // Capacitor's web wrapper delegates to this same browser API but cannot
+    // request permission itself. Calling the standard watcher prompts as needed.
+    if (provider === Geolocation && !Capacitor.isNativePlatform()) {
+      const id = navigator.geolocation.watchPosition(
+        position => reportWatchedPosition(listener, position),
+        error => reportWatchedPosition(listener, null, error),
+        positionOptions,
+      );
+      return async () => { navigator.geolocation.clearWatch(id); };
+    }
+
+    let permission = await provider.checkPermissions();
+    if (!permissionGranted(permission)) permission = await provider.requestPermissions();
+    if (!permissionGranted(permission)) {
+      listener({ status: 'error', error: 'permission-denied' });
+      return async () => {};
+    }
+
+    const id = await provider.watchPosition(positionOptions, (position, error) => {
+      reportWatchedPosition(listener, position, error);
+    });
+    return async () => { await provider.clearWatch({ id }); };
+  } catch (error) {
+    listener({ status: 'error', error: mapError(error) });
+    return async () => {};
   }
 }

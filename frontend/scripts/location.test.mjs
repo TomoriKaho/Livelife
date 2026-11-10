@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultCurrentLocationOptions, getCurrentLocation } from '../src/platform/location.ts';
+import { defaultCurrentLocationOptions, getCurrentLocation, watchCurrentLocation } from '../src/platform/location.ts';
 
 const granted = { location: 'granted', coarseLocation: 'granted' };
 const prompt = { location: 'prompt', coarseLocation: 'prompt' };
@@ -81,4 +81,66 @@ test('rejects malformed plugin coordinates as unavailable', async () => {
 test('normalizes a supplied compass heading without requiring one', async () => {
   const api = provider({ result: { ...position, coords: { ...position.coords, heading: 450 } } });
   assert.deepEqual(await getCurrentLocation({}, api), { status: 'success', location: { latitude: 39.991, longitude: 116.304, accuracy: 12.5, timestamp: 1_700_000_000_000, heading: 90 } });
+});
+
+test('uses the browser watcher for ongoing web positions and clears it on stop', async () => {
+  const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const calls = [], updates = [];
+  let success, failure;
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: { geolocation: {
+      watchPosition(resolve, reject, options) { success = resolve; failure = reject; calls.push(['watch', options]); return 42; },
+      clearWatch(id) { calls.push(['clear', id]); },
+    } },
+  });
+  try {
+    const stop = await watchCurrentLocation(result => updates.push(result));
+    success(position);
+    failure({ code: 3 });
+    await stop();
+    assert.deepEqual(calls, [['watch', defaultCurrentLocationOptions], ['clear', 42]]);
+    assert.deepEqual(updates, [
+      { status: 'success', location: { latitude: 39.991, longitude: 116.304, accuracy: 12.5, timestamp: 1_700_000_000_000 } },
+      { status: 'error', error: 'timeout' },
+    ]);
+  } finally {
+    if (originalNavigator) Object.defineProperty(globalThis, 'navigator', originalNavigator);
+    else delete globalThis.navigator;
+  }
+});
+
+test('requests native permission once, relays watcher updates, and clears the native watch', async () => {
+  const updates = [], calls = [];
+  let callback;
+  const api = {
+    ...provider({ check: prompt }),
+    async watchPosition(options, listener) { calls.push(['watch', options]); callback = listener; return 'watch-1'; },
+    async clearWatch({ id }) { calls.push(['clear', id]); },
+  };
+  const stop = await watchCurrentLocation(result => updates.push(result), { timeout: 5_000 }, api);
+  callback({ ...position, coords: { ...position.coords, heading: 450 } });
+  callback(null, { code: 2 });
+  await stop();
+  assert.deepEqual(api.calls, ['check', 'request']);
+  assert.deepEqual(calls, [
+    ['watch', { enableHighAccuracy: false, timeout: 5_000, maximumAge: 0 }],
+    ['clear', 'watch-1'],
+  ]);
+  assert.deepEqual(updates, [
+    { status: 'success', location: { latitude: 39.991, longitude: 116.304, accuracy: 12.5, timestamp: 1_700_000_000_000, heading: 90 } },
+    { status: 'error', error: 'unavailable' },
+  ]);
+});
+
+test('does not create a watcher after native location permission is denied', async () => {
+  const api = {
+    ...provider({ check: denied, request: denied }),
+    async watchPosition() { throw new Error('must not watch'); },
+    async clearWatch() {},
+  };
+  const updates = [];
+  await watchCurrentLocation(result => updates.push(result), {}, api);
+  assert.deepEqual(api.calls, ['check', 'request']);
+  assert.deepEqual(updates, [{ status: 'error', error: 'permission-denied' }]);
 });
