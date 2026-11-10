@@ -29,7 +29,7 @@ function invalidate() {
 }
 const meshes = new Map(), selectable = [], raycaster = new THREE.Raycaster();
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-// 圆锥底部沿蓝点球面向上拱起，并在球面外保留细微间隙。
+// 水平圆锥位于蓝点朝向一侧，底部向尖端拱起以指示航向。
 const locationBlue = 0x4387bb, locationMarkerRadius = 4.5, headingConeRadius = 2.5, headingConeLength = 1.8, headingConeSurfaceGap = 1.3;
 const initialTarget = new THREE.Vector3(...initialView.target);
 const initialCamera = initialTarget.clone().add(new THREE.Vector3(...initialView.offset));
@@ -177,14 +177,17 @@ function tick(now) {
 }
 function zoom(scale) { if (!camera) return; tween = null; camera.position.sub(controls.target).multiplyScalar(scale).add(controls.target); invalidate(); }
 function headingGeometry() {
-  // 底面中心比圆周高，形成与蓝点同曲率、朝锥尖拱起的球冠（纵剖面为 ∩）。
+  // 底面中心向尖端拱起，形成与蓝点球面曲率呼应的球冠（纵剖面为 ∩）。
+  const capRise = locationMarkerRadius - Math.sqrt(locationMarkerRadius ** 2 - headingConeRadius ** 2);
   const base = Array.from({ length: 13 }, (_, index) => {
     const radius = headingConeRadius * index / 12;
-    const height = Math.sqrt(locationMarkerRadius ** 2 - radius ** 2) + headingConeSurfaceGap;
+    const height = capRise - (locationMarkerRadius - Math.sqrt(locationMarkerRadius ** 2 - radius ** 2));
     return new THREE.Vector2(radius, height);
   });
-  base.push(new THREE.Vector2(0, locationMarkerRadius + headingConeSurfaceGap + headingConeLength));
-  return new THREE.LatheGeometry(base, 32);
+  base.push(new THREE.Vector2(0, capRise + headingConeLength));
+  const geometry = new THREE.LatheGeometry(base, 32);
+  geometry.rotateX(-Math.PI / 2);
+  return geometry;
 }
 function updateDeviceLocation() {
   if (!locationMarker || !locationRing || !headingCone) return;
@@ -198,7 +201,14 @@ function updateDeviceLocation() {
   locationRing.geometry.dispose();
   locationRing.geometry = new THREE.CircleGeometry(accuracyRadius(location.accuracy), 48);
   if (Number.isFinite(location.heading)) {
-    headingCone.position.set(location.point[0], locationMarkerRadius, location.point[1]);
+    const headingRadians = location.heading * Math.PI / 180;
+    const surfaceOffset = locationMarkerRadius + headingConeSurfaceGap;
+    headingCone.position.set(
+      location.point[0] + Math.sin(headingRadians) * surfaceOffset,
+      locationMarkerRadius,
+      location.point[1] - Math.cos(headingRadians) * surfaceOffset,
+    );
+    headingCone.rotation.y = -headingRadians;
   }
   renderer.shadowMap.needsUpdate = true;
   invalidate();
@@ -225,9 +235,10 @@ function resizeViewport() {
 }
 watch(() => props.selected, expand);
 watch(() => props.focusPoint, focusPlace);
-watch(() => props.deviceLocation, () => {
+watch(() => props.deviceLocation, (location, previous) => {
   updateDeviceLocation();
-  if (!loading.value && props.deviceLocation) locate();
+  const pointChanged = !previous || location?.point?.some((value, index) => value !== previous.point?.[index]);
+  if (!loading.value && location && pointChanged) locate();
 });
 watch(() => props.focusInset, resizeViewport);
 watch(() => props.floor, highlight);

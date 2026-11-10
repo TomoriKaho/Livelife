@@ -246,7 +246,11 @@ function keyboard(event) {
 }
 watch(() => props.selected, focusBuilding);
 watch(() => props.focusPoint, focusPlace);
-watch(() => props.deviceLocation, location => { if (location && width) locate(location.point); else schedule(); });
+watch(() => props.deviceLocation, (location, previous) => {
+  const pointChanged = !previous || location?.point?.some((value, index) => value !== previous.point?.[index]);
+  if (location && width && pointChanged) locate(location.point);
+  else schedule();
+});
 watch(() => props.activities, schedule);
 watch(() => props.focusInset, schedule);
 onMounted(() => {

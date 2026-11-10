@@ -14,7 +14,7 @@ import mascot from '../assets/mascot.png';
 import campus from '../assets/maps/campus.json';
 import { activities, categories, filters, venues } from './map/demo.js';
 import { contains } from './map/geometry.mjs';
-import { orientationHeading, toDeviceMapLocation } from './map/device-location.mjs';
+import { orientationHeading, preserveHeading, toDeviceMapLocation } from './map/device-location.mjs';
 import { profileFor } from './map/model-profiles.mjs';
 import { getCurrentLocation } from '../platform/location';
 const CampusScene = defineAsyncComponent(() => import('./map/CampusScene.vue'));
@@ -24,7 +24,7 @@ const mode = ref('3d'), filter = ref('all'), search = ref(''), selected = ref(nu
 const deviceLocation = ref(null), locationState = ref('idle');
 const drawer = ref(null), drawerPeek = ref(180);
 const planView = ref(null);
-let drawerBeforeSelection = null;
+let drawerBeforeSelection = null, latestOrientation = null;
 const campusActivities = activities.filter(item => item.building);
 const visibleActivities = computed(() => campusActivities.filter(item => filter.value === 'all' || item.category === filter.value));
 const locationHint = computed(() => ({
@@ -35,13 +35,27 @@ const locationHint = computed(() => ({
   unsupported: '此设备暂不支持定位。',
   'outside-campus': '当前位置不在燕园离线地图范围内。',
 }[locationState.value] || ''));
-function updateDeviceHeading(event) {
-  if (!deviceLocation.value) return;
-  const heading = orientationHeading(event);
+function screenAngle() {
+  const angle = window.screen?.orientation?.angle;
+  return Number.isFinite(angle) ? angle : 0;
+}
+function applyDeviceHeading() {
+  if (!deviceLocation.value || !latestOrientation) return;
+  const heading = orientationHeading(latestOrientation, screenAngle());
   if (heading === null) return;
   const previous = deviceLocation.value.heading;
   if (Number.isFinite(previous) && Math.abs((heading - previous + 540) % 360 - 180) < 2) return;
   deviceLocation.value = { ...deviceLocation.value, heading };
+}
+function updateDeviceHeading(event) {
+  latestOrientation = { alpha: event.alpha, webkitCompassHeading: event.webkitCompassHeading };
+  applyDeviceHeading();
+}
+async function requestDeviceHeadingPermission() {
+  const orientationEvent = globalThis.DeviceOrientationEvent;
+  const requestPermission = orientationEvent && Reflect.get(orientationEvent, 'requestPermission');
+  if (typeof requestPermission !== 'function') return;
+  try { await requestPermission.call(orientationEvent); } catch { /* requires an explicit user gesture on some browsers */ }
 }
 const currentBuilding = computed(() => {
   if (!selected.value) return null;
@@ -114,6 +128,8 @@ onBeforeUnmount(() => {
   removeBackHandler();
   window.removeEventListener('deviceorientationabsolute', updateDeviceHeading, true);
   window.removeEventListener('deviceorientation', updateDeviceHeading, true);
+  window.removeEventListener('orientationchange', applyDeviceHeading, true);
+  window.screen?.orientation?.removeEventListener('change', applyDeviceHeading);
 });
 function closeDetail() {
   detail.value = null;
@@ -132,8 +148,9 @@ function select(id) {
   selected.value = id; search.value = '';
   floor.value = visibleActivities.value.find(a => a.building === id)?.floor || 1;
 }
-async function locate() {
+async function locate({ requestHeading = false } = {}) {
   if (locationState.value === 'locating') return;
+  if (requestHeading) await requestDeviceHeadingPermission();
   locationState.value = 'locating';
   const result = await getCurrentLocation();
   if (result.status !== 'success') {
@@ -148,7 +165,8 @@ async function locate() {
   }
   // 定位只调整地图，保留操作当下的抽屉档位；结束本次建筑探索记录。
   drawerBeforeSelection = null; selected.value = null; detail.value = null; focusPoint.value = null; routedActivity.value = null;
-  deviceLocation.value = nextLocation;
+  deviceLocation.value = preserveHeading(nextLocation, deviceLocation.value?.heading);
+  applyDeviceHeading();
   locationState.value = 'located';
   await nextTick(); scene.value?.locate(nextLocation.point);
 }
@@ -175,6 +193,8 @@ async function applyActivityRoute() {
 onMounted(async () => {
   window.addEventListener('deviceorientationabsolute', updateDeviceHeading, true);
   window.addEventListener('deviceorientation', updateDeviceHeading, true);
+  window.addEventListener('orientationchange', applyDeviceHeading, true);
+  window.screen?.orientation?.addEventListener('change', applyDeviceHeading);
   await applyActivityRoute();
   if (!route.query.activity) void locate();
 });
@@ -210,7 +230,7 @@ watch(() => route.query.activity, applyActivityRoute);
         <div class="map-tools" aria-label="地图控制">
           <button v-sketch class="sketch" aria-label="放大地图" @click="scene?.zoom(.8)">＋</button>
           <button v-sketch class="sketch" aria-label="缩小地图" @click="scene?.zoom(1.25)">−</button>
-          <button v-sketch class="sketch locate-button" :data-pencil="deviceLocation ? 'blue' : undefined" :aria-label="locationState === 'locating' ? '正在定位' : '定位到我的位置'" :disabled="locationState === 'locating'" @click="locate">◎</button>
+          <button v-sketch class="sketch locate-button" :data-pencil="deviceLocation ? 'blue' : undefined" :aria-label="locationState === 'locating' ? '正在定位' : '定位到我的位置'" :disabled="locationState === 'locating'" @click="locate({ requestHeading: true })">◎</button>
         </div>
       </div>
       <p v-if="locationHint" class="location-hint" :class="{ error: locationState !== 'locating' }" :role="locationState === 'locating' ? 'status' : 'alert'">{{ locationHint }}</p>
