@@ -16,7 +16,7 @@ import { activities, categories, filters, venues } from './map/demo.js';
 import { contains } from './map/geometry.mjs';
 import { normalizeHeading, orientationHeading, preserveHeading, toDeviceMapLocation } from './map/device-location.mjs';
 import { profileFor } from './map/model-profiles.mjs';
-import { currentLocation, locationTrackingState, restartLocationTracking } from '../platform/location-tracker';
+import { currentLocation, locationTrackingState, refreshCurrentLocation, restartLocationTracking } from '../platform/location-tracker';
 import { watchAndroidDeviceHeading } from '../platform/device-heading';
 const CampusScene = defineAsyncComponent(() => import('./map/CampusScene.vue'));
 const CampusPlan = defineAsyncComponent(() => import('./map/CampusPlan.vue'));
@@ -214,6 +214,11 @@ async function locate({ requestHeading = false } = {}) {
     await restartLocationTracking();
     return;
   }
+  // A location button must not deliberately re-center on an old watcher value.
+  // The shared watch continues in the background; this one-shot request is only
+  // for this explicit user action.
+  const refreshed = await refreshCurrentLocation();
+  if (refreshed.status !== 'success') return;
   // 定位只调整地图，保留操作当下的抽屉档位；结束本次建筑探索记录。
   drawerBeforeSelection = null; selected.value = null; detail.value = null; focusPoint.value = null; routedActivity.value = null;
   await nextTick(); scene.value?.locate(deviceLocation.value.point);

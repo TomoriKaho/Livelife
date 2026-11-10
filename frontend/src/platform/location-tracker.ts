@@ -1,5 +1,6 @@
 import { ref, shallowRef } from 'vue';
 import {
+  getCurrentLocation,
   watchCurrentLocation,
   type CurrentLocation,
   type LocationErrorCode,
@@ -62,4 +63,17 @@ export async function stopLocationTracking() {
 export async function restartLocationTracking() {
   await stopLocationTracking();
   await startLocationTracking();
+}
+
+/** Obtain one fresh foreground fix and publish it to every active consumer. */
+export async function refreshCurrentLocation() {
+  locationTrackingState.value = 'locating';
+  const result = await getCurrentLocation();
+  if (result.status === 'success') {
+    currentLocation.value = result.location;
+    locationTrackingState.value = 'located';
+  } else {
+    locationTrackingState.value = result.error;
+  }
+  return result;
 }

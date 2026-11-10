@@ -52,7 +52,11 @@ test('uses an already granted approximate permission and caller options', async 
   const api = provider({ check: { location: 'denied', coarseLocation: 'granted' } });
   const result = await getCurrentLocation({ enableHighAccuracy: true, timeout: 5_000 }, api);
   assert.equal(result.status, 'success');
-  assert.deepEqual(api.calls, ['check', { enableHighAccuracy: true, timeout: 5_000, maximumAge: 0 }]);
+  assert.deepEqual(api.calls, ['check', {
+    ...defaultCurrentLocationOptions,
+    enableHighAccuracy: true,
+    timeout: 5_000,
+  }]);
 });
 
 test('does not request a position after a denied permission', async () => {
@@ -124,7 +128,7 @@ test('requests native permission once, relays watcher updates, and clears the na
   await stop();
   assert.deepEqual(api.calls, ['check', 'request']);
   assert.deepEqual(calls, [
-    ['watch', { enableHighAccuracy: false, timeout: 5_000, maximumAge: 0 }],
+    ['watch', { ...defaultCurrentLocationOptions, timeout: 5_000 }],
     ['clear', 'watch-1'],
   ]);
   assert.deepEqual(updates, [

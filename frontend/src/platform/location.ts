@@ -17,7 +17,8 @@ export type LocationResult =
   | { status: 'success'; location: CurrentLocation }
   | { status: 'error'; error: LocationErrorCode };
 
-export type CurrentLocationOptions = Pick<PositionOptions, 'enableHighAccuracy' | 'timeout' | 'maximumAge'>;
+export type CurrentLocationOptions = Pick<PositionOptions,
+  'enableHighAccuracy' | 'timeout' | 'maximumAge' | 'minimumUpdateInterval' | 'interval'>;
 
 type PositionLike = Pick<Position, 'timestamp'> & {
   coords: Pick<Position['coords'], 'latitude' | 'longitude' | 'accuracy'> & { heading?: number | null };
@@ -38,9 +39,15 @@ export interface LocationWatchProvider extends LocationProvider {
 export type LocationWatchStop = () => Promise<void>;
 
 export const defaultCurrentLocationOptions: Required<CurrentLocationOptions> = {
-  enableHighAccuracy: false,
+  // The map needs a usable on-campus point. On Android this also requests the
+  // fine-location alias instead of accepting a roughly 100 m fused fix.
+  enableHighAccuracy: true,
   timeout: 10_000,
   maximumAge: 0,
+  // Android-specific watch cadence. Web and iOS safely ignore these fields.
+  // Location providers may still coalesce callbacks to preserve battery.
+  minimumUpdateInterval: 1_000,
+  interval: 1_000,
 };
 
 function permissionGranted(status: PermissionStatus) {
