@@ -4,6 +4,8 @@
 
 课程机固定 Node 24.13.0、npm 11.6.2、Python 3.12、uv 0.12.23 和 Supervisor 4.3.0。工具版本及校验由安装脚本维护，本地开发无需改用服务器镜像或修改锁文件。
 
+预览数据库程序另由课程机控制 venv 安装固定 `pgembed==0.2.0`，不加入分支构建沙箱或业务 venv，不改变后端包大小限制。检查通过后的发布还需完成独立 PostgreSQL、迁移和数据库探针；检查成功不等于部署成功。首次启用、数据路径、按 SHA 隔离及恢复限制见[预览数据库与启动门禁](README.md#预览数据库与启动门禁)。
+
 本文维护工具安装、调度、源码拉取、预算及 SSH 控制传输。成员判断检查结果见[部署入口](../docs/deployment.md#构建结果怎么判断)；接口字段见[控制接口](CONTROL_API.md#构建控制接口)，回归见[部署工具测试](tests/README.md)。
 
 ## 执行顺序与结果
@@ -12,7 +14,7 @@
 2. workflow_run.completed 触发 main 上的 Preview environments。控制器重新查询 GitHub 的 run、来源仓库、固定工作流路径、当前分支 SHA 和 PR 状态；旧提交、关闭/删除分支及 fork 均不提交任务。特权代码只来自 main，不执行分支中的部署脚本。
 3. 公网机转发 build_submit，课程机持久化到 `/home/group5/livelife/builds/queue.sqlite3`。整个项目最多同时运行 **2 个任务**，包含拉取、依赖安装、检查、测试与构建；其余 FIFO 排队。同 SHA、同模块的首次 push/PR 通知复用一份检查，前后端是两个独立任务。同 SHA 的 push/PR 通知即使乱序到达也复用同一任务，不能把较晚到达的旧通知误报为检查失败。相同分支尚未执行的旧 SHA 被新的请求取代；已运行的任务结束后再次核对 SHA，不能发布过期提交。
 4. 课程机用 GitHub 直连拉取已指定 SHA，复用 source.git，不跟随浮动分支。缓存提交以 `refs/livelife/source/<SHA>` 保留，使 Git 能协商增量传输；旧浅缓存中已有的有效提交会先补齐引用，避免只有对象、没有引用而重复拉取大包。源码拉取持有项目 source.lock；fetch 单次上限 180 秒、最多 3 次尝试，连续 30 秒低于 1 KiB/s 时终止慢连接。超时先终止整个 Git 进程组，再清理本次新建的 shallow.lock，已有锁不自动删除；失败日志包含 Git stderr，便于区分网络和锁错误。每个任务有独立 worktree、虚拟环境、日志和产物目录；仅构建目录与依赖缓存可写，主目录、SSH 文件和队列数据库不进入构建沙箱，环境中没有 GitHub token 或部署私钥。每个任务限制为最多 4 个可用 CPU；Node 堆上限 1536 MiB，不等同于整个进程的 OS 内存硬限制。
-5. npm 使用 `https://registry.npmmirror.com`，Python 优先使用 `https://mirrors.aliyun.com/pypi/simple`，依赖准备失败时仅重试到清华镜像，测试失败不会重试掩盖；npm/uv/pip 下载缓存分别位于 builds/cache。为避免 uv.lock 内原始 wheel URL 绕过镜像，仅在临时 worktree 改写官方包源域名，版本和原有哈希保持；不修改仓库锁文件。源或包不可用就报错，不静默放弃锁文件。Node 镜像包核对 Node 官方 SHASUMS，APT 工具核对官方 APT 元数据 SHA-256。
+5. npm 优先使用 `https://registry.npmmirror.com`，`npm ci` 失败后仅重试一次官方源 `https://registry.npmjs.org`，网页和 Android 共用此逻辑。切换时同时更新沙箱中的 registry 和临时 package-lock.json 的包下载 URL，保留版本与 integrity；自定义包源不改写。Python 优先使用 `https://mirrors.aliyun.com/pypi/simple`，依赖准备失败时仅重试到清华镜像；uv.lock 的 wheel URL 同样只在临时 worktree 改写，保留原哈希。npm/uv/pip 下载缓存分别位于 builds/cache，不修改仓库锁文件，不删除锁文件或改用 npm install。备用源仍失败则停止；测试或编译失败不会触发换源重试。Node 镜像包核对 Node 官方 SHASUMS，APT 工具核对官方 APT 元数据 SHA-256。
 6. Backend checks 包含部署工具 unittest、后端 pytest/ruff/格式检查及真实 hello。Frontend checks 包含 npm ci、行为测试、类型检查、Vite build 和预览资源 URL 校验。后端通过后保留原 venv，发布时链接到这份已测试环境；不再下载 wheel 或第二次安装。网页由受信程序打包，manifest 固定 SHA、构建编号和 digest。
 7. Actions 每次通过短 RPC 查询 build_status，按 offset 获取日志并写回 GitHub。SHA 的 Frontend checks / Backend checks 状态由 pending 改为 success/failure；日志中的 workflow command 禁用解析，不能把分支输出当成 Actions 指令。失败令控制工作流非零退出，保留原成功环境。检查成功与部署成功分别记录，发布失败不会抹掉真实测试结果。
 8. 发布前再次核对分支/PR。后端 deploy_built 沿用端口预约、健康检查、generation 和引用生命周期；网页 web_publish_built 从课程机获取 frontend.tgz，在公网机校验、解包、准备配置和引用、原子切换。大包不经过 GitHub Runner，也不会在公网机执行产物里的脚本。网页开关关闭时仍可检查前端，明确记录 checked 而不发布。
@@ -59,6 +61,9 @@ python3 ~/livelife/control/install-build-tools.py ~/livelife
 
 首次 build_submit 会由项目 Supervisor 启动 build-worker。工作流合入 main 后，检查 statuses:write 权限；现有 SSH 私钥和 known_hosts 不变。main 首次网页请求和网页开关的顺序见[网页维护](WEB_PREVIEW.md#维护者启用顺序)，成员教程见[测试入口](../docs/testing.md)。
 
+已有安装的 npm 备用源修复需要维护者审查固定提交中的 `deploy/livelife/build_runner.py`，备份后原子替换课程机 `/home/group5/livelife/control/livelife/build_runner.py`。确认队列没有 queued/running 任务、更新期间不会提交新任务后，仅通过项目 Supervisor 重启 `build-worker`；不要重启后端、网关或其他服务，也不必重跑整套 bootstrap。常驻 worker 不会因应用 PR 推送或合并自动加载新模块，不能将仓库代码存在当成已启用。
+
+更新后重新运行原始 **Frontend build request**，让请求的 run attempt 增加，随后核对实际课程机构建日志及 commit 的 Frontend checks；Android 还需核对 Android checks。仅重跑 Preview environments 可能继续查询原请求对应的失败任务。npm 故障排查应确认日志是否出现官方源重试，以及失败发生在依赖安装、测试还是编译；不能用本机缓存构建通过代替服务器换源验收。
 
 控制请求与字段见[构建控制接口](CONTROL_API.md#构建控制接口)。
 

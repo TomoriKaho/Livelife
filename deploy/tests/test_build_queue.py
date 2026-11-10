@@ -11,7 +11,14 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from livelife.build_queue import BuildQueue
-from livelife.build_runner import extract_source, rewrite_mirrors, sandbox_command
+from livelife.build_runner import (
+    NPM,
+    NPM_FALLBACK,
+    Runner,
+    extract_source,
+    rewrite_mirrors,
+    sandbox_command,
+)
 from livelife.course import Course
 from unittest.mock import patch
 
@@ -158,6 +165,98 @@ class QueueTests(unittest.TestCase):
         self.assertEqual(self.queue.collect(releases.parent, grace=-1), [])
 
 
+class RunnerDependencyTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.runner = Runner(Path(self.temp.name))
+        self.lock_data = {
+            "lockfileVersion": 3,
+            "packages": {
+                "node_modules/vite": {
+                    "version": "8.3.2",
+                    "resolved": NPM_FALLBACK + "/vite/-/vite-8.3.2.tgz",
+                    "integrity": "sha512-keep",
+                },
+                "node_modules/private": {
+                    "resolved": "https://packages.example.test/private.tgz",
+                    "integrity": "sha512-private",
+                },
+            },
+        }
+
+    def checkout(self, job, workspace):
+        (workspace / "frontend").mkdir(parents=True)
+        (workspace / "frontend/package-lock.json").write_text(json.dumps(self.lock_data))
+        rewrite_mirrors(workspace)
+
+    def job(self, component, run_id=1):
+        request = {"component": component, "sha": A, "branch": "test", "run_id": run_id}
+        if component == "android":
+            from test_android_build import config
+
+            request["config"] = config(run_id)
+        return self.runner.queue.submit(request)
+
+    def test_fallback_switches_registry_and_tarballs_without_changing_lock(self):
+        for component in ("frontend", "android"):
+            with self.subTest(component=component):
+                job = self.job(component)
+                workspace = self.runner.queue.jobs / job["id"] / "repo"
+                self.checkout(job, workspace)
+                calls = []
+
+                def install(job, workspace, command, log):
+                    calls.append(self.runner.environment(job)["npm_config_registry"])
+                    lock = json.loads((workspace / "frontend/package-lock.json").read_text())
+                    self.assertEqual(
+                        lock["packages"]["node_modules/vite"]["resolved"],
+                        calls[-1] + "/vite/-/vite-8.3.2.tgz",
+                    )
+                    self.assertEqual(command[:2], ["npm", "ci"])
+                    if len(calls) == 1:
+                        raise RuntimeError("ECONNRESET")
+                    self.assertEqual(lock, self.lock_data)
+
+                log = io.BytesIO()
+                with patch.object(self.runner, "run_command", side_effect=install):
+                    self.runner.install_frontend_dependencies(job, workspace, log)
+                self.assertEqual(calls, [NPM, NPM_FALLBACK])
+                self.assertIn(b"registry.npmjs.org", log.getvalue())
+
+    def test_successful_install_is_not_retried(self):
+        job = self.job("frontend")
+        with patch.object(self.runner, "run_command") as command:
+            self.runner.install_frontend_dependencies(job, Path(self.temp.name), io.BytesIO())
+        command.assert_called_once()
+        self.assertNotIn("npm_registry", job)
+
+    def test_install_failure_stops_before_checks_and_check_failure_is_not_retried(self):
+        for run_id, failure in enumerate(("install", "checks"), start=1):
+            for component in ("frontend", "android"):
+                with self.subTest(failure=failure, component=component):
+                    self.job(component, run_id)
+                    job = self.runner.queue.claim()
+                    commands = []
+
+                    def command(job, workspace, args, log):
+                        commands.append(args)
+                        if failure == "install" or args[0] != "npm":
+                            raise RuntimeError(failure + " failed")
+
+                    with (
+                        patch.object(self.runner, "checkout", side_effect=self.checkout),
+                        patch.object(self.runner, "run_command", side_effect=command),
+                        patch("livelife.android_build.prepare"),
+                    ):
+                        self.runner.execute(job)
+                    result = self.runner.queue.lookup(job["id"])
+                    self.assertEqual(result["status"], "failure")
+                    self.assertEqual(len(commands), 2)
+                    installs = [args for args in commands if args[0] == "npm"]
+                    self.assertEqual(len(installs), 2 if failure == "install" else 1)
+
+
 class RunnerBoundaryTests(unittest.TestCase):
     def test_release_reuses_tested_venv_and_original_git_source(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -188,6 +287,23 @@ class RunnerBoundaryTests(unittest.TestCase):
             self.assertEqual((release / "backend/app/main.py").read_text(), "hello")
             self.assertEqual(
                 json.loads((release / "release.json").read_text())["job"], job["id"]
+            )
+            self.assertEqual(
+                json.loads((release / "release.json").read_text())["runtime_mode"], "legacy"
+            )
+            marked = io.BytesIO()
+            with tarfile.open(fileobj=marked, mode="w") as archive:
+                for name, data in (
+                    ("backend/app/main.py", b"hello"),
+                    ("backend/preview-runtime.json", b'{"runtime_mode":"postgres-v1"}'),
+                ):
+                    item = tarfile.TarInfo(name)
+                    item.size = len(data)
+                    archive.addfile(item, io.BytesIO(data))
+            with patch("livelife.course.subprocess.check_output", return_value=marked.getvalue()):
+                course.install_built(job["id"], A, 18000, release)
+            self.assertEqual(
+                json.loads((release / "release.json").read_text())["runtime_mode"], "postgres-v1"
             )
             with self.assertRaises(ValueError):
                 course.install_built(job["id"], B, 18001, release)

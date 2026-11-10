@@ -95,6 +95,9 @@ def test_real_local_postgresql_migrates_persists_and_stops(request, tmp_path):
     if not request.config.getoption("--local-postgres"):
         pytest.skip("Use --local-postgres with the local-db dependency group")
     import psutil
+    from alembic.config import Config
+    from alembic.runtime.migration import MigrationContext
+    from alembic.script import ScriptDirectory
     from sqlalchemy import text
 
     from app.db.session import Database
@@ -108,8 +111,22 @@ def test_real_local_postgresql_migrates_persists_and_stops(request, tmp_path):
             database.check_connection()
             with database.engine.connect() as connection:
                 assert connection.scalar(text("SELECT version()")).startswith("PostgreSQL")
-                assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-                    "0001_information"
+                config = Config(str(local.BACKEND / "alembic.ini"))
+                expected_heads = set(ScriptDirectory.from_config(config).get_heads())
+                assert expected_heads
+                assert (
+                    set(MigrationContext.configure(connection).get_current_heads())
+                    == expected_heads
+                )
+                assert connection.scalar(text("SELECT to_regclass('public.users') IS NOT NULL"))
+                assert connection.scalar(
+                    text("SELECT to_regclass('public.agent_sessions') IS NOT NULL")
+                )
+                assert connection.scalar(
+                    text("SELECT to_regclass('public.user_profiles') IS NOT NULL")
+                )
+                assert connection.scalar(
+                    text("SELECT to_regclass('public.user_interests') IS NOT NULL")
                 )
             with database.session_factory() as session:
                 saved = InformationAggregator(session).ingest(

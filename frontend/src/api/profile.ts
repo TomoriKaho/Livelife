@@ -1,0 +1,101 @@
+/**
+ * 个人资料与兴趣标签请求：GET /profile/interests、GET /profile/me、PATCH /profile/me。
+ * 服务端契约见 backend/app/api/profile/API.md；客户端行为见本目录 README.md。
+ */
+import { readAuthToken, writeAuthToken } from './auth';
+import { getApiBaseUrl } from '../platform/web';
+import { checkAndroidStatus } from '../platform/android-config';
+import { previewState } from '../platform/runtime-config';
+import type { InterestTag, Profile } from '../types';
+
+const REQUEST_TIMEOUT = 10_000;
+
+/** 成功返回数据；失败返回可显示原因，status 用于区分未登录与其它错误。 */
+export type ProfileResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string; status?: number };
+
+/** 读取本地会话令牌；与账户模块共用 `livelife.auth.token`，不另存一套。 */
+export const readAccessToken = readAuthToken;
+
+/** 清除或写入本地会话令牌（与账户模块同一存储键）。 */
+export function writeAccessToken(token: string | null, remember = false): void {
+  writeAuthToken(token, remember);
+}
+
+async function request<T>(
+  path: string,
+  init: RequestInit,
+  token: string | null,
+): Promise<ProfileResult<T>> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+  try {
+    try { await checkAndroidStatus(); }
+    catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : '无法确认安装包状态，请联网重试。' };
+    }
+    const expectedConfig = previewState.enabled ? previewState.config : null;
+    if (previewState.enabled && !expectedConfig) {
+      return { ok: false, error: previewState.error || '测试配置不可用，请先重新读取配置。' };
+    }
+    const baseUrl = getApiBaseUrl().replace(/\/+$/, '');
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      ...((init.headers as Record<string, string> | undefined) ?? {}),
+    };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const resp = await fetch(`${baseUrl}${path}`, { ...init, headers, signal: controller.signal });
+    const responseSha = resp.headers.get('X-Livelife-Backend-SHA');
+    if (expectedConfig && (responseSha === null || !/^[0-9a-f]{40}$/.test(responseSha)
+      || (expectedConfig.backend_mode !== 'staging' && responseSha !== expectedConfig.backend_sha))) {
+      return { ok: false, error: '响应后端版本与测试配置不符，请刷新配置并检查部署状态。' };
+    }
+    if (resp.status === 401) return { ok: false, error: '登录状态已失效，请重新登录。', status: 401 };
+    if (resp.status === 503) return { ok: false, error: '后端数据库未配置，资料暂时不可用。', status: 503 };
+    if (resp.status === 400 || resp.status === 422) {
+      return { ok: false, error: '提交的内容不符合要求，请检查昵称、简介和兴趣标签。', status: resp.status };
+    }
+    if (!resp.ok) return { ok: false, error: `后端返回 HTTP ${resp.status}。`, status: resp.status };
+    return { ok: true, data: (await resp.json()) as T };
+  } catch (error) {
+    if (controller.signal.aborted) return { ok: false, error: '连接超时，请稍后重试。' };
+    if (error instanceof SyntaxError) return { ok: false, error: '后端响应不是有效的 JSON。' };
+    return { ok: false, error: '无法连接后端，请检查后端地址和服务状态。' };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/** 兴趣标签目录，无需登录。 */
+export async function fetchInterestCatalog(): Promise<ProfileResult<InterestTag[]>> {
+  return request<InterestTag[]>('/profile/interests', { method: 'GET' }, null);
+}
+
+/** 当前用户资料；无本地令牌时直接返回未登录，避免无意义请求。 */
+export async function fetchProfile(): Promise<ProfileResult<Profile>> {
+  const token = readAccessToken();
+  if (!token) return { ok: false, error: '尚未登录，当前为界面预览。', status: 401 };
+  return request<Profile>('/profile/me', { method: 'GET' }, token);
+}
+
+/** 只提交出现的字段；interests 为整体替换。 */
+export interface ProfilePatch {
+  display_name?: string;
+  bio?: string;
+  interests?: string[];
+}
+
+export async function updateProfile(patch: ProfilePatch): Promise<ProfileResult<Profile>> {
+  const token = readAccessToken();
+  if (!token) return { ok: false, error: '尚未登录，当前为界面预览。', status: 401 };
+  return request<Profile>(
+    '/profile/me',
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    },
+    token,
+  );
+}

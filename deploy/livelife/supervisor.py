@@ -47,7 +47,7 @@ files={self.programs}/*.conf
             time.sleep(0.1)
         raise RuntimeError("project Supervisor failed to start")
 
-    def configure(self, name, command, cwd, environment=""):
+    def configure(self, name, command, cwd, environment="", *, stopwaitsecs=15):
         self.ensure()
         content = f"""[program:{name}]
 command={command}
@@ -58,7 +58,7 @@ startsecs=1
 startretries=5
 stopasgroup=true
 killasgroup=true
-stopwaitsecs=15
+stopwaitsecs={stopwaitsecs}
 stdout_logfile={self.root}/{name}.log
 stdout_logfile_maxbytes=5MB
 stdout_logfile_backups=2
