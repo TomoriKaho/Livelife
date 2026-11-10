@@ -12,4 +12,10 @@
 
 网页的一次获取与持续监听分别使用浏览器原生 `navigator.geolocation.getCurrentPosition()`、`watchPosition()`，首次监听会按浏览器规则请求位置授权。Capacitor 原生容器使用 `@capacitor/geolocation` 的同名监听及清理接口；Android 12 及更高版本允许用户只授权粗略位置，函数仍会返回该位置。iOS 工程尚未创建，接入时必须在 `Info.plist` 增加“使用期间位置”用途说明。
 
-自动测试：`node --test scripts/location.test.mjs`。网页手动验证可在 Chrome DevTools 的 **Sensors** 设置模拟坐标：从任一非地图页首次进入应用时确认授权请求，修改模拟坐标后再进入地图，检查蓝点与精度圈采用最新位置；停留在地图时再次修改坐标，蓝点应更新且不会抢走用户手动调整的视角，点击定位按钮才重新居中。另验证拒绝、超时或不可用提示。Android 持续监听的实机验收另行安排。
+自动测试：`node --test scripts/location.test.mjs`。网页手动验证可在 Chrome DevTools 的 **Sensors** 设置模拟坐标：从任一非地图页首次进入应用时确认授权请求，修改模拟坐标后再进入地图，检查蓝点与精度圈采用最新位置；停留在地图时再次修改坐标，蓝点应更新且不会抢走用户手动调整的视角，点击定位按钮才重新居中。另验证拒绝、超时或不可用提示。Android 持续监听仍须在真实设备上验收。
+
+## 设备朝向
+
+[device-heading.ts](device-heading.ts) 是地图朝向标的唯一平台入口。网页使用 `deviceorientationabsolute` / `deviceorientation`，并以 `requestAnimationFrame` 合并同一帧中的读数；细微转向不会被阈值过滤。Android 通过本地 `DeviceHeadingPlugin`（`android/app/src/main/java/io/github/tomorikaho/livelife/dev/DeviceHeadingPlugin.java`）读取 `TYPE_ROTATION_VECTOR`，按当前显示旋转重映射后发送 0–360° 的磁北航向。传感器不可用或原生桥加载失败时，自动回退到 WebView 事件；无航向数据时地图不显示方向标。
+
+插件仅在地图页存在时订阅，应用暂停时注销传感器、恢复后重新订阅，离开地图或销毁 Activity 时清理。它不请求额外运行时权限，也不保存或上传传感器数据。Android 验收时，先授予位置权限，在 2D 和 3D 地图缓慢旋转设备，确认标记连续转动；再旋转屏幕、切换后台和前台、离开再进入地图，确认朝向保持可用且没有重复监听。

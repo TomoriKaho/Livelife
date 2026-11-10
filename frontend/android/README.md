@@ -37,7 +37,7 @@ Android Studio 内置 JDK 不一定被 java_home 识别，可直接指定其真�
 VITE_API_BASE_URL=https://192.144.253.40/api/staging/
 ```
 
-该地址是共享测试后端，会随 main 更新。APP 内 localhost 指手机自身，不是开发电脑。本地工程未开启 HTTP 网络例外；使用项目 HTTPS 入口。业务登录和推送尚未实现；定位仅提供按用户操作调用的通用前台能力，尚未接入地图、日历、推荐或 Agent，页面大部分是明确标注的样例。
+该地址是共享测试后端，会随 main 更新。APP 内 localhost 指手机自身，不是开发电脑。本地工程未开启 HTTP 网络例外；使用项目 HTTPS 入口。业务登录和推送尚未实现；应用已在前台持续监听位置，地图会显示蓝点、精度圈和朝向标。位置能力仍不提供后台定位，日历、推荐和 Agent 尚未接入位置消费，页面大部分是明确标注的样例。
 
 ```bash
 cd frontend
@@ -118,4 +118,4 @@ Actions 附件只保存日志和版本/校验记录 7 天；APK 从下载页分�
 
 ## 真机验收
 
-安装后按[真机验收记录](../../docs/testing.md#真机验收记录)核对版本、页面、地图、返回键和真实 hello。手绘或缓存改动另按[手绘模块](../src/plugins/README.md#android-手绘渲染回归)和[旧装饰缓存处理](../src/assets/sketch/README.md#旧版本缓存处理)回归。网页构建与原生同步、签名后分发的流程参考 [Capacitor 文档](https://capacitorjs.com/docs/basics/workflow)。
+安装后按[真机验收记录](../../docs/testing.md#真机验收记录)核对版本、页面、地图、返回键和真实 hello。地图定位改动还要授予位置权限后在 2D、3D 中缓慢旋转设备，确认方向标连续更新；旋转屏幕、后台再回前台、离开再回到地图后重复确认。手绘或缓存改动另按[手绘模块](../src/plugins/README.md#android-手绘渲染回归)和[旧装饰缓存处理](../src/assets/sketch/README.md#旧版本缓存处理)回归。网页构建与原生同步、签名后分发的流程参考 [Capacitor 文档](https://capacitorjs.com/docs/basics/workflow)。

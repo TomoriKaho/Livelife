@@ -14,9 +14,10 @@ import mascot from '../assets/mascot.png';
 import campus from '../assets/maps/campus.json';
 import { activities, categories, filters, venues } from './map/demo.js';
 import { contains } from './map/geometry.mjs';
-import { orientationHeading, preserveHeading, toDeviceMapLocation } from './map/device-location.mjs';
+import { normalizeHeading, orientationHeading, preserveHeading, toDeviceMapLocation } from './map/device-location.mjs';
 import { profileFor } from './map/model-profiles.mjs';
 import { currentLocation, locationTrackingState, restartLocationTracking } from '../platform/location-tracker';
+import { watchAndroidDeviceHeading } from '../platform/device-heading';
 const CampusScene = defineAsyncComponent(() => import('./map/CampusScene.vue'));
 const CampusPlan = defineAsyncComponent(() => import('./map/CampusPlan.vue'));
 const route = useRoute(), focusPoint = ref(null), routedActivity = ref(null);
@@ -24,7 +25,8 @@ const mode = ref('3d'), filter = ref('all'), search = ref(''), selected = ref(nu
 const deviceLocation = ref(null), outsideCampus = ref(false);
 const drawer = ref(null), drawerPeek = ref(180);
 const planView = ref(null);
-let drawerBeforeSelection = null, latestOrientation = null, deviceHeadingFrame = 0;
+let drawerBeforeSelection = null, latestOrientation = null, latestNativeHeading = null, deviceHeadingFrame = 0;
+let stopNativeHeading = null, headingListenerGeneration = 0;
 const campusActivities = activities.filter(item => item.building);
 const visibleActivities = computed(() => campusActivities.filter(item => filter.value === 'all' || item.category === filter.value));
 const locationState = computed(() => outsideCampus.value ? 'outside-campus' : locationTrackingState.value);
@@ -41,8 +43,8 @@ function screenAngle() {
   return Number.isFinite(angle) ? angle : 0;
 }
 function applyDeviceHeading() {
-  if (!deviceLocation.value || !latestOrientation) return;
-  const heading = orientationHeading(latestOrientation, screenAngle());
+  if (!deviceLocation.value) return;
+  const heading = latestNativeHeading ?? orientationHeading(latestOrientation, screenAngle());
   if (heading === null) return;
   const previous = deviceLocation.value.heading;
   if (previous === heading) return;
@@ -59,6 +61,44 @@ function scheduleDeviceHeading() {
 function updateDeviceHeading(event) {
   latestOrientation = { alpha: event.alpha, webkitCompassHeading: event.webkitCompassHeading };
   scheduleDeviceHeading();
+}
+function updateNativeDeviceHeading(heading) {
+  latestNativeHeading = normalizeHeading(heading);
+  scheduleDeviceHeading();
+}
+function startWebHeadingListener() {
+  latestNativeHeading = null;
+  window.addEventListener('deviceorientationabsolute', updateDeviceHeading, true);
+  window.addEventListener('deviceorientation', updateDeviceHeading, true);
+  window.addEventListener('orientationchange', scheduleDeviceHeading, true);
+  window.screen?.orientation?.addEventListener('change', scheduleDeviceHeading);
+}
+function stopWebHeadingListener() {
+  window.removeEventListener('deviceorientationabsolute', updateDeviceHeading, true);
+  window.removeEventListener('deviceorientation', updateDeviceHeading, true);
+  window.removeEventListener('orientationchange', scheduleDeviceHeading, true);
+  window.screen?.orientation?.removeEventListener('change', scheduleDeviceHeading);
+}
+async function startDeviceHeadingListener() {
+  const generation = ++headingListenerGeneration;
+  const stop = await watchAndroidDeviceHeading(updateNativeDeviceHeading);
+  if (generation !== headingListenerGeneration) {
+    await stop?.();
+    return;
+  }
+  if (stop) {
+    stopNativeHeading = stop;
+    return;
+  }
+  startWebHeadingListener();
+}
+function stopDeviceHeadingListener() {
+  headingListenerGeneration++;
+  stopWebHeadingListener();
+  const stop = stopNativeHeading;
+  stopNativeHeading = null;
+  latestNativeHeading = null;
+  void stop?.();
 }
 async function requestDeviceHeadingPermission() {
   const orientationEvent = globalThis.DeviceOrientationEvent;
@@ -136,10 +176,7 @@ const removeBackHandler = registerBackHandler(() => {
 onBeforeUnmount(() => {
   removeBackHandler();
   cancelAnimationFrame(deviceHeadingFrame);
-  window.removeEventListener('deviceorientationabsolute', updateDeviceHeading, true);
-  window.removeEventListener('deviceorientation', updateDeviceHeading, true);
-  window.removeEventListener('orientationchange', scheduleDeviceHeading, true);
-  window.screen?.orientation?.removeEventListener('change', scheduleDeviceHeading);
+  stopDeviceHeadingListener();
 });
 function closeDetail() {
   detail.value = null;
@@ -202,10 +239,7 @@ async function applyActivityRoute() {
   routedActivity.value = item;
 }
 onMounted(async () => {
-  window.addEventListener('deviceorientationabsolute', updateDeviceHeading, true);
-  window.addEventListener('deviceorientation', updateDeviceHeading, true);
-  window.addEventListener('orientationchange', scheduleDeviceHeading, true);
-  window.screen?.orientation?.addEventListener('change', scheduleDeviceHeading);
+  void startDeviceHeadingListener();
   await applyActivityRoute();
 });
 watch(() => route.query.activity, applyActivityRoute);
