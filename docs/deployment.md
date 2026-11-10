@@ -8,6 +8,7 @@
 | --- | --- | --- |
 | 后端构建与 HTTPS 测试部署 | 已接入，LIVELIFE_BACKEND_ENABLED=true | [main 部署](https://github.com/TomoriKaho/Livelife/actions/runs/37503098101)、[课程机控制运行](https://github.com/TomoriKaho/Livelife/actions/runs/37734442654) |
 | 课程机统一检查与网页自动预览 | 已接入，LIVELIFE_FRONTEND_ENABLED=true；网页/API 无额外预览 key | [main 网页运行](https://github.com/TomoriKaho/Livelife/actions/runs/37613254277)、[PR 网页运行](https://github.com/TomoriKaho/Livelife/actions/runs/37613465083) |
+| npm 安装备用源 | 课程机已安装 `b12be87` 的构建模块并重启 worker；真实下载故障触发换源仍待验收 | [PR #69 服务器启用记录](https://github.com/TomoriKaho/Livelife/pull/69)、[安装与排查教程](../deploy/BUILDING.md#维护者安装与排查教程) |
 | Android 测试包签名与分发 | 工程和自动链路已接入，LIVELIFE_ANDROID_ENABLED=true | [PR #45](https://github.com/TomoriKaho/Livelife/pull/45)、[实际分发运行](https://github.com/TomoriKaho/Livelife/actions/runs/37734472930) |
 | 预览 PostgreSQL、迁移及数据库发布门禁 | 仓库已提供；服务器控制程序升级、依赖安装与线上验收尚待完成 | [启用与恢复教程](../deploy/README.md#预览数据库与启动门禁) |
 | 正式发布与 iOS | 正式发布工作流和 iOS 工程尚未提供 | [正式发布约定](#客户端模式与后续正式发布约定) |

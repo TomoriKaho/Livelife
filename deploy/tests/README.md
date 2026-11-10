@@ -99,4 +99,6 @@ deploy/.venv/bin/python -m unittest discover -s deploy/tests -p test_smoke.py -v
 
 ## 构建队列回归
 
+`test_build_queue.py` 同时覆盖网页和 Android 的 npm 备用源：首源安装失败后 registry 与临时锁文件包地址一起切换，版本、integrity 和自定义源不变；安装成功不重试，两个源均失败时不进入检查，测试或编译失败不重新安装。可运行 `python3 -m unittest discover -s deploy/tests -p test_build_queue.py -v`。这些测试模拟下载失败；真实换源和构建仍需按[安装与排查教程](../BUILDING.md#维护者安装与排查教程)更新课程机 worker 后验收。
+
 维护者验证应覆盖：两个全项目槽位及第三个任务排队；push/PR 同 SHA 去重；旧排队提交替换；构建失败/worker 重启；日志分页；SHA/模块不匹配拒绝；源码路径和静态包链接拒绝；沙箱无法读取 ~/.ssh、控制数据库或部署凭证；原成功路由、固定绑定与回滚引用保持。新路径安装和完整 GitHub 链路以[实施状态](../../docs/deployment.md#当前实施状态)为准。
