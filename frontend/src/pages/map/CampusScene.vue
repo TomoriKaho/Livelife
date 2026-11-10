@@ -32,6 +32,7 @@ const meshes = new Map(), selectable = [], raycaster = new THREE.Raycaster();
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 // 水平圆锥位于蓝点朝向一侧，底部向尖端拱起以指示航向。
 const locationBlue = 0x4387bb, locationMarkerRadius = 4.5, headingConeRadius = 2.5, headingConeLength = 1.8, headingConeSurfaceGap = 1.3;
+const locationRoofOpacity = .16, locationFacadeOpacity = .04;
 const initialTarget = new THREE.Vector3(...initialView.target);
 const initialCamera = initialTarget.clone().add(new THREE.Vector3(...initialView.offset));
 function shape(points) { return footprintShape(points); }
@@ -200,6 +201,11 @@ function restoreLocationBuilding() {
   locationBuildingMaterials = [];
   translucentLocationBuildings = [];
 }
+function isRoofPart(object, model) {
+  for (let current = object; current && current !== model; current = current.parent)
+    if (current.userData.role === 'roof') return true;
+  return false;
+}
 function revealLocationOverlap(locationBuildings) {
   const models = locationBuildings.map(building => meshes.get(building.id)).filter(Boolean);
   if (models.length === translucentLocationBuildings.length && models.every((model, index) => model === translucentLocationBuildings[index])) return;
@@ -209,7 +215,8 @@ function revealLocationOverlap(locationBuildings) {
       const materials = object.material ? (Array.isArray(object.material) ? object.material : [object.material]) : [];
       for (const material of materials) {
         locationBuildingMaterials.push({ material, opacity: material.opacity, transparent: material.transparent, depthWrite: material.depthWrite });
-        material.opacity = Math.min(material.opacity, .3);
+        // 楼顶仍保留弱轮廓；外墙、窗格和外立面描边几乎隐去，让定位标清晰可见。
+        material.opacity = Math.min(material.opacity, isRoofPart(object, model) ? locationRoofOpacity : locationFacadeOpacity);
         material.transparent = true;
         material.depthWrite = false;
         material.needsUpdate = true;
