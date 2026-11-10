@@ -60,6 +60,14 @@ adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 
 本地 debug 包名为 io.github.tomorikaho.livelife.dev.local，名称“Livelife 本地调试”；团队分发包名为 io.github.tomorikaho.livelife.dev，名称“Livelife 测试”。两者可以共存，签名和数据独立。本地 debug 由 Android 工具自动签名，分发包由腾讯云专用测试密钥签名；开发者不需要索取服务器私钥。
 
+### 地图定位坐标
+
+Android 原生定位和包内 OSM 离线地图统一使用 **WGS-84**。在 Emulator Extended controls 或 `adb emu geo fix` 中手工测试时也输入 WGS-84，不能把高德、腾讯等常见 GCJ-02 坐标直接写入。博雅塔可作为固定检查点：WGS-84 为纬度 `39.992637`、经度 `116.305783`；其常见 GCJ-02 值 `39.993923, 116.311832` 直接输入会向东北偏移约 500 米。
+
+```powershell
+adb -s emulator-5554 emu geo fix 116.305783 39.992637 # 顺序为经度、纬度
+```
+
 查看原生日志：Android Studio 的 Logcat 选择设备和应用；也可执行 `adb logcat`。在电脑 Chrome 的 chrome://inspect/#devices 调试本地 debug WebView。团队 release 测试包不开放远程 WebView 调试，问题用版本、现象及日志记录。
 
 ## 3. PR 的自动测试包

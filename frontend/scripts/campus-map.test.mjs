@@ -177,6 +177,13 @@ test('设备 WGS-84 位置投影到地图米制坐标并保留精度范围', () 
   assert.deepEqual(preserveHeading({ point: [1, 2], accuracy: 3, heading: 10 }, 270), { point: [1, 2], accuracy: 3, heading: 10 });
   assert.equal(toDeviceMapLocation({ latitude: Number.NaN, longitude: 116.3, accuracy: 3 }), null);
 });
+test('博雅塔定位使用 WGS-84，不能将 GCJ-02 坐标直接投影到 OSM 离线地图', () => {
+  const boyaWgs84 = toDeviceMapLocation({ latitude: 39.9926368, longitude: 116.3057830, accuracy: 5 });
+  const boyaGcj02 = toDeviceMapLocation({ latitude: 39.993923, longitude: 116.311832, accuracy: 5 });
+  assert.ok(boyaWgs84 && boyaGcj02);
+  assert.equal(contains(boyaWgs84.point, campus.boundary), true);
+  assert.equal(contains(boyaGcj02.point, campus.boundary), false);
+});
 test('定位精度圈与建筑相交时识别全部楼体并正确处理中庭', () => {
   const building = { id: 'test-building', points: [[0, 0], [10, 0], [10, 10], [0, 10]], holes: [[[3, 3], [7, 3], [7, 7], [3, 7]]] };
   const neighbour = { id: 'neighbour', points: [[14, 0], [24, 0], [24, 10], [14, 10]] };
