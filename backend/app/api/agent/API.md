@@ -28,11 +28,11 @@ API 前缀为 `/agent`。本模块服务未登录用户；所有会话读取、�
 | `message_start` | `message_id`, `request_id` | 创建回答消息 |
 | `citation` | `rank`, `information_id`, `title`, `source_url`, `platform`, `source_id`, `published_at`, `activity_location`, `activity_start_at`, `activity_end_at`, `registration_deadline_at`, `snippet` | 检索到的来源 |
 | `delta` | `text` | 新增回答文本 |
-| `usage` | `input_tokens`, `output_tokens`, `estimated` | 本次用量；缺少模型 usage 时使用估算 |
+| `usage` | `input_tokens`, `output_tokens`, `estimated` | 本次用量；缺少模型 usage 时按实际发送的消息内容字符数估算 |
 | `done` | `message_id`, `status` | 正常完成 |
 | `error` | `code`, `retryable` | 模型流或服务异常 |
 
-同一 `client_request_id` 的已完成请求只重放已保存回答，不再次调用模型；尚未结束的请求返回 `409`。资料不足时返回固定提示，不调用模型。
+同一 `client_request_id` 的已完成请求只重放已保存回答，不再次调用模型；尚未结束的请求返回 `409`。模型已配置时，即使本轮没有检索到来源，也会将问题和有限历史交给模型，以支持问候、能力介绍和澄清；校园事实仍必须由本轮新检索到的公开记录支撑。历史对话仅用于理解指代和上下文，不能作为事实证据或沿用旧来源。若模型未配置且没有检索来源，返回“我目前没有找到足够的公开资料来回答这个问题。”。
 
 ## `POST /agent/messages/{message_id}/rating`
 
@@ -48,7 +48,9 @@ API 前缀为 `/agent`。本模块服务未登录用户；所有会话读取、�
 - 超频、并发或 token 额度用尽返回 `429` 和 `detail.code`；适用时带 `Retry-After`。
 - 会话 token 缺失/错误返回 `401`；会话过期返回 `404`；问题过长返回 `413`；未配置数据库或会话密钥返回 `503`。
 - IP 限流使用 Uvicorn 可信代理解析后的连接地址，再保存 HMAC 摘要；应用不直接信任请求中的 `X-Forwarded-For` 字符串。
-- 只有当前公开信息表中的记录可进入模型上下文。来源正文视为不可信输入；模型必须引用资料且不能补造信息。
+- 只有当前公开信息表中的记录可作为事实证据并生成来源引用。来源正文、用户消息和历史对话均视为不可信输入；历史只帮助补全明确的追问（例如“这个课的老师是什么”），检索仍需从公开记录取得新证据。模型不得声称能访问尚未接入的实时课表、选课、提醒或定位能力。
+
+用量预留和缺少模型 usage 时的输入估算共用模型请求的消息组装逻辑：计入系统提示、公开记录包装及裁剪后的历史，排除未发送的旧消息与被截断内容；预留另包含最大输出额度。估算仍为字符数近似，不等同于供应商账单。
 
 ## 配置与本地联调
 
