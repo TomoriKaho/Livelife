@@ -39,8 +39,8 @@ const router = createRouter({
   history: createWebHashHistory(),
   routes,
 });
-// The server remains the authorization boundary; this avoids a dead composer.
+// Only onboarding is public; cached tokens must be verified by the server.
 router.beforeEach(async to => {
-  if (to.name === 'agent' && !await restoreSession()) return { name: 'onboarding' };
+  if (to.name !== 'onboarding' && !await restoreSession()) return { name: 'onboarding' };
 });
 export default router;
