@@ -314,36 +314,8 @@ async def send_message(
         deadline = asyncio.get_running_loop().time() + settings.llm_timeout_seconds
         stream = events()
         pending = None
-        try:
-            while True:
-                remaining = deadline - asyncio.get_running_loop().time()
-                if remaining <= 0:
-                    timed_out = True
-                    yield _sse("error", {"code": "model_timeout", "retryable": True})
-                    return
-                if not still_authenticated():
-                    yield _sse("error", {"code": "authentication_required", "retryable": False})
-                    return
-                if pending is None:
-                    pending = asyncio.create_task(anext(stream))
-                done, _ = await asyncio.wait({pending}, timeout=min(1, remaining))
-                if not done:
-                    continue
-                if not still_authenticated():
-                    yield _sse("error", {"code": "authentication_required", "retryable": False})
-                    return
-                try:
-                    event = pending.result()
-                except StopAsyncIteration:
-                    return
-                pending = None
-                yield event
-        finally:
-            if pending is not None:
-                pending.cancel()
-                await asyncio.gather(pending, return_exceptions=True)
-            await stream.aclose()
-            # Covers revocation/disconnect before the generator entered its try.
+
+        def settle_cancelled() -> None:
             if not state["duplicate"]:
                 finish_request(
                     factory,
@@ -357,6 +329,56 @@ async def send_message(
                     output_tokens=0,
                     estimated_usage=True,
                 )
+
+        async def deadline_watchdog() -> None:
+            nonlocal timed_out
+            await asyncio.sleep(settings.llm_timeout_seconds)
+            timed_out = True
+            # Independent of downstream reads: a stalled client must not keep
+            # the provider connection alive beyond the concurrency lease.
+            if pending is not None:
+                pending.cancel()
+                await asyncio.gather(pending, return_exceptions=True)
+            await stream.aclose()
+            settle_cancelled()
+
+        watchdog = asyncio.create_task(deadline_watchdog())
+        try:
+            while True:
+                remaining = deadline - asyncio.get_running_loop().time()
+                if timed_out or remaining <= 0:
+                    timed_out = True
+                    yield _sse("error", {"code": "model_timeout", "retryable": True})
+                    return
+                if not still_authenticated():
+                    yield _sse("error", {"code": "authentication_required", "retryable": False})
+                    return
+                if pending is None:
+                    pending = asyncio.create_task(anext(stream))
+                done, _ = await asyncio.wait({pending}, timeout=min(1, remaining))
+                if not done or timed_out:
+                    continue
+                if not still_authenticated():
+                    yield _sse("error", {"code": "authentication_required", "retryable": False})
+                    return
+                try:
+                    event = pending.result()
+                except StopAsyncIteration:
+                    return
+                pending = None
+                if event.startswith(("event: done\n", "event: error\n")):
+                    watchdog.cancel()
+                yield event
+        finally:
+            if not timed_out:
+                watchdog.cancel()
+            await asyncio.gather(watchdog, return_exceptions=True)
+            if pending is not None:
+                pending.cancel()
+                await asyncio.gather(pending, return_exceptions=True)
+            await stream.aclose()
+            # Covers revocation/disconnect before the generator entered its try.
+            settle_cancelled()
 
     return StreamingResponse(
         guarded_events(),

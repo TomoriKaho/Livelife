@@ -669,3 +669,57 @@ def test_postgres_delete_and_finalize_have_consistent_lock_order(request, tmp_pa
             usage_locked.set()
             deletion_started.set()
             engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_stalled_downstream_does_not_hold_model_past_deadline(tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    from starlette.requests import Request
+
+    from app.api.agent.router import send_message
+    from app.core.config import get_agent_settings
+    from app.services.agent.schemas import SendMessageRequest
+
+    app, database = make_api_app(tmp_path, monkeypatch, model=True)
+    config = replace(get_agent_settings(), llm_timeout_seconds=0.1)
+    monkeypatch.setattr("app.api.agent.router.get_agent_settings", lambda: config)
+    closed = []
+
+    async def completion(*args, **kwargs):
+        try:
+            yield "first", None
+            await asyncio.sleep(10)
+        finally:
+            closed.append(True)
+
+    monkeypatch.setattr("app.api.agent.router.stream_completion", completion)
+    try:
+        created = create_session(database.session_factory, config, "test", user_id=ACCOUNT_ID)
+        with database.session_factory() as db:
+            user = db.get(User, ACCOUNT_ID)
+        request = Request(
+            {
+                "type": "http",
+                "app": app,
+                "client": ("test", 1),
+                "headers": [
+                    (b"authorization", b"Bearer account-test-token"),
+                    (b"x-agent-session", created["session_token"].encode()),
+                ],
+            }
+        )
+        response = await send_message(
+            request, SendMessageRequest(content="hello", client_request_id=uuid4()), user
+        )
+        iterator = response.body_iterator
+        assert "message_start" in await anext(iterator)
+        assert "first" in await anext(iterator)
+        await asyncio.sleep(0.25)  # Client stops reading after the first delta.
+        assert closed == [True]
+        with database.session_factory() as db:
+            assert db.get(AgentUserUsage, ACCOUNT_ID).active_request_id is None
+        assert "model_timeout" in await anext(iterator)
+        await iterator.aclose()
+    finally:
+        database.close()

@@ -189,6 +189,9 @@ def delete_account(
         payload.password, user.password_hash
     ):
         raise HTTPException(status_code=400, detail="Password is incorrect")
+    # Lock the account before quota creation/deletion, including first Agent use.
+    if session.scalar(select(User.id).where(User.id == user.id).with_for_update()) is None:
+        raise HTTPException(status_code=401, detail="Session is invalid or expired")
     # Match Agent admission/finalization: usage first, then conversations.
     session.execute(delete(AgentUserUsage).where(AgentUserUsage.user_id == user.id))
     session.execute(delete(AgentSession).where(AgentSession.user_id == user.id))

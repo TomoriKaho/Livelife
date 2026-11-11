@@ -12,7 +12,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import AgentSettings
-from app.db.models import AgentIpWindow, AgentSession, AgentUserUsage
+from app.db.models import AgentIpWindow, AgentSession, AgentUserUsage, User
 from app.services.agent.llm import estimate_input_tokens
 from app.services.agent.retrieval import RetrievedInformation, search_information
 
@@ -162,6 +162,10 @@ def _safe_message(message: dict[str, Any]) -> dict:
 
 
 def _usage(session: Session, user_id: UUID, now: datetime) -> AgentUserUsage:
+    # Serialize first-use quota creation against account deletion too: there may
+    # not yet be a usage row for DELETE/SELECT FOR UPDATE to lock.
+    if session.scalar(select(User.id).where(User.id == user_id).with_for_update()) is None:
+        raise AgentError("authentication_required", 401)
     insert = pg_insert if session.get_bind().dialect.name == "postgresql" else sqlite_insert
     session.execute(
         insert(AgentUserUsage)
