@@ -5,25 +5,20 @@ export const pageMeta = { key: 'map', id: 'D-02', title: '活动地图', placeho
 <script setup>
 import { registerBackHandler } from '../platform/android-navigation';
 import { computed, defineAsyncComponent, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue';
-import { sessionShuffle } from '../data/session-style';
-import { RouterLink, useRoute } from 'vue-router';
-import { saved, toggleSave, activityDetailRoute } from '../data/favorites.js';
+import NearbyActivities from './map/NearbyActivities.vue';
+import { useNearbyActivities } from './map/useNearbyActivities';
 import AppIcon from '../components/AppIcon.vue';
 import ActivityDrawer from './map/ActivityDrawer.vue';
 import OsmAttribution from './map/OsmAttribution.vue';
-import mascot from '../assets/mascot.png';
 import campus from '../assets/maps/campus.json';
 import { isMapAttributionVisible } from './map/map-drawer-layout.mjs';
-import { activities, categories, filters, venues } from './map/demo.js';
 import { contains } from './map/geometry.mjs';
 import { normalizeHeading, orientationHeading, orientationSensorHeading, preserveHeading, toDeviceMapLocation } from './map/device-location.mjs';
-import { profileFor } from './map/model-profiles.mjs';
 import { currentLocation, locationTrackingState, refreshCurrentLocation, restartLocationTracking } from '../platform/location-tracker';
 import { watchAndroidDeviceHeading } from '../platform/device-heading';
 const CampusScene = defineAsyncComponent(() => import('./map/CampusScene.vue'));
 const CampusPlan = defineAsyncComponent(() => import('./map/CampusPlan.vue'));
-const route = useRoute(), focusPoint = ref(null), routedActivity = ref(null);
-const mode = ref('3d'), filter = ref('all'), search = ref(''), selected = ref(null), floor = ref(2), scene = ref(null), detail = ref(null);
+const mode = ref('3d'), search = ref(''), selected = ref(null), floor = ref(2), scene = ref(null);
 const deviceLocation = ref(null), outsideCampus = ref(false);
 const drawer = ref(null), mapFocusInset = ref(180), drawerOcclusion = ref(180), drawerExpandedHeight = ref(540);
 const mapAttributionVisible = computed(() => isMapAttributionVisible(drawerOcclusion.value, drawerExpandedHeight.value));
@@ -35,9 +30,13 @@ const planView = ref(null);
 let drawerBeforeSelection = null, latestOrientation = null, latestNativeHeading = null, latestWebSensorHeading = null, deviceHeadingFrame = 0;
 let stopNativeHeading = null, headingListenerGeneration = 0;
 let centerAfterNextLocation = false;
+let centeredOnDevice = false;
 let webOrientationSensor = null;
-const campusActivities = activities.filter(item => item.building);
-const visibleActivities = computed(() => campusActivities.filter(item => filter.value === 'all' || item.category === filter.value));
+const { items, radius, keyword, today, state: nearbyState, message: nearbyMessage, retry } = useNearbyActivities();
+const visibleActivities = computed(() => items.value.map(item => ({
+  id: item.id, building: item.place.building_id, room: item.location_resolution?.room,
+  floor: null, title: item.title,
+})));
 const locationState = computed(() => outsideCampus.value ? 'outside-campus' : locationTrackingState.value);
 const locationHint = computed(() => ({
   locating: '正在获取当前位置…',
@@ -140,69 +139,14 @@ async function requestDeviceHeadingPermission() {
   if (typeof requestPermission !== 'function') return;
   try { await requestPermission.call(orientationEvent); } catch { /* requires an explicit user gesture on some browsers */ }
 }
-const currentBuilding = computed(() => {
-  if (!selected.value) return null;
-  const building = campus.buildings.find(b => b.id === selected.value), venue = venues.find(v => v.id === selected.value);
-  const profile = building ? profileFor(building) : {};
-  return { ...building, ...venue, short: venue?.short || building?.name || '校园建筑', floors: venue?.floors || Math.min(6, profile.floors || 3), scenic: profile.scenic };
-});
-const floorActivities = computed(() => visibleActivities.value.filter(a => a.building === selected.value && a.floor === floor.value));
-const buildingWalk = computed(() => {
-  const meters = Math.min(...activities.filter(item => item.building === selected.value).map(item => Number.parseInt(item.distance, 10)));
-  if (!Number.isFinite(meters)) return '校园内';
-  return `距你 ${meters}m · 步行 ${Math.max(1, Math.round(meters / 70))} 分钟`;
-});
 const results = computed(() => {
   const value = search.value.trim().toLowerCase();
   if (!value) return [];
-  return campus.buildings.filter(b => b.name.toLowerCase().includes(value) || activities.some(a => a.building === b.id && `${a.title}${a.room}`.toLowerCase().includes(value))).slice(0, 6);
+  return campus.buildings.filter(b => b.name.toLowerCase().includes(value)
+    || items.value.some(item => item.place.building_id === b.id
+      && `${item.title || ''}${item.activity_location || ''}`.toLowerCase().includes(value))).slice(0, 6);
 });
-const venuePage = ref(0), activityPage = ref(0), likedPage = ref(0);
-const showAllLiked = ref(false);
-const likedPreview = sessionShuffle('map-demo-liked', campusActivities).slice(0, 3);
-const likedActivities = computed(() => showAllLiked.value ? campusActivities : likedPreview);
-function showAll(section) {
-  filter.value = 'all';
-  if (section === 'liked') showAllLiked.value = true;
-}
-const buildingPalette = ['pink', 'yellow', 'blue', 'mint'];
-const venuePencil = Object.fromEntries(sessionShuffle('map-demo-venues', venues).map((venue, index) => [venue.id, buildingPalette[index % buildingPalette.length]]));
-const venueCards = computed(() => venues.map(venue => {
-  const meters = Math.min(...campusActivities.filter(item => item.building === venue.id).map(item => Number.parseInt(item.distance, 10) || 0));
-  const safe = Number.isFinite(meters) ? meters : 0;
-  return { ...venue, distanceLabel: safe ? `${safe} m` : '校园内', minutes: Math.max(1, Math.round((safe || 80) / 70)), pencil: venuePencil[venue.id] };
-}));
-function activityIcon(type) { return categories[type]?.icon || 'star'; }
-function floorActivityIcon(type) { return categories[type]?.floorIcon || 'flag'; }
-function activityPencil(type) { return categories[type]?.pencil || 'yellow'; }
-const pencilInk = { yellow: '#ffdf32', blue: '#9ac8f2', mint: '#7ec9a8', pink: '#f4b2ab', lavender: '#c9b6f0' };
-function activityInk(type) { return pencilInk[activityPencil(type)] || pencilInk.yellow; }
-function buildingPencil(id) { return venuePencil[id] || 'yellow'; }
-function roomLabel(activity) { return /^\d/.test(activity.room) ? `${currentBuilding.value?.label || '教室'} ${activity.room}` : activity.room; }
-function startTime(time) { return time.split('–')[0]; }
-function syncPage(event, which) {
-  const card = event.currentTarget.firstElementChild;
-  if (!card) return;
-  const index = Math.max(0, Math.round(event.currentTarget.scrollLeft / (card.offsetWidth + 10)));
-  if (which === 'venue') venuePage.value = index;
-  else if (which === 'liked') likedPage.value = index;
-  else activityPage.value = index;
-}
-function placeLine(activity) {
-  const venue = venues.find(item => item.id === activity.building);
-  return [venue?.short || activity.place || '校园', `${activity.floor}F`, activity.room].filter(Boolean).join(' · ');
-}
-function openActivity(activity, { expand = true } = {}) {
-  if (!activity?.building) return;
-  if (!selected.value) drawerBeforeSelection = drawer.value?.getState() ?? 'middle';
-  selected.value = activity.building;
-  floor.value = activity.floor || 1;
-  detail.value = activity;
-  search.value = '';
-  drawer.value?.setState(expand ? 'expanded' : 'middle');
-}
 const removeBackHandler = registerBackHandler(() => {
-  if (detail.value) { closeDetail(); return true; }
   if (selected.value) { select(null); return true; }
   if (search.value) { search.value = ''; return true; }
   return false;
@@ -212,12 +156,7 @@ onBeforeUnmount(() => {
   cancelAnimationFrame(deviceHeadingFrame);
   stopDeviceHeadingListener();
 });
-function closeDetail() {
-  detail.value = null;
-  drawer.value?.setState(drawer.value?.getState() || 'expanded');
-}
 function select(id) {
-  focusPoint.value = null; routedActivity.value = null; detail.value = null;
   if (id) {
     // 只记录进入建筑探索前的档位，切换建筑或查看详情不覆盖这份状态。
     if (!selected.value) drawerBeforeSelection = drawer.value?.getState() ?? 'middle';
@@ -240,18 +179,19 @@ function syncDeviceLocation(location) {
   outsideCampus.value = false;
   deviceLocation.value = preserveHeading(nextLocation, deviceLocation.value?.heading);
   applyDeviceHeading();
-  if (centerAfterNextLocation) {
+  if (centerAfterNextLocation || !centeredOnDevice) {
     centerAfterNextLocation = false;
     void centerOnDeviceLocation();
   }
 }
 async function centerOnDeviceLocation() {
   const point = deviceLocation.value?.point;
-  if (!point) return false;
+  if (!point || !scene.value) return false;
+  centeredOnDevice = true;
   // Explicitly locating exits exploration and restores each map's fixed
   // location view: CampusPlan resets scale and CampusScene resets its camera
   // offset, rather than merely moving the existing viewport.
-  drawerBeforeSelection = null; selected.value = null; detail.value = null; focusPoint.value = null; routedActivity.value = null;
+  drawerBeforeSelection = null; selected.value = null;
   await nextTick();
   scene.value?.locate(point);
   return true;
@@ -283,35 +223,19 @@ async function setMode(value) {
   mode.value = value; search.value = '';
   await nextTick();
 }
-async function applyActivityRoute() {
-  const raw = route.query.activity;
-  const id = Array.isArray(raw) ? raw[0] : raw;
-  const item = activities.find(activity => activity.id === id);
-  if (!item) return;
-  filter.value = 'all'; mode.value = '3d';
-  await nextTick();
-  if (item.building) openActivity(item, { expand: false });
-  else select(null);
-  floor.value = item.floor || 1;
-  focusPoint.value = item.mapPosition || null;
-  routedActivity.value = item;
-}
-onMounted(async () => {
-  void startDeviceHeadingListener();
-  await applyActivityRoute();
-});
-watch(() => route.query.activity, applyActivityRoute);
+onMounted(() => { void startDeviceHeadingListener(); });
 watch(currentLocation, syncDeviceLocation, { immediate: true });
+watch(scene, value => { if (value && !centeredOnDevice) void centerOnDeviceLocation(); });
 </script>
 
 <template>
   <section id="page-title" class="map-page" aria-label="燕园活动探索" tabindex="-1">
     <div class="map-rule" aria-hidden="true"></div>
     <div class="map-stage" :class="{ 'building-focus': selected, 'plan-mode': mode === '2d' }" :style="{ '--drawer-occlusion': `${drawerOcclusion}px` }">
-        <CampusScene v-if="mode === '3d'" ref="scene" :focus-inset="mapFocusInset" :focus-point="focusPoint" :device-location="deviceLocation" :selected="selected" :floor="floor" :activities="visibleActivities" @select="select" @floor="floor = $event" />
-        <CampusPlan v-else ref="scene" :focus-inset="mapFocusInset" :focus-point="focusPoint" :device-location="deviceLocation" :selected="selected" :activities="visibleActivities" :starting-view="planView" @select="select" />
+        <CampusScene v-if="mode === '3d'" ref="scene" :focus-inset="mapFocusInset" :device-location="deviceLocation" :selected="selected" :floor="floor" :activities="visibleActivities" @select="select" @floor="floor = $event" />
+        <CampusPlan v-else ref="scene" :focus-inset="mapFocusInset" :device-location="deviceLocation" :selected="selected" :activities="visibleActivities" :starting-view="planView" @select="select" />
         <span v-if="mode === '3d'" class="campus-caption">北京大学 · 燕园</span>
-        <div class="map-hint">{{ routedActivity ? `${routedActivity.title}${focusPoint ? ' · 地点示意' : ` · ${floor}F`}` : mode === '2d' ? selected ? '俯视建筑 · 在下方切换楼层查看活动' : '点建筑查看活动 · 拖动平移 · 双指缩放' : currentBuilding?.scenic ? '拖动环绕博雅塔 · 缩小看看未名湖' : selected ? '点楼层查看活动 · 拖动查看另一侧' : '点建筑，看看楼层里正在发生什么' }}</div>
+        <div class="map-hint">{{ selected ? "建筑布局为示意 · 活动地点见下方列表" : "点建筑查看活动 · 拖动与缩放地图" }}</div>
       <OsmAttribution v-if="mapAttributionVisible" class="map-attribution" />
       <div class="map-overlay">
       <div class="map-search-wrap">
@@ -321,10 +245,7 @@ watch(currentLocation, syncDeviceLocation, { immediate: true });
           <p v-if="!results.length">没有找到，试试「理科」「208」或「电影」。</p>
         </div>
       </div>
-      <div class="filter-row" aria-label="活动分类">
-        <button v-for="item in filters" :key="`${item.id}-${filter === item.id}`" v-sketch class="filter-chip sketch sketch-cast" :class="filter === item.id ? 'pencil-fill' : 'sketch-white'" :data-pencil="filter === item.id ? item.pencil : undefined" :data-cast="item.pencil" :aria-pressed="filter === item.id" @click="filter = item.id">{{ item.label }}</button>
-        <span class="demo-stamp">今日 · 演示</span>
-      </div>
+      <div class="filter-row"><span class="demo-stamp">设备定位 · 后端活动 · 建筑级地点</span></div>
       </div>
       <div class="map-rail">
         <div v-sketch class="mode-switch sketch sketch-white sketch-cast" data-cast="blue" role="tablist" aria-label="地图显示模式">
@@ -339,114 +260,9 @@ watch(currentLocation, syncDeviceLocation, { immediate: true });
       <p v-if="locationHint" class="location-hint" :class="{ error: locationState !== 'locating' }" :role="locationState === 'locating' ? 'status' : 'alert'">{{ locationHint }}</p>
     </div>
     <ActivityDrawer ref="drawer" @measure="mapFocusInset = $event" @layout="onDrawerLayout">
-      <template v-if="detail">
-        <section class="activity-intro" :aria-label="detail.title" :style="{ '--intro-ink': activityInk(detail.category) }">
-          <div class="intro-head">
-            <button class="intro-back" type="button" aria-label="返回楼层地图" @click="closeDetail"><AppIcon name="back" /></button>
-            <span v-sketch class="intro-pill sketch pencil-fill sketch-cast" :data-pencil="activityPencil(detail.category)" :data-cast="activityPencil(detail.category)"><i :style="{ background: categories[detail.category].mark }"></i>{{ detail.label }}</span>
-          </div>
-          <div class="intro-title-row">
-            <h2 v-sketch :key="detail.id" class="intro-name sketch sketch-white sketch-cast" :data-cast="activityPencil(detail.category)">{{ detail.title }}</h2>
-            <div class="intro-actions">
-              <button class="intro-save" type="button" :aria-pressed="saved.has(detail.id)" :aria-label="saved.has(detail.id) ? '取消收藏' : '收藏活动'" @click="toggleSave(detail.id)">
-                <span v-sketch :key="detail.id" class="bookmark-pencil sketch sketch-fill-only" :class="saved.has(detail.id) ? 'pencil-fill' : 'sketch-white'" :data-pencil="saved.has(detail.id) ? 'yellow' : undefined"></span>
-                <svg viewBox="0 0 24 32" aria-hidden="true"><path d="M4 2.5h16v26l-8-6-8 6Z" /></svg>
-              </button>
-              <RouterLink class="intro-view" :to="activityDetailRoute(detail)" aria-label="查看活动详情">
-                <span v-sketch class="eye-pencil sketch sketch-white sketch-fill-only" aria-hidden="true"></span>
-                <AppIcon name="eye" />
-              </RouterLink>
-            </div>
-          </div>
-          <p class="intro-fact"><svg class="intro-solid" viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M16 4a12 12 0 1 0 .01 0ZM15 9h2v7.2l4.2 2.4-1 1.7-5.2-3V9Z" /></svg><strong>{{ detail.time.replace('–', '-') }}</strong></p>
-          <p class="intro-fact"><svg class="intro-solid" viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M16 2a10 10 0 0 0-10 11c0 8 10 17 10 17s10-9 10-17A10 10 0 0 0 16 2Zm0 7.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7Z" /></svg><strong>{{ placeLine(detail) }}</strong></p>
-          <h3 class="intro-heading">活动简介<AppIcon class="title-spark" name="spark" /></h3>
-          <p class="intro-copy">{{ detail.description }}</p>
-          <RouterLink v-sketch class="intro-more sketch pencil-fill sketch-cast" data-pencil="yellow" data-cast="yellow" :to="activityDetailRoute(detail)">查看活动详情 <AppIcon name="chevron" /></RouterLink>
-        </section>
-      </template>
-      <template v-else-if="currentBuilding">
-        <div class="building-head">
-          <span v-sketch class="building-mark sketch pencil-fill sketch-cast" :data-pencil="buildingPencil(currentBuilding.id)" :data-cast="buildingPencil(currentBuilding.id)" aria-hidden="true">
-            <svg class="building-art" viewBox="0 0 48 48"><circle cx="9" cy="27" r="5" fill="#7dbe78"/><circle cx="39" cy="28" r="4.2" fill="#8fce86"/><path d="M8.2 31.5v6M38.4 32v5" stroke="#5f8a58" stroke-width="1.6"/><path d="M16 20.5 24 13l8 7.5" fill="#f4d2c4" stroke="#20304b" stroke-width="1.4" stroke-linejoin="round"/><path d="M17 20.5h14V36H17Z" fill="#fffaf3" stroke="#20304b" stroke-width="1.4"/><path d="M22 36V25.5h4V36M28 36V25.5h3.2" fill="none" stroke="#20304b" stroke-width="1.3"/></svg>
-          </span>
-          <div class="building-copy">
-            <h2>{{ currentBuilding.name || currentBuilding.short }}</h2>
-            <p>{{ currentBuilding.scenic ? '燕园地标' : buildingWalk }}<span v-if="!currentBuilding.scenic" class="open-chip">开放中</span></p>
-          </div>
-          <button class="building-back" type="button" aria-label="返回" @click="select(null)"><AppIcon name="back" /></button>
-        </div>
-        <p v-if="currentBuilding.scenic" class="landmark-note">未名湖东南的十三重密檐塔。{{ mode === '2d' ? '俯视图展示塔顶与湖岸位置，切换 3D 可环绕查看塔身。' : '保留完整外观，拖动地图可环绕查看塔身与湖岸。' }}<small>外观为实景特征的简化建模 · 此地标暂无示例活动</small></p>
-        <template v-else>
-          <div v-sketch class="floor-switch sketch sketch-white" role="tablist" aria-label="选择建筑楼层">
-            <button v-for="number in currentBuilding.floors" :key="`${number}-${floor === number}`" v-sketch class="floor-tab" :class="floor === number ? 'sketch pencil-fill sketch-fill-only' : ''" :data-pencil="floor === number ? 'blue' : undefined" type="button" role="tab" :aria-selected="floor === number" @click="floor = number">{{ number }}F</button>
-          </div>
-          <div class="floor-head">
-            <div class="block-title"><h2>{{ floor }}F 活动</h2><AppIcon class="title-spark" name="spark" /></div>
-            <span class="floor-count">今天 {{ floorActivities.length }} 场</span>
-          </div>
-          <button v-for="activity in floorActivities" :key="activity.id" v-sketch class="floor-activity sketch sketch-white sketch-cast" :data-cast="activityPencil(activity.category)" type="button" @click="openActivity(activity)">
-            <span v-sketch class="activity-mark sketch pencil-fill sketch-cast" :data-pencil="activityPencil(activity.category)" :data-cast="activityPencil(activity.category)"><AppIcon :name="floorActivityIcon(activity.category)" /></span>
-            <span class="activity-body"><span class="activity-kind">{{ activity.label }}</span><strong>{{ activity.title }}</strong><span class="activity-meta"><span><AppIcon name="clock" />{{ activity.time }}</span><span><AppIcon name="pin" />{{ roomLabel(activity) }}</span></span></span>
-            <AppIcon class="card-forward" name="chevron" />
-          </button>
-          <p v-if="!floorActivities.length" class="floor-empty">这一层先留一点空白，等新的校园故事。<br>可切换楼层或活动分类继续探索。</p>
-        </template>
-      </template>
-      <template v-else>
-        <section class="nearby-block">
-          <div class="block-head">
-            <div class="block-title"><AppIcon class="title-spark" name="spark" /><h2>附近建筑</h2><AppIcon class="title-spark is-right" name="spark" /></div>
-            <button class="see-all" type="button" @click="showAll('venue')">查看全部 <AppIcon name="chevron" /></button>
-          </div>
-          <div class="snap-row" aria-label="附近建筑" @scroll.passive="syncPage($event, 'venue')">
-            <button v-for="venue in venueCards" :key="venue.id" v-sketch class="place-card sketch sketch-white sketch-cast" :data-cast="venue.pencil" @click="select(venue.id)">
-              <span v-sketch class="place-badge sketch pencil-fill sketch-cast" :data-pencil="venue.pencil" :data-cast="venue.pencil"><AppIcon name="pin" /></span>
-              <span class="place-copy"><strong>{{ venue.short }}</strong><span>{{ venue.distanceLabel }} · 步行 {{ venue.minutes }} 分钟</span></span>
-              <AppIcon class="card-forward" name="chevron" />
-            </button>
-          </div>
-          <div class="pager" aria-hidden="true"><span v-for="(venue, index) in venueCards" :key="venue.id" :class="{ on: venuePage === index }"></span></div>
-        </section>
-        <section class="nearby-block">
-          <div class="block-head">
-            <div class="block-title"><AppIcon class="title-spark" name="spark" /><h2>附近活动</h2><AppIcon class="title-spark is-right" name="spark" /></div>
-            <button class="see-all" type="button" @click="showAll('activity')">查看全部 <AppIcon name="chevron" /></button>
-          </div>
-          <div class="snap-row" aria-label="附近活动" @scroll.passive="syncPage($event, 'activity')">
-            <button v-for="activity in visibleActivities" :key="activity.id" v-sketch class="event-card sketch sketch-white sketch-cast" :data-cast="activityPencil(activity.category)" @click="openActivity(activity)">
-              <span v-sketch class="place-badge sketch pencil-fill sketch-cast" :data-pencil="activityPencil(activity.category)" :data-cast="activityPencil(activity.category)"><AppIcon :name="activityIcon(activity.category)" /></span>
-              <span class="event-copy"><small>{{ activity.label }}</small><strong>{{ activity.title }}</strong><span><AppIcon name="pin" />{{ activity.distance }} · {{ startTime(activity.time) }}</span></span>
-              <AppIcon class="card-forward" name="chevron" />
-            </button>
-          </div>
-          <p v-if="!visibleActivities.length" class="floor-empty">这个分类下还没有示例活动。</p>
-          <div v-else class="pager" aria-hidden="true"><span v-for="(activity, index) in visibleActivities" :key="activity.id" :class="{ on: activityPage === index }"></span></div>
-        </section>
-        <section class="nearby-block">
-          <div class="block-head">
-            <div class="block-title"><AppIcon class="title-spark" name="spark" /><h2>猜你喜欢</h2><AppIcon class="title-spark is-right" name="spark" /></div>
-            <button class="see-all" type="button" @click="showAll('liked')">查看全部 <AppIcon name="chevron" /></button>
-          </div>
-          <div class="snap-row" aria-label="猜你喜欢" @scroll.passive="syncPage($event, 'liked')">
-            <button v-for="activity in likedActivities" :key="activity.id" v-sketch class="event-card sketch sketch-white sketch-cast" :data-cast="activityPencil(activity.category)" @click="openActivity(activity)">
-              <span v-sketch class="place-badge sketch pencil-fill sketch-cast" :data-pencil="activityPencil(activity.category)" :data-cast="activityPencil(activity.category)"><AppIcon :name="activityIcon(activity.category)" /></span>
-              <span class="event-copy"><small>{{ activity.label }}</small><strong>{{ activity.title }}</strong><span><AppIcon name="pin" />{{ activity.distance }} · {{ startTime(activity.time) }}</span></span>
-              <AppIcon class="card-forward" name="chevron" />
-            </button>
-          </div>
-          <div class="pager" aria-hidden="true"><span v-for="(activity, index) in likedActivities" :key="activity.id" :class="{ on: likedPage === index }"></span></div>
-        </section>
-        <section class="agent-promo">
-          <div v-sketch class="agent-bubble sketch sketch-white sketch-cast" data-cast="blue">
-            <h2><span>不知道去哪？</span><svg class="bubble-rays" viewBox="0 0 36 28" aria-hidden="true"><path d="M4 18c7-1 12-2 18-4" /><path d="M8 24c7-3 13-8 18-13" /><path d="M16 26c4-5 7-11 9-17" /></svg></h2>
-            <p>让LiLi为你推荐路线与活动！</p>
-            <svg class="bubble-tail" viewBox="0 0 32 40" aria-hidden="true"><path d="M2 7c6 3 13 7 20 11-5 2-13 6-19 9" fill="none" stroke="#78b8ed" stroke-width="3.6" stroke-linecap="round" transform="translate(2.4 2.6)" opacity=".78"/><path d="M4 8c5 2 10 5 15 8" fill="none" stroke="#4f95d2" stroke-width="1.8" stroke-linecap="round" transform="translate(3.2 3.4)" opacity=".55"/><path d="M1 4c7 4 14 8 22 13-7 3-15 8-22 12z" fill="#fff"/><path d="M2 6c6 3 13 7 20 11-5 2-13 6-19 9" fill="none" stroke="#20304b" stroke-width="1.7" stroke-linecap="round"/><path d="M3 7.2c5 2.4 11 6 17 9" fill="none" stroke="#20304b" stroke-width=".7" opacity=".5" stroke-linecap="round"/></svg>
-          </div>
-          <RouterLink v-sketch class="ask-agent sketch pencil-fill sketch-cast" data-pencil="yellow" data-cast="yellow" to="/agent">问问小助手 <AppIcon name="chevron" /></RouterLink>
-          <img class="agent-mascot" :src="mascot" alt="" />
-        </section>
-      </template>
+      <NearbyActivities v-model:radius="radius" v-model:keyword="keyword" v-model:today="today"
+        :items="items" :state="nearbyState" :message="nearbyMessage" :selected="selected"
+        @select="select" @retry="retry" />
     </ActivityDrawer>
   </section>
 </template>

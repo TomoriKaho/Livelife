@@ -39,3 +39,8 @@
 登录和注册表单均要求校园邮箱、密码；本地可选测试入口只供接口调试，且没有 Agent 权限，见[账户契约](../../../backend/app/api/accounts/API.md#post-authlogin)。
 
 在独立本地 Vite 测试标签页执行 `await (await import('/scripts/agent-auth.browser.mjs')).verifyAgentAuth()`，验证账户/对话凭证分离、切换账号时拒绝迟到历史、清除缓存、中止 SSE、401 不匿名重试及跨标签变更。使用虚构令牌和响应，不访问真实模型。
+
+
+## 地图附近活动
+
+[`information.ts`](information.ts) 复用平台 API 地址和版本校验，通过 `POST /events/nearby` 传递 #82 的位置对象与筛选参数。响应经格式校验后供地图共享使用。十秒超时和旧响应处理在 [`useNearbyActivities.ts`](../pages/map/useNearbyActivities.ts) 中维护。字段与位置有效期见[信息系统契约](../../../backend/app/services/content/README.md#对齐-82-的设备位置接口)，本地启动与验证见[地图联调](../pages/map/README.md#本地信息系统联调)。

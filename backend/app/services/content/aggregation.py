@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.repositories.sql.information import InformationRepository
 from app.schemas.information import Information, InformationInput
+from app.services.content.locations import LocationResolver
 
 MAX_BATCH_SIZE = 1000
 
@@ -26,8 +27,10 @@ class InformationAggregator:
 
         processed_at = datetime.now(UTC)
         with self.session.begin():
+            resolver = LocationResolver(self.session)
             for item in batch:
-                self.repository.upsert(item, processed_at)
+                resolution = resolver.resolve(item.activity_location, item.place_id)
+                self.repository.upsert(item, processed_at, resolution)
             # Multiple observations of a source within a batch return its final snapshot once.
             identities = dict.fromkeys((item.platform, item.source_id) for item in batch)
             result = tuple(

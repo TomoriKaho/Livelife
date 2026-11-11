@@ -18,7 +18,7 @@
 
 此表按模块提供入口，具体端点、请求和响应由对应模块契约及 OpenAPI 维护。新业务模块确定后，在此表增加模块契约链接；不为尚未确定的接口预建目录或空文档。
 
-内部服务契约：[通用信息系统](../backend/app/services/content/README.md)提供采集输入、汇总和统一查询的 Python 接口，供其他后端模块调用；没有注册 HTTP 路由，因此不出现在上述 OpenAPI 中。字段、时间范围、幂等和 Session 使用规则由该模块说明与 Pydantic 模型维护。
+[通用信息系统](../backend/app/services/content/README.md)提供采集输入、汇总和统一查询的 Python 接口。地点库与别名解析、#82 设备位置查询、关键词、时间、半径和 Agent 分块的 HTTP 示例由[独立本地 Demo](../backend/app/services/content/README.md#运行本地-demo)提供，对应 OpenAPI 随 Demo 启动。
 
 ## 共享约定
 

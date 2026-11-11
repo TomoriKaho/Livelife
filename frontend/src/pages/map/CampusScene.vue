@@ -171,7 +171,7 @@ function tick(now) {
   needsRender = false;
   renderer.render(scene, camera);
   // DOM 标签跟随 3D 相机投影，键盘也能点击；不依赖纹理字体或外网资源。
-  labels.value = props.selected ? floorMeshes.map(f => ({ id: String(f.floor), floor: f.floor, title: `${f.floor}F${f.events.length ? ` · ${f.events[0].room}` : ''}`, count: f.events.length, ...coordinate(new THREE.Vector3(f.x, f.level.position.y + 2, f.z)) })) : venues.map(v => {
+  labels.value = props.selected ? floorMeshes.map(f => ({ id: String(f.floor), floor: f.floor, title: `${f.floor}F${f.events.length ? ` · ${f.events[0].room}` : ''}`, count: f.events.length, ...coordinate(new THREE.Vector3(f.x, f.level.position.y + 2, f.z)) })) : [...new Set(props.activities.map(a => a.building))].map(id => ({ id, label: buildings.find(b => b.id === id)?.name })).filter(v => v.label).map(v => {
     const b = buildings.find(b => b.id === v.id), c = center(b.points);
     return { id: v.id, title: v.label, count: props.activities.filter(a => a.building === v.id).length, ...coordinate(new THREE.Vector3(c[0], profileFor(b).height + 7, c[1])) };
   });
@@ -386,7 +386,7 @@ onBeforeUnmount(() => { disposed = true; restoreLocationBuilding(); storeysWorke
     <div v-if="failed" class="scene-message" role="alert">此设备暂不能绘制 3D 地图。<br>仍可用下方建筑列表查看楼层活动。</div>
     <template v-if="!failed">
       <div v-for="label in labels" v-show="label.visible && (selected || label.count)" :key="label.id" class="label-anchor" :style="{ left: `${label.x}px`, top: `${label.y}px` }">
-        <button v-sketch v-memo="[label.id, label.title, label.count, selected, floor]" class="scene-label sketch" :class="{ 'floor-label': selected, current: selected && label.floor === floor }" :data-pencil="selected ? (label.floor === floor ? 'blue' : undefined) : 'yellow'" :aria-label="selected ? `查看 ${label.floor} 楼` : `展开${venues.find(v => v.id === label.id)?.short}`" :aria-pressed="selected ? label.floor === floor : undefined" @click="selected ? emit('floor', label.floor) : emit('select', label.id)">
+        <button v-sketch v-memo="[label.id, label.title, label.count, selected, floor]" class="scene-label sketch" :class="{ 'floor-label': selected, current: selected && label.floor === floor }" :data-pencil="selected ? (label.floor === floor ? 'blue' : undefined) : 'yellow'" :aria-label="selected ? `查看 ${label.floor} 楼` : `展开${label.title}`" :aria-pressed="selected ? label.floor === floor : undefined" @click="selected ? emit('floor', label.floor) : emit('select', label.id)">
           <span>{{ label.title }}</span><small v-if="label.count && !selected">{{ label.count }}</small>
         </button>
       </div>

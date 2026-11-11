@@ -100,8 +100,9 @@ def test_real_local_postgresql_migrates_persists_and_stops(request, tmp_path):
     from alembic.script import ScriptDirectory
     from sqlalchemy import text
 
+    from app.db.models import MapPlaceRecord, PlaceAliasRecord
     from app.db.session import Database
-    from app.schemas.information import InformationInput
+    from app.schemas.information import InformationInput, InformationQuery
     from app.services.content import InformationAggregator, InformationProvider
 
     data_dir = tmp_path / "postgres"
@@ -128,6 +129,12 @@ def test_real_local_postgresql_migrates_persists_and_stops(request, tmp_path):
                 assert connection.scalar(
                     text("SELECT to_regclass('public.user_interests') IS NOT NULL")
                 )
+            with database.session_factory.begin() as session:
+                session.add(
+                    MapPlaceRecord(id="hall", name="讲堂", longitude=116.304, latitude=39.9915)
+                )
+                session.flush()
+                session.add(PlaceAliasRecord(place_id="hall", alias="讲堂"))
             with database.session_factory() as session:
                 saved = InformationAggregator(session).ingest(
                     [
@@ -136,6 +143,8 @@ def test_real_local_postgresql_migrates_persists_and_stops(request, tmp_path):
                             source_id="restart",
                             content="重启测试",
                             fetched_at="2026-10-11T12:00:00+08:00",
+                            activity_start_at="2026-10-11T12:00:00+08:00",
+                            activity_location="讲堂208",
                         )
                     ]
                 )[0]
@@ -149,9 +158,21 @@ def test_real_local_postgresql_migrates_persists_and_stops(request, tmp_path):
         database = Database(url)
         try:
             with database.session_factory() as session:
-                record = InformationProvider(session).get(saved.id)
+                provider = InformationProvider(session)
+                record = provider.get(saved.id)
                 assert record is not None
                 assert record.content == "重启测试"
+                assert record.location_resolution.room == "208"
+                assert record.place_id == "hall"
+                query = InformationQuery(
+                    keyword="重启",
+                    longitude=116.304,
+                    latitude=39.9915,
+                    radius_m=100,
+                    events_only=True,
+                )
+                assert provider.list(query) == (record,)
+                assert provider.list(query.model_copy(update={"longitude": 116.306})) == ()
             pid = int((data_dir / "postmaster.pid").read_text().splitlines()[0])
         finally:
             database.close()
