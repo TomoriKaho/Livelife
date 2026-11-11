@@ -26,6 +26,7 @@ const userPoint = ref(null), locationState = ref('loading'), locationMessage = r
 const activityState = ref('loading'), activityMessage = ref('正在查询活动…'), liveRecords = ref([]), liveDetail = ref(null);
 const currentTime = ref(Date.now());
 let locationWatch = null, activityController = null, dayTimer = null;
+let mapReady = false, initialCenterPending = true;
 const drawer = ref(null), mapFocusInset = ref(180), drawerOcclusion = ref(180), drawerExpandedHeight = ref(540);
 const mapAttributionVisible = computed(() => isMapAttributionVisible(drawerOcclusion.value, drawerExpandedHeight.value));
 function onDrawerLayout({ occlusionHeight, expandedHeight }) {
@@ -125,6 +126,15 @@ function startLocation() {
     locationMessage.value = error.code === 1 ? '未获得定位权限，请在系统设置中允许定位。' : '定位暂时不可用，请稍后重试。';
   }, { enableHighAccuracy: true, maximumAge: 15_000, timeout: 15_000 });
 }
+async function centerOnFirstLocation() {
+  if (!initialCenterPending || !mapReady || !userPoint.value || selected.value || focusPoint.value || route.query.activity) return;
+  await nextTick();
+  if (!initialCenterPending || !mapReady || !userPoint.value || selected.value || focusPoint.value || route.query.activity || !scene.value?.locate) return;
+  scene.value.locate();
+  initialCenterPending = false;
+  located.value = true;
+}
+function onMapReady() { mapReady = true; centerOnFirstLocation(); }
 function openLiveActivity(activity) {
   if (!selected.value) drawerBeforeSelection = drawer.value?.getState() ?? 'middle';
   selected.value = activity.building; liveDetail.value = activity; detail.value = null;
@@ -179,14 +189,14 @@ function select(id) {
 async function locate() {
   if (!userPoint.value) { startLocation(); return; }
   // 复位只调整地图，保留操作当下的抽屉档位；结束本次建筑探索记录。
-  drawerBeforeSelection = null; located.value = true; selected.value = null; detail.value = null; liveDetail.value = null; focusPoint.value = null; routedActivity.value = null;
+  drawerBeforeSelection = null; initialCenterPending = false; located.value = true; selected.value = null; detail.value = null; liveDetail.value = null; focusPoint.value = null; routedActivity.value = null;
   await nextTick(); scene.value?.locate();
 }
 async function setMode(value) {
   if (value === mode.value) return;
   if (mode.value === '2d') planView.value = scene.value?.getView();
   // 两种地图共用建筑、楼层和抽屉状态，切换后继续查看同一处活动。
-  mode.value = value; search.value = '';
+  mapReady = false; mode.value = value; search.value = '';
   await nextTick();
 }
 async function applyActivityRoute() {
@@ -219,14 +229,15 @@ onBeforeUnmount(() => {
   if (dayTimer !== null) clearInterval(dayTimer);
 });
 watch(() => route.query.activity, applyActivityRoute);
+watch(userPoint, centerOnFirstLocation);
 </script>
 
 <template>
   <section id="page-title" class="map-page" aria-label="燕园活动探索" tabindex="-1">
     <div class="map-rule" aria-hidden="true"></div>
     <div class="map-stage" :class="{ 'building-focus': selected, 'plan-mode': mode === '2d' }" :style="{ '--drawer-occlusion': `${drawerOcclusion}px` }">
-        <CampusScene v-if="mode === '3d'" ref="scene" :focus-inset="mapFocusInset" :focus-point="focusPoint" :user-position="userPoint" :nearby-buildings="nearbyBuildings" :nearby-activities="nearbyActivities" :selected="selected" :floor="floor" :activities="visibleActivities" @select="select" @floor="floor = $event" />
-        <CampusPlan v-else ref="scene" :focus-inset="mapFocusInset" :focus-point="focusPoint" :user-position="userPoint" :selected="selected" :activities="matchedActivities" :starting-view="planView" @select="select" />
+        <CampusScene v-if="mode === '3d'" ref="scene" :focus-inset="mapFocusInset" :focus-point="focusPoint" :user-position="userPoint" :nearby-buildings="nearbyBuildings" :nearby-activities="nearbyActivities" :selected="selected" :floor="floor" :activities="visibleActivities" @select="select" @floor="floor = $event" @ready="onMapReady" />
+        <CampusPlan v-else ref="scene" :focus-inset="mapFocusInset" :focus-point="focusPoint" :user-position="userPoint" :selected="selected" :activities="matchedActivities" :starting-view="planView" @select="select" @ready="onMapReady" />
         <span v-if="mode === '3d'" class="campus-caption">北京大学 · 燕园</span>
         <div class="map-hint">{{ routedActivity ? `${routedActivity.title}${focusPoint ? ' · 地点示意' : ` · ${floor}F`}` : mode === '2d' ? selected ? '俯视建筑 · 下方有已查询活动和楼层演示' : '点建筑查看活动 · 拖动平移 · 双指缩放' : currentBuilding?.scenic ? '拖动环绕博雅塔 · 缩小看看未名湖' : selected ? '点楼层查看演示 · 拖动查看另一侧' : '点建筑，查看已查询活动和楼层演示' }}</div>
       <OsmAttribution v-if="mapAttributionVisible" class="map-attribution" />

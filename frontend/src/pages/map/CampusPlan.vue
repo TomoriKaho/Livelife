@@ -12,7 +12,7 @@ import { initialPlanScale, planAnchor, worldToPlan, planToWorld, zoomPlan, panPl
 
 const props = defineProps({ selected: String, focusPoint: Array, userPosition: Array, activities: Array,
   focusInset: { type: Number, default: 0 }, startingView: Object });
-const emit = defineEmits(['select']);
+const emit = defineEmits(['select', 'ready']);
 const host = ref(null), canvas = ref(null), labels = ref([]), ready = ref(false);
 const displayView = ref({ center: [...demoLocation], scale: .54 });
 const scaleBar = computed(() => planScaleBar(displayView.value.scale));
@@ -191,7 +191,7 @@ function draw(time) {
 function resize() {
   const first = !width; width = host.value.clientWidth; height = host.value.clientHeight;
   dpr = Math.min(window.devicePixelRatio || 1, 2); canvas.value.width = Math.round(width * dpr); canvas.value.height = Math.round(height * dpr);
-  if (first) view = props.startingView ? { center: [...props.startingView.center], scale: props.startingView.scale } : { center: [...demoLocation], scale: initialPlanScale(width) };
+  if (first) view = props.startingView ? { center: [...props.startingView.center], scale: props.startingView.scale } : { center: [...(props.userPosition || demoLocation)], scale: initialPlanScale(width) };
   schedule();
 }
 function pointerDown(event) {
@@ -241,6 +241,7 @@ onMounted(() => {
   reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)'); ctx = canvas.value.getContext('2d');
   prepare(); resize(); observer = new ResizeObserver(resize); observer.observe(host.value); ready.value = true;
   if (props.selected) focusBuilding(); else if (props.focusPoint) focusPlace();
+  emit('ready');
 });
 onBeforeUnmount(() => { cancelAnimationFrame(frame); observer?.disconnect(); pointers.clear(); patterns = null; });
 </script>

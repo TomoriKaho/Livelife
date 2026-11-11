@@ -29,7 +29,6 @@ function invalidate() {
 const meshes = new Map(), selectable = [], raycaster = new THREE.Raycaster();
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const initialTarget = new THREE.Vector3(...initialView.target);
-const initialCamera = initialTarget.clone().add(new THREE.Vector3(...initialView.offset));
 function shape(points) { return footprintShape(points); }
 function surface(points, color, y) {
   const g = new THREE.ShapeGeometry(shape(points)); g.rotateX(-Math.PI / 2);
@@ -217,13 +216,15 @@ onMounted(async () => {
       sliceStarted = performance.now();
     }
     scene = new THREE.Scene(); scene.background = new THREE.Color(mapPalette.sky); scene.fog = new THREE.Fog(mapPalette.sky, 650, 2000);
-    camera = new THREE.PerspectiveCamera(42, 1, 1, 7000); camera.position.copy(initialCamera);
+    const overviewTarget = !props.selected && !props.focusPoint && props.userPosition
+      ? new THREE.Vector3(props.userPosition[0], initialTarget.y, props.userPosition[1]) : initialTarget;
+    camera = new THREE.PerspectiveCamera(42, 1, 1, 7000); camera.position.copy(overviewTarget.clone().add(new THREE.Vector3(...initialView.offset)));
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false }); renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor(mapPalette.sky); renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.NoToneMapping;
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap; renderer.shadowMap.autoUpdate = false;
     renderer.domElement.setAttribute('aria-label', '燕园三维地图，拖动旋转，双指缩放。建筑也可通过下方列表选择。');
     host.value.prepend(renderer.domElement);
-    controls = new OrbitControls(camera, renderer.domElement); controls.target.copy(initialTarget); controls.enableDamping = true;
+    controls = new OrbitControls(camera, renderer.domElement); controls.target.copy(overviewTarget); controls.enableDamping = true;
     controls.minDistance = 65; controls.maxDistance = 2350; controls.minPolarAngle = .25; controls.maxPolarAngle = Math.PI * .46; controls.enablePan = true;
     controls.screenSpacePanning = false;
     controls.addEventListener('start', () => { tween = null; });
