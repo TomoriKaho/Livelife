@@ -165,7 +165,8 @@ def create_demo(wechat_json: Path | None = None) -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://127.0.0.1:8775", "http://localhost:8775"],
-        allow_methods=["GET", "POST"], allow_headers=["Content-Type", "Accept"],
+        allow_methods=["GET", "POST"],
+        allow_headers=["Content-Type", "Accept"],
     )
 
     @app.get("/places")
