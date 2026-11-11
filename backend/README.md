@@ -133,6 +133,10 @@ uv run --locked --group local-db python -m app.dev --port 18000 --reload
 
 不要把这些变量写进前端 `.env` 或提交到仓库。自建兼容端点也可填写对应服务地址；用户问题、有限对话上下文和命中的公开信息片段会发送给模型服务。会话和 token 使用统计写入 PostgreSQL，24 小时后过期；无需额外 Redis。
 
+使用 GPT 推理模型时，额外设置 `AGENT_LLM_REASONING_EFFORT=high`，例如 `AGENT_LLM_BASE_URL=https://api.openai.com/v1`、`AGENT_LLM_MODEL=gpt-6.1-sol`。此时请求使用 `reasoning_effort` 和 `max_completion_tokens`，不发送 `temperature`；留空则保留普通兼容模型的 `max_tokens` 与温度参数。可选值为 `none/minimal/low/medium/high/xhigh/max`，具体支持范围以所选模型为准。输出上限包含隐藏推理 token，建议本测试配置使用 `AGENT_LLM_MAX_OUTPUT_TOKENS=4096`、`AGENT_LLM_TIMEOUT_SECONDS=180`。模型返回的 completion 用量包含推理消耗，一并计入用户额度。官方参数见 [Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)。
+
+课程机的密钥、代理和固定版本启用方式见[测试模型配置](../deploy/README.md#测试模型配置)。
+
 限制项及默认值：`AGENT_LLM_TIMEOUT_SECONDS=60`、`AGENT_LLM_MAX_OUTPUT_TOKENS=1024`、`AGENT_MAX_MESSAGE_CHARS=4000`、`AGENT_MAX_CONTEXT_CHARS=24000`、`AGENT_RATE_REQUESTS_PER_WINDOW=5`、`AGENT_IP_REQUESTS_PER_HOUR=30`、`AGENT_DAILY_TOKEN_QUOTA=100000`。每个用户最多一个活跃模型请求，创建或关闭对话不会重置额度。频率和 token 窗口按 UTC 计；token 用量优先使用模型返回值，缺失时按字符数估算。每日额度按已认证用户计（跨会话共用），不代表供应商结算账单。
 
 数据库迁移由本地开发入口自动执行。独立数据库先设置 `DATABASE_URL`，再运行 `uv run alembic upgrade head`。`0005_agent_account_auth` 增加所有者与用户额度表，旧匿名会话不认领；前后端须配套升级，迁移和回退限制见[Agent 迁移契约](app/api/agent/API.md#登录失效与迁移)。Agent 契约、SSE 事件和错误码见[Agent API](app/api/agent/API.md)。限流 IP 使用 Uvicorn 仅对可信代理解析后的 `request.client.host`；部署代理变化时先核对可信代理配置，不在应用层直接采信 `X-Forwarded-For`。

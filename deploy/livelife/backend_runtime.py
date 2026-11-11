@@ -11,6 +11,7 @@ from pathlib import Path
 
 from .common import atomic_json, instance
 from .mail_config import load as mail_environment
+from .model_config import load as model_environment
 
 # Run using the tested release interpreter, never import branch code into the
 # control interpreter. Validate both the revision and actual mapped columns.
@@ -113,6 +114,7 @@ def run(root, ident, port, *, server_factory=None):
     if not python.is_file() or not (backend / "app/main.py").is_file():
         raise RuntimeError("tested preview backend is missing")
     mail = mail_environment(root)
+    model = model_environment(root, ident)
     if server_factory is None:
         if os.name != "posix" or os.geteuid() == 0:
             raise RuntimeError("preview PostgreSQL requires an ordinary Linux user")
@@ -151,9 +153,9 @@ def run(root, ident, port, *, server_factory=None):
                     f"/api/versions/{ident}",
                 ],
                 cwd=backend,
-                # SMTP is explicitly opted in on the server, only for the API.
+                # SMTP/model are explicitly opted in, only for the API.
                 # Migration/schema subprocesses keep the credential-free env.
-                env={**env, **mail},
+                env={**env, **mail, **model},
             )
             try:
                 return process.wait()
