@@ -1,3 +1,4 @@
+import { restoreSession } from '../api/auth';
 import type { RouteRecordRaw } from 'vue-router';
 import type { DefineComponent } from 'vue';
 import { createRouter, createWebHashHistory } from 'vue-router';
@@ -34,7 +35,13 @@ const routes: RouteRecordRaw[] = [
   { path: '/:pathMatch(.*)*', redirect: '/map' },
 ];
 
-export default createRouter({
+const router = createRouter({
   history: createWebHashHistory(),
   routes,
 });
+
+// The server remains the authorization boundary; this avoids a dead composer.
+router.beforeEach(async to => {
+  if (to.name === 'agent' && !await restoreSession()) return { name: 'onboarding' };
+});
+export default router;
