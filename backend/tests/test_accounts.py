@@ -48,7 +48,7 @@ async def client(database: Database) -> Iterator[httpx.AsyncClient]:
 async def test_blank_login_reuses_test_account_with_real_sessions(
     client: httpx.AsyncClient, database: Database, monkeypatch: pytest.MonkeyPatch, remember: bool
 ) -> None:
-    monkeypatch.delenv("AUTH_TEST_LOGIN_ENABLED", raising=False)
+    monkeypatch.setenv("AUTH_TEST_LOGIN_ENABLED", "true")
     with patch("app.services.accounts.auth.send_verification_email") as send:
         first = await client.post(
             "/auth/login", json={"email": "", "password": "", "remember": remember}

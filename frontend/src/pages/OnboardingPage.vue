@@ -94,7 +94,7 @@ watch(step, async () => {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: calc(12px + env(safe-area-inset-top, 0px)) 17px calc(8px + env(safe-area-inset-bottom, 0px));
+  padding: 8px 17px;
   background-color: #f8f4ea;
 }
 .onboarding-body { position: relative; flex: 1; min-height: 0; overflow-x: clip; overflow-y: auto; }

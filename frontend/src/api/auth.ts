@@ -15,7 +15,27 @@ interface AuthSession {
   user: AuthUser;
 }
 
-export const authState = reactive<{ user: AuthUser | null }>({ user: null });
+export const authState = reactive<{ user: AuthUser | null; revision: number }>({ user: null, revision: 0 });
+
+const sessionListeners = new Set<() => void>();
+export function onAuthSessionChange(listener: () => void): () => void {
+  sessionListeners.add(listener);
+  return () => { sessionListeners.delete(listener); };
+}
+
+function invalidateIdentity(): void {
+  sessionStorage.removeItem('livelife.agent.session.v1');
+  sessionStorage.removeItem('livelife.agent.session.v2');
+  authState.user = null;
+  authState.revision += 1;
+  for (const listener of sessionListeners) listener();
+}
+
+window.addEventListener('storage', event => {
+  if (event.storageArea === localStorage && (event.key === 'livelife.auth.token' || event.key === null)) {
+    invalidateIdentity();
+  }
+});
 
 /** 读取本地会话令牌；账户与个人资料模块共用同一存储键。 */
 export function readAuthToken(): string | null {
@@ -27,6 +47,7 @@ export function writeAuthToken(token: string | null, remember = false): void {
   localStorage.removeItem('livelife.auth.token');
   sessionStorage.removeItem('livelife.auth.token');
   if (token) (remember ? localStorage : sessionStorage).setItem('livelife.auth.token', token);
+  invalidateIdentity();
 }
 
 function readToken(): string | null {
@@ -34,16 +55,14 @@ function readToken(): string | null {
 }
 
 function saveSession(data: AuthSession, remember: boolean): void {
-  clearSession();
-  const storage = remember ? localStorage : sessionStorage;
-  storage.setItem('livelife.auth.token', data.access_token);
+  writeAuthToken(data.access_token, remember);
   authState.user = data.user;
 }
 
 export function clearSession(): void {
   localStorage.removeItem('livelife.auth.token');
   sessionStorage.removeItem('livelife.auth.token');
-  authState.user = null;
+  invalidateIdentity();
 }
 
 async function request<T>(
@@ -52,10 +71,11 @@ async function request<T>(
   authenticated = false,
   method?: 'GET' | 'POST' | 'DELETE',
 ): Promise<T> {
+  const token = authenticated ? readToken() : null;
   await checkAndroidStatus();
+  if (authenticated && token !== readToken()) throw new Error('登录状态已变更，请重试。');
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
-  const token = authenticated ? readToken() : null;
   if (token) headers.Authorization = `Bearer ${token}`;
   const apiUrl = `${getApiBaseUrl().replace(/\/+$/, '')}${path}`;
   let response: Response;
@@ -83,6 +103,7 @@ async function request<T>(
   if (response.status === 204) return undefined as T;
   const data: unknown = await response.json().catch(() => null);
   if (!response.ok) {
+    if (authenticated && response.status === 401 && token === readToken()) clearSession();
     throw new Error(authError(data, response.status, path));
   }
   return data as T;
@@ -131,24 +152,27 @@ export async function restoreSession(): Promise<AuthUser | null> {
   if (!token) return null;
   try {
     const user = await request<AuthUser>('/auth/me', undefined, true);
+    if (token !== readToken()) return null;
     authState.user = user;
     return user;
   } catch {
-    clearSession();
+    if (token === readToken()) clearSession();
     return null;
   }
 }
 
 export async function logout(): Promise<void> {
+  const token = readToken();
   try {
     await request('/auth/logout', {}, true);
   } finally {
-    clearSession();
+    if (token === readToken()) clearSession();
   }
 }
 
 /** 注销账号：密码二次确认后删除账户，本地令牌随即清除。 */
 export async function deleteAccount(password: string): Promise<void> {
+  const token = readToken();
   await request('/auth/me', { password }, true, 'DELETE');
-  clearSession();
+  if (token === readToken()) clearSession();
 }

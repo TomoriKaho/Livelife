@@ -11,6 +11,7 @@
 | npm 安装备用源 | 课程机已安装 `b12be87` 的构建模块并重启 worker；真实下载故障触发换源仍待验收 | [PR #69 服务器启用记录](https://github.com/TomoriKaho/Livelife/pull/69)、[安装与排查教程](../deploy/BUILDING.md#维护者安装与排查教程) |
 | Android 测试包签名与分发 | 工程和自动链路已接入，LIVELIFE_ANDROID_ENABLED=true | [PR #45](https://github.com/TomoriKaho/Livelife/pull/45)、[实际分发运行](https://github.com/TomoriKaho/Livelife/actions/runs/37734472930) |
 | 预览 PostgreSQL、迁移及数据库发布门禁 | 仓库已提供；服务器控制程序升级、依赖安装与线上验收尚待完成 | [启用与恢复教程](../deploy/README.md#预览数据库与启动门禁) |
+| 账户与 Agent 权限收紧 | 新代码默认及启动器关闭空白登录；需合并配套前后端、更新课程机启动器并重启，不能据本地检查认定线上已启用 | [账户/Agent 迁移](../backend/app/api/agent/API.md#登录失效与迁移)、[启动器操作](../deploy/README.md#预览数据库与启动门禁) |
 | 正式发布与 iOS | 正式发布工作流和 iOS 工程尚未提供 | [正式发布约定](#客户端模式与后续正式发布约定) |
 
 上述证据覆盖后端、网页及测试包发布，不代表完整成员验收。Android main 首次自动发布、完整关闭/重开清理和最新 APK 返回键真机回归仍需核对，历史证据见[验证记录索引](#验证记录索引)。业务接口、数据库及登录的范围由[架构说明](architecture.md)维护。

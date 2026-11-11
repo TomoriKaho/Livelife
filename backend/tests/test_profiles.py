@@ -14,7 +14,7 @@ from sqlalchemy.orm import sessionmaker
 from app.db.models.accounts import User
 from app.db.session import Database
 from app.main import app
-from app.services.accounts.auth import create_session, get_test_user, utcnow
+from app.services.accounts.auth import create_session, utcnow
 
 BACKEND = Path(__file__).resolve().parents[1]
 
@@ -48,10 +48,17 @@ async def client(database: Database) -> Iterator[httpx.AsyncClient]:
 
 
 def auth_headers(database: Database) -> dict[str, str]:
-    """创建内置测试用户并签发真实会话令牌。"""
+    """创建独立普通用户并签发真实会话令牌。"""
 
     with database.session_factory() as session:
-        user = get_test_user(session)
+        user = User(
+            id=uuid4(),
+            email="profile-test@stu.pku.edu.cn",
+            password_hash="!unused",
+            created_at=utcnow(),
+        )
+        session.add(user)
+        session.flush()
         token, _expires_in = create_session(session, user, False)
     return {"Authorization": f"Bearer {token}"}
 

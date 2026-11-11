@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.db.dependencies import get_session
 from app.db.models.accounts import EmailVerificationCode, User, UserSession
+from app.db.models.agent import AgentSession, AgentUserUsage
 from app.db.models.profile import UserInterest, UserProfile
 from app.schemas.accounts import (
     AccountDeletionRequest,
@@ -21,6 +22,7 @@ from app.schemas.accounts import (
 )
 from app.services.accounts.auth import (
     CODE_MAX_ATTEMPTS,
+    authenticated_user,
     code_digest,
     create_session,
     get_test_user,
@@ -137,14 +139,7 @@ def get_current_user(
             detail="Authentication required",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    user_session = session.scalar(
-        select(UserSession).where(
-            UserSession.token_hash == token_digest(credentials.credentials),
-            UserSession.revoked_at.is_(None),
-            UserSession.expires_at > datetime.now(UTC),
-        )
-    )
-    user = session.get(User, user_session.user_id) if user_session else None
+    user = authenticated_user(session, credentials.credentials)
     if user is None:
         raise HTTPException(
             status_code=401,
@@ -194,6 +189,9 @@ def delete_account(
         payload.password, user.password_hash
     ):
         raise HTTPException(status_code=400, detail="Password is incorrect")
+    # Match Agent admission/finalization: usage first, then conversations.
+    session.execute(delete(AgentUserUsage).where(AgentUserUsage.user_id == user.id))
+    session.execute(delete(AgentSession).where(AgentSession.user_id == user.id))
     session.execute(delete(UserSession).where(UserSession.user_id == user.id))
     session.execute(delete(UserInterest).where(UserInterest.user_id == user.id))
     session.execute(delete(UserProfile).where(UserProfile.user_id == user.id))

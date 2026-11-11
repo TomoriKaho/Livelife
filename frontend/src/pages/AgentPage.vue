@@ -7,6 +7,8 @@ export const pageMeta = {
 </script>
 
 <script setup>
+import { useRouter } from 'vue-router';
+import { authState } from '../api/auth';
 import { registerBackHandler } from '../platform/android-navigation';
 import { sessionShuffle } from '../data/session-style';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
@@ -18,6 +20,7 @@ import ElasticList from './agent/ElasticList.vue';
 import ElasticTextarea from './agent/ElasticTextarea.vue';
 import { composerPlacement } from './agent/composer-layout.mjs';
 
+const router = useRouter();
 const colors = sessionShuffle('agent-demo-colors', ['mint', 'blue', 'pink', 'lavender', 'yellow']);
 const messages = ref([]), session = ref(null), loading = ref(true), sending = ref(false);
 const history = computed(() => messages.value.length ? [{
@@ -77,14 +80,18 @@ function viewMessage(message, index) {
   };
 }
 async function loadConversation() {
+  const revision = authState.revision;
   loading.value = true;
   try {
     const result = await loadAgentSession();
+    if (!mounted.value || revision !== authState.revision) return;
     session.value = result.session;
     messages.value = result.messages.map(viewMessage);
     for (const message of messages.value) if (message.status === 'pending') message.status = 'failed';
     await nextTick(); conversation.value?.scrollToBottom();
-  } catch {
+  } catch (error) {
+    if (error.message === 'authentication_required') { router.replace('/onboarding'); return; }
+    if (revision !== authState.revision) return;
     notify('无法连接智能助手，请检查后端和数据库配置。');
   } finally { loading.value = false; }
 }
@@ -132,7 +139,7 @@ async function send(retryMessage = null) {
   } catch (error) {
     assistant.status = 'failed';
     if (!controller.signal.aborted) {
-      notify(error.message === 'token_quota_exceeded' ? '这段对话今日的使用额度已用完。' : '回答失败，请点击重试。');
+      notify(error.message === 'token_quota_exceeded' ? '你的账号今日的使用额度已用完。' : '回答失败，请点击重试。');
     }
   } finally {
     if (activeRequestController === controller) activeRequestController = null;
@@ -175,6 +182,12 @@ watch(historyOpen, async open => {
     drawer.value?.querySelector('button')?.focus({ preventScroll: true });
   } else { releaseDrawer(); if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true }); }
 });
+watch(() => authState.revision, () => {
+  activeRequestController?.abort();
+  messages.value = []; session.value = null; draft.value = '';
+  historyOpen.value = false; sending.value = false; notice.value = '';
+  if (mounted.value) router.replace('/onboarding');
+}, { flush: 'sync' });
 onMounted(async () => {
   void loadConversation();
   restingViewportHeight = viewportHeight(); mounted.value = true;

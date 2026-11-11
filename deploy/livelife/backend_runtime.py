@@ -80,7 +80,7 @@ def runtime_environment(url, ident, state):
         AGENT_SESSION_SECRET=secret,
         LIVELIFE_BACKEND_SHA=ident[3:],
         PYTHONUNBUFFERED="1",
-        AUTH_TEST_LOGIN_ENABLED="true",
+        AUTH_TEST_LOGIN_ENABLED="false",
     )
     return env
 

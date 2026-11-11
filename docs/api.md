@@ -13,7 +13,7 @@
 | 连通性检查 | [连通性检查 API](../backend/app/api/demo/API.md) | 客户端与后端连通性测试 |
 | 健康检查 | [健康检查 API](../backend/app/api/health/API.md) | 进程存活及数据库就绪检查 |
 | 个人资料 | [个人资料 API](../backend/app/api/profile/API.md) | 兴趣标签目录、当前用户资料读取与更新 |
-| Agent 对话 | [Agent API](../backend/app/api/agent/API.md) | 匿名短期会话、SSE 回答、公开来源及反馈 |
+| Agent 对话 | [Agent API](../backend/app/api/agent/API.md) | 账户 Bearer + 对话凭证、所有权、用户额度与 SSE |
 | 账户与认证 | [账户与认证 API](../backend/app/api/accounts/API.md) | 校园邮箱验证、注册、登录、会话与用户身份 |
 
 此表按模块提供入口，具体端点、请求和响应由对应模块契约及 OpenAPI 维护。新业务模块确定后，在此表增加模块契约链接；不为尚未确定的接口预建目录或空文档。
@@ -23,7 +23,7 @@
 ## 共享约定
 
 - 本文中的路径是后端路由，不包含 `/api/staging/` 等部署前缀。调用方以当前环境的 API 基地址拼接路径。
-- hello 和健康检查无需登录，使用 JSON 响应。账户模块与 Agent 会话均按各自契约执行 Bearer 认证；项目没有统一业务响应包裹、错误码、分页或业务时间格式，新模块先确认适用约定。多模块共同使用的规则在本文集中维护。
+- hello 和健康检查无需登录，使用 JSON 响应。账户、资料与 Agent 均使用账户 Bearer 认证，Agent 另校验对话凭证及所有者；项目没有统一业务响应包裹、错误码、分页或业务时间格式，新模块先确认适用约定。多模块共同使用的规则在本文集中维护。
 - 模块契约说明资源权限、字段含义、成功及失败行为；Pydantic 模型和路由声明生成当前实现的 OpenAPI，提供字段类型、必填项及已声明的响应。已有实现的完整字段表优先引用 OpenAPI，Markdown 补充业务含义和示例。
 - OpenAPI 描述当前实现。已确认但尚未实现的契约在对应模块说明中明确标注，并关联任务；任务进度仍放 Issue/Project。
 

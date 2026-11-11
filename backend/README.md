@@ -40,7 +40,7 @@ uv lock --check
 
 测试默认把临时数据库放在 `backend/.pytest_cache/tmp/` 下，每次运行使用独立子目录，避免 Windows 全局 `Temp/pytest-of-<用户名>` 的权限问题及并行运行互相清理。该目录已被 Git 忽略，测试产物会保留在对应子目录中供排查。显式传入 `--basetemp` 或设置 `PYTEST_DEBUG_TEMPROOT` 时沿用调用方的配置。
 
-测试覆盖账号验证码、注册登录、会话撤销与有效期、Agent 匿名会话与流式对话、hello、CORS、健康检查、开发启动，以及信息系统的迁移和数据行为。默认测试使用独立 SQLite，不启动 PostgreSQL；另检查 PostgreSQL 离线迁移 SQL。可用 `uv run --locked --group local-db pytest --local-postgres` 验证真实本地 PostgreSQL 的迁移、写入、重启保留与进程停止。账号 SMTP 使用测试替身；真实 SMTP 投递需在目标环境配置并单独验收。
+测试覆盖账号验证码、注册登录、会话撤销与有效期、Agent 账户鉴权、归属、用户额度与流式撤销、hello、CORS、健康检查、开发启动，以及信息系统的迁移和数据行为。默认测试使用独立 SQLite，不启动 PostgreSQL；另检查 PostgreSQL 离线迁移 SQL。可用 `uv run --locked --group local-db pytest --local-postgres` 验证真实本地 PostgreSQL 的迁移、写入、重启保留与进程停止。账号 SMTP 使用测试替身；真实 SMTP 投递需在目标环境配置并单独验收。
 
 ## CORS 与浏览器联调
 
@@ -109,15 +109,15 @@ curl -i http://127.0.0.1:8000/health/ready
 
 存活检查不访问数据库；就绪检查执行 `SELECT 1`，仅验证连接，不验证业务表或迁移状态。响应和失败行为见[健康检查契约](app/api/health/API.md#健康检查)。新的[预览部署启动器](../deploy/README.md#预览数据库与启动门禁)在 API 启动前还执行迁移和业务表校验，发布同时要求 hello 及就绪检查通过；服务器控制程序升级与实际启用状态见[部署入口](../docs/deployment.md#当前实施状态)。
 
-已提供 `migrations/`、Alembic 环境和信息、账户及 Agent 迁移。标准 Uvicorn 入口连接的独立数据库需要设置 `DATABASE_URL` 后，在 backend 目录手动执行 `uv run alembic upgrade head` 和 `uv run alembic current`；开发入口只对自动管理的本地库执行升级。预览部署的自动迁移仅针对其按 SHA 隔离的测试库，不迁移外部或正式库。账户降级会删除用户、验证码与会话数据，Agent 降级会删除匿名会话；执行前先备份并核对目标库。
+已提供 `migrations/`、Alembic 环境和信息、账户及 Agent 迁移。标准 Uvicorn 入口连接的独立数据库需要设置 `DATABASE_URL` 后，在 backend 目录手动执行 `uv run alembic upgrade head` 和 `uv run alembic current`；开发入口只对自动管理的本地库执行升级。预览部署的自动迁移仅针对其按 SHA 隔离的测试库，不迁移外部或正式库。账户降级会删除用户、验证码与会话数据，Agent 初始迁移降级会删除对话；执行前先备份并核对目标库。
 
 账号接口还需要在后端进程环境设置 `SMTP_HOST`、`SMTP_PORT`、`SMTP_FROM`；需要认证时设置 `SMTP_USERNAME`、`SMTP_PASSWORD`。默认端口 587 使用 STARTTLS，端口 465 使用 SMTP SSL。SMTP 密码只由部署密钥配置注入，不写入仓库、前端变量或日志。共享/部署数据库须先执行 `uv run alembic upgrade head` 并检查 `uv run alembic current`，再启用账号 API；SMTP 配置不自动注入；预览数据库自动迁移的实现与服务器启用步骤见[部署说明](../deploy/README.md#预览数据库与启动门禁)。缺少 SMTP 配置时验证码发送返回 503。
 
 ### 临时内置测试账号
 
-尚未配置 SMTP 时，在登录页让邮箱和密码都留空，点击“登录并进入”，后端会创建并复用 `builtin-test@livelife.invalid`，签发正常会话；刷新、记住登录及退出仍走账户接口。需要后端和已完成迁移的数据库，不需要验证码或邮件服务，不新增数据库迁移。所有测试登录共享这个普通用户，不能用它存放私人数据；只填写一项或普通密码错误不会进入测试账号，注册仍需验证码。
+默认关闭空白登录，网页登录表单必须填写校园邮箱和密码。仅隔离的本地接口调试可显式设置 `AUTH_TEST_LOGIN_ENABLED=true` 后向 `/auth/login` 提交空邮箱/密码，以复用 `builtin-test@livelife.invalid`；这不适用于公开预览，也不能调用 Agent。关闭开关后旧测试账号令牌立即被账户校验拒绝。正常账号仍按验证码注册、密码登录、会话有效期和登出规则处理。
 
-`AUTH_TEST_LOGIN_ENABLED` 默认 `true`，正式环境在后端进程中设为 `false` 关闭入口；现有测试会话需退出或等待过期，关闭配置本身不撤销令牌。接口行为见[账户契约](app/api/accounts/API.md#post-authlogin)。
+公开启动器显式设置 `AUTH_TEST_LOGIN_ENABLED=false`，不会继承控制进程中的开启值；代码合并不等于服务器启动器已更新，操作见[部署入口](../docs/deployment.md#当前实施状态)。接口契约见[账户认证](app/api/accounts/API.md#post-authlogin)。
 
 ### Agent 服务配置
 
@@ -133,15 +133,15 @@ uv run --locked --group local-db python -m app.dev --port 18000 --reload
 
 不要把这些变量写进前端 `.env` 或提交到仓库。自建兼容端点也可填写对应服务地址；用户问题、有限对话上下文和命中的公开信息片段会发送给模型服务。会话和 token 使用统计写入 PostgreSQL，24 小时后过期；无需额外 Redis。
 
-限制项及默认值：`AGENT_LLM_TIMEOUT_SECONDS=60`、`AGENT_LLM_MAX_OUTPUT_TOKENS=1024`、`AGENT_MAX_MESSAGE_CHARS=4000`、`AGENT_MAX_CONTEXT_CHARS=24000`、`AGENT_RATE_REQUESTS_PER_WINDOW=5`、`AGENT_IP_REQUESTS_PER_HOUR=30`、`AGENT_DAILY_TOKEN_QUOTA=100000`。每个会话固定只允许一个活跃模型请求，以保持单表状态简单。频率和 token 窗口按 UTC 计；token 用量优先使用模型返回值，缺失时按字符数估算。每日额度按匿名会话计，不代表供应商结算账单。
+限制项及默认值：`AGENT_LLM_TIMEOUT_SECONDS=60`、`AGENT_LLM_MAX_OUTPUT_TOKENS=1024`、`AGENT_MAX_MESSAGE_CHARS=4000`、`AGENT_MAX_CONTEXT_CHARS=24000`、`AGENT_RATE_REQUESTS_PER_WINDOW=5`、`AGENT_IP_REQUESTS_PER_HOUR=30`、`AGENT_DAILY_TOKEN_QUOTA=100000`。每个用户最多一个活跃模型请求，创建或关闭对话不会重置额度。频率和 token 窗口按 UTC 计；token 用量优先使用模型返回值，缺失时按字符数估算。每日额度按已认证用户计（跨会话共用），不代表供应商结算账单。
 
-数据库迁移由本地开发入口自动执行。独立数据库先设置 `DATABASE_URL`，再运行 `uv run alembic upgrade head`。Agent 契约、SSE 事件和错误码见[Agent API](app/api/agent/API.md)。限流 IP 使用 Uvicorn 仅对可信代理解析后的 `request.client.host`；部署代理变化时先核对可信代理配置，不在应用层直接采信 `X-Forwarded-For`。
+数据库迁移由本地开发入口自动执行。独立数据库先设置 `DATABASE_URL`，再运行 `uv run alembic upgrade head`。`0005_agent_account_auth` 增加所有者与用户额度表，旧匿名会话不认领；前后端须配套升级，迁移和回退限制见[Agent 迁移契约](app/api/agent/API.md#登录失效与迁移)。Agent 契约、SSE 事件和错误码见[Agent API](app/api/agent/API.md)。限流 IP 使用 Uvicorn 仅对可信代理解析后的 `request.client.host`；部署代理变化时先核对可信代理配置，不在应用层直接采信 `X-Forwarded-For`。
 
 ## 目录职责与请求处理
 
 - `app/main.py`：创建应用、生命周期和 CORS；`app/api/router.py`：统一注册账号、Agent、hello 和健康检查 router。
 - `app/dev.py`、`app/db/local.py`：本地开发启动入口、专属 PostgreSQL 生命周期和自动迁移；预览受信启动器准备测试库后仍运行 `app.main:app`。
-- `app/api/`：按模块组织路由包，`accounts/` 提供校园邮箱注册、登录、登出和当前用户查询，`agent/` 提供匿名会话与对话；模块 `API.md` 维护契约；`app/schemas/`：Pydantic 请求与响应模型。
+- `app/api/`：按模块组织路由包，`accounts/` 提供校园邮箱注册、登录、登出和当前用户查询，`agent/` 提供账户所属会话与对话；模块 `API.md` 维护契约；`app/schemas/`：Pydantic 请求与响应模型。
 - `app/core/`：配置；`app/db/`：Engine、Session 工厂、UTC 时间类型及请求依赖；`app/db/models/`：共享 ORM Base 与信息模型。
 - `app/services/`：按业务域组织服务用例，`content/` 实现信息汇总和提供，`ingestion/` 定义信源适配协议；`app/repositories/sql/`：集中信息查询与原子写入。
 - `alembic.ini`、`migrations/`：迁移配置、环境与版本脚本，导入完整模型 metadata。
@@ -157,7 +157,7 @@ app/api/
 │   ├── router.py         # 校园邮箱认证接口
 │   └── API.md
 ├── agent/
-│   ├── router.py         # 匿名会话与 Agent 对话
+│   ├── router.py         # 用户会话与 Agent 对话
 │   └── API.md
 ├── demo/
 │   ├── __init__.py
@@ -174,7 +174,7 @@ app/api/
     └── API.md
 ```
 
-Agent 路由位于 `app/api/agent/`，会话和模型服务位于 `app/services/agent/`；相关短期会话与 IP 限额表通过 Alembic 管理。
+Agent 路由位于 `app/api/agent/`，会话和模型服务位于 `app/services/agent/`；相关短期会话、用户额度与 IP 限额表通过 Alembic 管理。
 
 需要数据库的路由通过 `app/db/dependencies.py` 的 `get_session` 获取 Session；未配置时返回 HTTP 503。依赖在请求结束时关闭 Session，不负责提交事务。后续业务用例显式接收 Session，并负责提交或回滚；repository 只执行数据操作，不提交事务。
 

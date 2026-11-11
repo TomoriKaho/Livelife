@@ -15,8 +15,8 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from livelife import backend_runtime as runtime
-from livelife.course import Course, check_health
 from livelife import mail_config
+from livelife.course import Course, check_health
 
 A, B = "be-" + "a" * 40, "be-" + "b" * 40
 REPO = Path(__file__).resolve().parents[2]
@@ -49,6 +49,7 @@ class PreviewRuntimeTests(unittest.TestCase):
                     "SMTP_PASSWORD": "private",
                     "GH_TOKEN": "private",
                     "AGENT_LLM_API_KEY": "private",
+                    "AUTH_TEST_LOGIN_ENABLED": "true",
                 },
             ):
                 env = runtime.runtime_environment("preview-url", A, first)
@@ -59,6 +60,7 @@ class PreviewRuntimeTests(unittest.TestCase):
                 runtime.runtime_environment("other", B, other)["AGENT_SESSION_SECRET"],
             )
             self.assertEqual(env["DATABASE_URL"], "preview-url")
+            self.assertEqual(env["AUTH_TEST_LOGIN_ENABLED"], "false")
             for key in ("SMTP_PASSWORD", "GH_TOKEN", "AGENT_LLM_API_KEY"):
                 self.assertNotIn(key, env)
             self.assertEqual((first / "keep").read_text(), "persisted")
@@ -141,7 +143,9 @@ class PreviewRuntimeTests(unittest.TestCase):
                     for key in mail_config.FIELDS:
                         self.assertNotIn(key, schema.call_args.args[2])
                         if mail and key in mail:
-                            self.assertEqual(launch.call_args.kwargs["env"][key], mail[key])
+                            self.assertEqual(
+                                launch.call_args.kwargs["env"][key], mail[key]
+                            )
                         else:
                             self.assertNotIn(key, launch.call_args.kwargs["env"])
                 self.assertEqual(events, ["database_start", "database_stop"])
@@ -159,11 +163,15 @@ class PreviewRuntimeTests(unittest.TestCase):
         self.exercise_runtime(interrupted=True)
 
     def test_server_mail_configuration_reaches_api_but_not_migrations(self):
-        self.exercise_runtime(mail={
-            "SMTP_HOST": "smtp.example.invalid", "SMTP_PORT": "465",
-            "SMTP_FROM": "sender@example.invalid", "SMTP_USERNAME": "test-user",
-            "SMTP_PASSWORD": "test-only-password",
-        })
+        self.exercise_runtime(
+            mail={
+                "SMTP_HOST": "smtp.example.invalid",
+                "SMTP_PORT": "465",
+                "SMTP_FROM": "sender@example.invalid",
+                "SMTP_USERNAME": "test-user",
+                "SMTP_PASSWORD": "test-only-password",
+            }
+        )
 
     def test_hello_success_cannot_hide_unconfigured_database(self):
         hello = MagicMock()
@@ -180,9 +188,9 @@ class PreviewRuntimeTests(unittest.TestCase):
             ),
             patch("livelife.course.time.sleep"),
             patch("livelife.course.time.monotonic", side_effect=[0, 0, 2]),
+            self.assertRaisesRegex(RuntimeError, "health check failed"),
         ):
-            with self.assertRaisesRegex(RuntimeError, "health check failed"):
-                check_health(18000, timeout=1, require_database=True)
+            check_health(18000, timeout=1, require_database=True)
 
     def test_course_uses_trusted_launcher_and_recycling_preserves_database(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -257,9 +265,44 @@ class RealPreviewDatabaseTests(unittest.TestCase):
                     try:
                         check_health(port, timeout=60, require_database=True)
                         if token is None:
-                            req = urllib.request.Request(
+                            # Seed a real isolated account; public previews must
+                            # never depend on the removed blank-login shortcut.
+                            api = next(
+                                child
+                                for child in psutil.Process(process.pid).children()
+                                if "uvicorn" in child.cmdline()
+                            )
+                            subprocess.run(
+                                [
+                                    sys.executable,
+                                    "-c",
+                                    """
+from uuid import uuid4
+from app.db.session import Database
+from app.db.models.accounts import User
+from app.services.accounts.auth import password_hash, utcnow
+db = Database.from_environment()
+with db.session_factory() as session, session.begin():
+    session.add(User(id=uuid4(), email='preview-test@stu.pku.edu.cn',
+                    password_hash=password_hash('isolated-test-password'), created_at=utcnow()))
+db.close()
+""",
+                                ],
+                                cwd=backend,
+                                env=api.environ(),
+                                check=True,
+                            )
+                            blank = urllib.request.Request(
                                 f"http://127.0.0.1:{port}/auth/login",
                                 data=b'{"email":"","password":""}',
+                                headers={"Content-Type": "application/json"},
+                            )
+                            with self.assertRaises(urllib.error.HTTPError) as rejected:
+                                urllib.request.urlopen(blank, timeout=5)
+                            self.assertEqual(rejected.exception.code, 403)
+                            req = urllib.request.Request(
+                                f"http://127.0.0.1:{port}/auth/login",
+                                data=b'{"email":"preview-test@stu.pku.edu.cn","password":"isolated-test-password"}',
                                 headers={"Content-Type": "application/json"},
                             )
                             with urllib.request.urlopen(req, timeout=5) as response:
@@ -271,7 +314,7 @@ class RealPreviewDatabaseTests(unittest.TestCase):
                         with urllib.request.urlopen(req, timeout=5) as response:
                             self.assertEqual(
                                 json.load(response)["email"],
-                                "builtin-test@livelife.invalid",
+                                "preview-test@stu.pku.edu.cn",
                             )
                         pid = int(
                             (root / "databases" / A / "postgres/postmaster.pid")
@@ -319,4 +362,3 @@ class RealPreviewDatabaseTests(unittest.TestCase):
                 return True
             except OSError:
                 return False
-

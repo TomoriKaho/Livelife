@@ -86,7 +86,7 @@ async function submit() {
       >{{ item.label }}</button>
     </div>
 
-    <p class="form-message">目前仅支持 @pku.edu.cn 与 @stu.pku.edu.cn 校园邮箱注册登录；用户名登录将在后续版本增加。</p>
+    <p class="form-message">使用 @pku.edu.cn 或 @stu.pku.edu.cn 校园邮箱。</p>
 
     <div class="field">
       <div class="field-head">
@@ -96,7 +96,7 @@ async function submit() {
       <span v-sketch class="control sketch sketch-white">
         <OnboardingIcon name="person" />
         <span class="rule" aria-hidden="true"></span>
-        <input id="account-email" v-model="email" type="email" name="email" autocomplete="email" maxlength="254" placeholder="name@pku.edu.cn 或 name@stu.pku.edu.cn" :required="mode === 'register' || password.length > 0">
+        <input id="account-email" v-model="email" type="email" name="email" autocomplete="email" maxlength="254" placeholder="name@pku.edu.cn 或 name@stu.pku.edu.cn" required>
       </span>
     </div>
 
@@ -117,7 +117,7 @@ async function submit() {
       <span v-sketch class="control sketch sketch-white">
         <OnboardingIcon name="lock" />
         <span class="rule" aria-hidden="true"></span>
-        <input id="account-password" v-model="password" :type="showPassword ? 'text' : 'password'" name="password" :autocomplete="mode === 'login' ? 'current-password' : 'new-password'" :minlength="mode === 'register' ? 10 : undefined" maxlength="128" :placeholder="mode === 'register' ? '至少 10 位' : '请输入密码'" :required="mode === 'register' || Boolean(email.trim())">
+        <input id="account-password" v-model="password" :type="showPassword ? 'text' : 'password'" name="password" :autocomplete="mode === 'login' ? 'current-password' : 'new-password'" :minlength="mode === 'register' ? 10 : undefined" maxlength="128" :placeholder="mode === 'register' ? '至少 10 位' : '请输入密码'" required>
         <button class="peek" type="button" :aria-pressed="showPassword" :aria-label="showPassword ? '隐藏密码' : '显示密码'" @click="showPassword = !showPassword">
           <OnboardingIcon :name="showPassword ? 'eye-off' : 'eye'" />
         </button>
@@ -143,9 +143,9 @@ async function submit() {
       <input v-model="remember" type="checkbox">
       记住登录状态
     </label>
-    <span v-else class="remember-spacer" aria-hidden="true"></span>
 
-    <p v-if="mode === 'login'" class="form-message">临时测试：邮箱和密码均留空，可登录内置测试账号。</p>
+
+
     <p v-if="error" class="form-message error" role="alert">{{ error }}</p>
     <p v-if="notice" class="form-message" role="status">{{ notice }}</p>
     <button v-sketch class="enter sketch pencil-fill" data-pencil="yellow" type="submit" :disabled="busy">
@@ -155,41 +155,41 @@ async function submit() {
 </template>
 
 <style scoped>
-.account { display: flex; flex-direction: column; width: 100%; padding: 8px 0 12px; }
-.hero { margin: 10px auto 8px; }
-.hero-title { position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 22px; }
-.hero-title h1 { font-size: 24px; text-align: center; }
+.account { display: flex; flex-direction: column; width: 100%; padding: 0 0 6px; }
+.hero { width: 56px; height: 56px; margin: 0 auto 2px; }
+.hero-title { position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 8px; }
+.hero-title h1 { font-size: 22px; margin: 0; line-height: 1.4; text-align: center; }
 .title-spark { width: 16px; height: 16px; color: #f2c431; }
 .is-right { transform: rotate(18deg); }
 .title-spark:not(.is-right) { transform: rotate(-16deg); }
 .title-underline { position: absolute; left: 54%; bottom: -4px; width: 128px; height: 14px; fill: none; stroke: #ffdf32; stroke-width: 3.2; stroke-linecap: round; }
-.mode-switch { display: grid; grid-template-columns: 1fr 1fr; width: min(248px, 74%); margin: 0 auto 22px; padding: 4px; background: transparent; }
-.mode-tab { min-height: 42px; border: 0; background: transparent; font-size: 16px; color: var(--ink); }
+.mode-switch { display: grid; grid-template-columns: 1fr 1fr; width: min(248px, 74%); margin: 0 auto 8px; padding: 2px; background: transparent; }
+.mode-tab { min-height: 44px; border: 0; background: transparent; font-size: 16px; color: var(--ink); }
 .mode-tab:disabled { opacity: .55; }
-.field { margin-bottom: 16px; }
-.field-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 2px 8px; font-size: 16px; }
+.field { margin-bottom: 6px; }
+.field-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 2px 3px; font-size: 14px; line-height: 1.4; }
 .required { color: #a3adbd; font-size: 13px; }
-.code-button { flex: none; min-height: 36px; padding: 4px 7px; border: 0; background: transparent; color: #456e99; font: inherit; font-size: 13px; }
+.code-button { flex: none; min-height: 44px; padding: 4px 7px; border: 0; background: transparent; color: #456e99; font: inherit; font-size: 13px; }
 .code-button:disabled, .enter:disabled { opacity: .55; }
-.form-message { margin: -2px 0 12px; color: #456e99; font-size: 14px; line-height: 1.5; }
+.form-message { margin: 0 0 8px; color: #456e99; font-size: 13px; line-height: 1.5; }
 .form-message.error { color: #ad3e35; }
-.control { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 52px; padding: 0 6px 0 14px; background: transparent; color: var(--ink); }
+.control { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 0 6px 0 14px; background: transparent; color: var(--ink); }
 .rule { width: 1px; align-self: stretch; margin: 14px 2px; background: #c5ceda; }
-.control input { flex: 1; min-width: 0; min-height: 48px; border: 0; background: transparent; font: inherit; font-size: 16px; color: var(--ink); padding: 0; }
+.control input { flex: 1; min-width: 0; min-height: 44px; border: 0; background: transparent; font: inherit; font-size: 16px; color: var(--ink); padding: 0; }
 .control input::placeholder { color: #9aa6b8; }
 .control input:focus, .control input:focus-visible { outline: none; }
-.peek { width: 40px; height: 40px; border: 0; background: transparent; color: var(--ink); display: grid; place-items: center; padding: 0; flex: none; }
-.remember, .remember-spacer { display: flex; align-items: center; min-height: 18px; margin: 2px 0 22px; }
+.peek { width: 44px; height: 44px; border: 0; background: transparent; color: var(--ink); display: grid; place-items: center; padding: 0; flex: none; }
+.remember { display: flex; align-items: center; min-height: 44px; margin: 0 0 6px; }
 .remember { gap: 8px; width: fit-content; font-size: 15px; }
 .remember input { appearance: none; width: 18px; height: 18px; margin: 0; border: 1.6px solid var(--ink); border-radius: 4px; background: #fff; display: grid; place-items: center; flex: none; }
 .remember input:checked { background: var(--ink); }
 .remember input:checked::after { content: ''; width: 8px; height: 4px; border-left: 2px solid #fff; border-bottom: 2px solid #fff; transform: translateY(-1px) rotate(-45deg); }
 .remember input:focus-visible { outline: 3px solid #456e99; outline-offset: 3px; }
-.enter { width: 100%; min-height: 52px; border: 0; background: transparent; font-size: 18px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.enter { width: 100%; min-height: 44px; border: 0; background: transparent; font-size: 18px; display: flex; align-items: center; justify-content: center; gap: 8px; }
 .forward { width: 18px; height: 18px; transform: rotate(-90deg); }
 @media (max-width: 359px) {
   .hero-title h1 { font-size: 21px; }
   .title-underline { width: 108px; left: 52%; }
-  .mode-tab, .enter, .control input, .field-head { font-size: 15px; }
+  .mode-tab, .enter { font-size: 16px; }
 }
 </style>
