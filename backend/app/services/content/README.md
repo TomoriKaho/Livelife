@@ -18,6 +18,26 @@ uv run --locked uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 `places.json` 的具名建筑来自仓库 [campus.json](../../../../frontend/src/assets/maps/campus.json)，坐标是建筑轮廓顶点均值经原投影逆变换的 WGS84 建筑级参考点，不是门口或室内测绘。已有八个地点的稳定 ID 保留，其他地点采用带 OSM 建筑 ID 的目录 ID；后续地图替换需维护 `building_id` 映射。来源与 ODbL 许可见[地图许可](../../../../frontend/src/assets/maps/LICENSE.md)，公开分发须保留署名与许可。地点目录不包含活动或个人位置；Demo 和标准服务共用这份目录。
 
+## 三个官网信源接入标准后端
+
+[`official_events.py`](../ingestion/official_events.py) 是显式运行的采集命令：直接请求图书馆、百周年纪念讲堂、数学科学学院官网，按各站页面字段提取标题、活动时间和地点，再通过 `InformationAggregator` 写入同一信息表。地图和日历都读取标准 `GET /locations/activities`，不依赖 `content_demo`，不在请求或服务启动时联网采集。
+
+先按[后端开发入口](../../../README.md#本地数据库自动准备)启动持久本地 PostgreSQL。以下命令在 backend 执行；写库前将开发入口打印的本地连接串设置为当前终端的 `DATABASE_URL`：
+
+```bash
+# 仅采集，先核对 records.json 和 failures.json
+uv run --locked python -m app.services.ingestion.official_events
+# 明确导入同一批经过核对的记录；可重复执行，不增加重复活动
+uv run --locked python -m app.services.ingestion.official_events \
+  --import-records .local/official-events/records.json --write
+```
+
+[`official_events.json`](../ingestion/official_events.json) 保存人工选定的 11 个原文链接，来自三个直接信源，活动日期为 2026-11-07 至 2026-11-18。这是可重复采集的首批 URL 清单，不是账号历史发现或持续自动更新服务。可通过 `--manifest` 传入同格式清单，每批最多 20 篇；每页最多重试三次，有超时、失败报告和请求间隔。失败时保留本地快照并停止本批入库，不用示例填补。别名无法唯一匹配时停止导入，需核对地点；不能由模型猜坐标。
+
+原始 HTML 按 SHA-256 保存到被忽略的 `.local/official-events/`，结构化记录保留 URL、采集时间、解析器版本、时间/地点证据和 HTML 摘要。可重放相同记录；数据库保留稳定 UUID，原始快照留在开发磁盘。搜索正文为事实摘录，完整网页不直接渲染到前端。当前每篇选定文章只有一个活动，来源 ID 为 `文章标识:event:1`；通用多活动拆分、取消活动识别、历史版本数据库和增量调度尚未实现。
+
+活动时间按北京时间解析，发布时刻不从不可靠的 CMS 元数据猜测，缺失结束时间保留 null。已结束活动仍可按历史窗口查看；地图默认只显示今天至后天尚未结束的活动。地点关联沿用统一目录，新增的“智华楼”“四元厅”别名依据[数学学院原文](https://math.pku.edu.cn/kxyj/xsbg/tlb/dynamicsystems/26997626f8f14730bae48d04c3630ac4.htm)中“智华楼四元厅-224,225室”的明确对应关系，保持建筑级精度。
+
 ## 运行本地 Demo
 
 在 `backend` 目录执行以下命令，打开 [交互式接口](http://127.0.0.1:18763/docs)。进程监听本机，允许 `http://127.0.0.1:8775` 与 `http://localhost:8775` 的 GET/POST 联调请求，并使用退出时清理的 SQLite 数据库，默认导入[北大图书馆讲座](https://lib.pku.edu.cn/hdrl/0a32a64919294d338dd72b58de36d348.htm)和[百周年纪念讲堂公告](https://hall.pku.edu.cn/hdgp/zxyc/l/e1020fa7bc6f463facebacabd50c5340.htm)的两条活动样本，以及三条标为 `platform=demo` 的合成地点解析样本。

@@ -1,6 +1,6 @@
 # 地图活动查询 API
 
-标准后端 `app.main:app` 注册本接口，只读、无需登录。HTTP 层调用信息系统 `content.map_query`；活动入库时统一解析地点，查询时统一完成时间、关键词、半径过滤和排序。地图客户端不再通过地点文本猜测建筑。
+标准后端 `app.main:app` 注册本接口，只读、无需登录。地图和日历共用本接口和活动 ID。HTTP 层调用信息系统 `content.map_query`；活动入库时统一解析地点，查询时统一完成时间、关键词、半径过滤和排序。地图客户端不再通过地点文本猜测建筑。
 
 ## GET /locations/activities
 
@@ -29,6 +29,8 @@ curl --get http://127.0.0.1:8000/locations/activities \
   --data-urlencode 'as_of=2026-11-11T10:00:00+08:00' \
   --data-urlencode 'keyword=讲座' --data-urlencode 'limit=20'
 ```
+
+日历按可见日期范围传入 `as_of` 和 `activity_before`（北京时间零点），不提供中心或 timestamp，读取所有分页；距离为 null。当前同样只返回有明确开始时间和已解析地点的活动。
 
 附近查询另外传入 `latitude=39.98857`、`longitude=116.30452`、`radius_m=300` 和当前设备 `timestamp`。位置由 #82 平台适配器获取，精度仍由客户端展示，不把精度值当搜索半径。
 
