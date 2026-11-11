@@ -37,7 +37,48 @@
 
 停止、回收后端实例时先关闭 API、再关闭本次持有的数据库，保留整个 `databases/be-SHA/` 目录；同 SHA 重建和恢复时重新迁移校验并复用数据。Supervisor 给该启动器 30 秒正常退出窗口。强制终止后的数据库由下次启动复用并恢复。数据库目录不跟随 releases、构建任务或 venv 删除，也不在自动回收中删除；维护者需监测磁盘，只有确认该 SHA 无引用、进程停止且完成备份后才手动归档或删除。
 
-同一目录内 `runtime.json` 保存自动生成的测试 Agent 会话密钥（权限 0600），重启后复用。启动器仅向业务子进程传入必要运行环境和本版本测试连接，不继承部署凭证、SMTP 或模型密钥；临时空白登录在此测试入口开启。邮件验证码和真实模型服务并未因此启用，仍需另行设计测试凭证注入。正式环境不要使用该启动器。
+同一目录内 `runtime.json` 保存自动生成的测试 Agent 会话密钥（权限 0600），重启后复用。启动器仅向业务子进程传入必要运行环境和本版本测试连接，不继承部署凭证、SMTP 或模型密钥；公开实例固定设置 `AUTH_TEST_LOGIN_ENABLED=false`，不继承控制进程的开启值。邮件可按下节显式配置团队测试邮箱；真实模型凭证仍未注入。正式环境不要使用该启动器。
+
+更新空白登录策略须在课程机替换受信 `control/livelife/backend_runtime.py` 并逐个重启引用中的 API 实例；仅推 PR 不会更新常驻启动器。先备份模块、确认实例名称与端口；重启后核对进程环境为 false、空白登录返回 403、普通账号可登录、hello/ready 成功。升级前已签发的测试账号令牌还需新版账户校验才能拒绝；旧版本实例及固定 APK 不应注入模型凭证。账户与 Agent 的迁移兼容说明见[契约](../backend/app/api/agent/API.md#登录失效与迁移)。
+
+### 自动部署的测试邮箱配置
+
+课程机固定文件 `/home/group5/livelife/credentials/smtp.json` 为所有采用 `postgres-v1` 启动器的 main、分支及 PR API 提供测试邮箱。它独立于 release 和构建目录，新 SHA 启动时自动读取，不需要每次复制 `backend/.env`，也不需要把邮箱授权码写入 GitHub Actions。现有 legacy 实例不读取此文件，须先按下一节完成数据库启动器升级。
+
+配置仅允许 `SMTP_HOST`、`SMTP_PORT`、`SMTP_FROM`、`SMTP_USERNAME`、`SMTP_PASSWORD`。启动器只给 Uvicorn 子进程加入这些值，迁移、表结构检查和构建任务不接收它们；也不会从控制进程环境或其他 `.env` 中寻找 SMTP。文件缺失时保持邮件未配置，文件损坏、字段非法、链接或权限过宽时拒绝候选启动，错误信息不打印配置内容。配置目录须由运行用户拥有、权限 0700，文件为 0600。
+
+这里的邮箱供整个团队测试环境共用。API 进程仍共用课程机账号，文件权限及环境变量白名单不能阻止同账号分支代码读取它；因此只能放专用测试邮箱凭证，不能放正式邮件或部署凭证。构建任务继续受现有 bubblewrap 沙箱限制。
+
+首次接入时，在课程机上使用已评审 checkout，以 `group5` 操作。先备份已安装的 `backend_runtime.py`；如已存在 `mail_config.py` 也一并备份，然后更新这两个模块，保留其余控制文件及凭证：
+
+```bash
+task_root=/home/group5/livelife
+install -m 600 deploy/livelife/mail_config.py "$task_root/control/livelife/mail_config.py"
+install -m 600 deploy/livelife/backend_runtime.py "$task_root/control/livelife/backend_runtime.py"
+install -d -m 700 "$task_root/credentials"
+cd "$task_root/control"
+"$task_root/control-venv/bin/python" -m livelife.mail_config \
+  --root "$task_root" --host smtp.163.com --port 465 \
+  --sender pku_livelife@163.com --username pku_livelife@163.com
+```
+
+按提示输入邮箱的 SMTP 授权码（隐藏输入），不要把授权码放在命令参数、脚本、提交或日志里。配置工具原子写入文件；163 的 465 端口由后端使用 SMTP SSL。可执行以下只读检查，它只报告配置是否存在及格式、权限是否正确，不代表已经通过 SMTP 认证或邮件送达：
+
+```bash
+"$task_root/control-venv/bin/python" -m livelife.mail_config --root "$task_root" --check
+```
+
+已运行实例要逐个重启才能读取新配置；普通 recover 或重跑同 SHA 构建不会强制重启现存 API。先核对目标的 SHA、端口、`release.json` 中的 `runtime_mode=postgres-v1` 及 Supervisor 程序名，再仅重启该目标：
+
+```bash
+task_instance=be-替换为目标的完整40位SHA
+"$task_root/control-venv/bin/python" -m supervisor.supervisorctl \
+  -c "$task_root/supervisor/supervisord.conf" restart "$task_instance"
+```
+
+验证目标 hello、`/health/ready` 和响应版本，随后在登录页面向成员自己的测试收件地址请求一次验证码并完成登录；记录收件结果，不在日志或 PR 记录验证码、授权码。新 SHA 的 main 和 PR 部署会自动使用同一份配置。配置更新也需重启已运行目标；停用时将 `smtp.json` 移到同一私有目录内的备份名称后重启目标。控制代码回退需成对恢复这两个模块，保留凭证文件和数据库，不重启其他项目或所有实例。
+
+这项接入需一次服务器配置；仅合并代码不会安装受信启动器或创建凭证。服务器启用及真实收信证据统一记录在[当前实施状态](../docs/deployment.md#当前实施状态)。
 
 ### 首次启用与现有服务器升级
 

@@ -1,7 +1,9 @@
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from uuid import uuid4
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
@@ -12,9 +14,10 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import AgentSettings
-from app.db.models import AgentSession, InformationRecord
+from app.db.models import AgentSession, InformationRecord, User, UserSession
 from app.db.session import Database
 from app.main import create_app
+from app.services.accounts.auth import token_digest
 from app.services.agent.llm import AgentModelError, stream_completion
 from app.services.agent.retrieval import search_information
 from app.services.agent.service import (
@@ -25,6 +28,32 @@ from app.services.agent.service import (
     finish_request,
     get_history,
 )
+
+ACCOUNT_ID = UUID("792a54e4-3aad-407d-b65f-1fc4b75d0101")
+
+
+def seed_account(factory):
+    now = datetime.now(UTC)
+    with factory() as db, db.begin():
+        db.add(
+            User(
+                id=ACCOUNT_ID,
+                email="agent-test@stu.pku.edu.cn",
+                password_hash="!unused",
+                created_at=now,
+            )
+        )
+        db.flush()
+        db.add(
+            UserSession(
+                id=uuid4(),
+                user_id=ACCOUNT_ID,
+                token_hash=token_digest("account-test-token"),
+                created_at=now,
+                expires_at=now + timedelta(days=1),
+            )
+        )
+
 
 BACKEND = Path(__file__).resolve().parents[1]
 
@@ -42,7 +71,9 @@ def sessions(tmp_path: Path) -> Iterator[sessionmaker[Session]]:
         config.attributes["connection"] = connection
         command.upgrade(config, "head")
     try:
-        yield sessionmaker(engine, expire_on_commit=False)
+        factory = sessionmaker(engine, expire_on_commit=False)
+        seed_account(factory)
+        yield factory
     finally:
         engine.dispose()
 
@@ -106,13 +137,14 @@ def make_api_app(tmp_path: Path, monkeypatch, *, model: bool = False) -> tuple[F
     with database.engine.begin() as connection:
         config.attributes["connection"] = connection
         command.upgrade(config, "head")
+    seed_account(database.session_factory)
     return app, database
 
 
 def test_session_token_is_hashed_and_history_is_private(sessions):
     config = settings()
-    first = create_session(sessions, config, "127.0.0.1")
-    second = create_session(sessions, config, "127.0.0.1")
+    first = create_session(sessions, config, "127.0.0.1", user_id=ACCOUNT_ID)
+    second = create_session(sessions, config, "127.0.0.1", user_id=ACCOUNT_ID)
 
     assert first["session_token"] != second["session_token"]
     with sessions() as session, session.begin():
@@ -129,39 +161,46 @@ def test_session_token_is_hashed_and_history_is_private(sessions):
             }
         ]
     assert (
-        get_history(sessions, config, first["session_token"])["messages"][0]["content"]
+        get_history(sessions, config, first["session_token"], user_id=ACCOUNT_ID)["messages"][0][
+            "content"
+        ]
         == "仅属于首个会话"
     )
-    assert get_history(sessions, config, second["session_token"])["messages"] == []
+    assert (
+        get_history(sessions, config, second["session_token"], user_id=ACCOUNT_ID)["messages"] == []
+    )
 
 
 def test_request_length_rate_limit_and_active_lease(sessions):
     config = settings(requests_per_minute=1, max_message_chars=10)
-    created = create_session(sessions, config, "127.0.0.1")
+    created = create_session(sessions, config, "127.0.0.1", user_id=ACCOUNT_ID)
     with pytest.raises(AgentError, match="message_too_long"):
-        begin_request(
+        state = begin_request(
             sessions,
             config,
             token=created["session_token"],
+            user_id=ACCOUNT_ID,
             content="x" * 11,
             client_request_id=uuid4(),
             ip="127.0.0.1",
         )
 
     request_id = uuid4()
-    begin_request(
+    state = begin_request(
         sessions,
         config,
         token=created["session_token"],
+        user_id=ACCOUNT_ID,
         content="问题",
         client_request_id=request_id,
         ip="127.0.0.1",
     )
-    with pytest.raises(AgentError, match="session_request_in_progress"):
-        begin_request(
+    with pytest.raises(AgentError, match="user_request_in_progress"):
+        state = begin_request(
             sessions,
             config,
             token=created["session_token"],
+            user_id=ACCOUNT_ID,
             content="另一个问题",
             client_request_id=uuid4(),
             ip="127.0.0.1",
@@ -170,18 +209,20 @@ def test_request_length_rate_limit_and_active_lease(sessions):
         sessions,
         config,
         token=created["session_token"],
-        request_id=str(request_id),
+        user_id=ACCOUNT_ID,
+        request_id=state["assistant_message"]["request_id"],
         answer="无资料",
         status="completed",
         input_tokens=0,
         output_tokens=0,
         estimated_usage=True,
     )
-    with pytest.raises(AgentError, match="session_rate_limited"):
-        begin_request(
+    with pytest.raises(AgentError, match="user_rate_limited"):
+        state = begin_request(
             sessions,
             config,
             token=created["session_token"],
+            user_id=ACCOUNT_ID,
             content="第三问",
             client_request_id=uuid4(),
             ip="127.0.0.1",
@@ -190,13 +231,14 @@ def test_request_length_rate_limit_and_active_lease(sessions):
 
 def test_ip_limit_is_shared_across_sessions(sessions):
     config = settings(ip_requests_per_hour=3)
-    first = create_session(sessions, config, "127.0.0.1")
-    second = create_session(sessions, config, "127.0.0.1")
+    first = create_session(sessions, config, "127.0.0.1", user_id=ACCOUNT_ID)
+    second = create_session(sessions, config, "127.0.0.1", user_id=ACCOUNT_ID)
     request_id = uuid4()
-    begin_request(
+    state = begin_request(
         sessions,
         config,
         token=first["session_token"],
+        user_id=ACCOUNT_ID,
         content="问题",
         client_request_id=request_id,
         ip="127.0.0.1",
@@ -205,7 +247,8 @@ def test_ip_limit_is_shared_across_sessions(sessions):
         sessions,
         config,
         token=first["session_token"],
-        request_id=str(request_id),
+        user_id=ACCOUNT_ID,
+        request_id=state["assistant_message"]["request_id"],
         answer="无资料",
         status="completed",
         input_tokens=0,
@@ -213,10 +256,11 @@ def test_ip_limit_is_shared_across_sessions(sessions):
         estimated_usage=True,
     )
     with pytest.raises(AgentError, match="ip_rate_limited"):
-        begin_request(
+        state = begin_request(
             sessions,
             config,
             token=second["session_token"],
+            user_id=ACCOUNT_ID,
             content="问题",
             client_request_id=uuid4(),
             ip="127.0.0.1",
@@ -236,12 +280,13 @@ def test_chinese_information_retrieval_prefers_title_matches(sessions):
 
 def test_follow_up_retrieval_uses_history_as_query_hint(sessions, monkeypatch):
     config = settings()
-    created = create_session(sessions, config, "127.0.0.1")
+    created = create_session(sessions, config, "127.0.0.1", user_id=ACCOUNT_ID)
     first_id = uuid4()
-    begin_request(
+    state = begin_request(
         sessions,
         config,
         token=created["session_token"],
+        user_id=ACCOUNT_ID,
         content="二教101现在上什么课？",
         client_request_id=first_id,
         ip="127.0.0.1",
@@ -250,7 +295,8 @@ def test_follow_up_retrieval_uses_history_as_query_hint(sessions, monkeypatch):
         sessions,
         config,
         token=created["session_token"],
-        request_id=str(first_id),
+        user_id=ACCOUNT_ID,
+        request_id=state["assistant_message"]["request_id"],
         answer="公开资料显示，二教101有《数据结构》课程。",
         status="completed",
         input_tokens=1,
@@ -264,10 +310,11 @@ def test_follow_up_retrieval_uses_history_as_query_hint(sessions, monkeypatch):
         return ()
 
     monkeypatch.setattr("app.services.agent.service.search_information", fake_search)
-    begin_request(
+    state = begin_request(
         sessions,
         config,
         token=created["session_token"],
+        user_id=ACCOUNT_ID,
         content="这个课的老师是什么？",
         client_request_id=uuid4(),
         ip="127.0.0.1",
@@ -382,23 +429,25 @@ async def test_model_stream_sanitizes_timeout_and_http_failure(monkeypatch):
 
 def test_close_session_deletes_only_that_session(sessions):
     config = settings()
-    first = create_session(sessions, config, "127.0.0.1")
-    second = create_session(sessions, config, "127.0.0.1")
-    close_session(sessions, config, first["session_token"])
+    first = create_session(sessions, config, "127.0.0.1", user_id=ACCOUNT_ID)
+    second = create_session(sessions, config, "127.0.0.1", user_id=ACCOUNT_ID)
+    close_session(sessions, config, first["session_token"], user_id=ACCOUNT_ID)
     with pytest.raises(AgentError, match="invalid_session"):
-        get_history(sessions, config, first["session_token"])
-    assert get_history(sessions, config, second["session_token"])["messages"] == []
+        get_history(sessions, config, first["session_token"], user_id=ACCOUNT_ID)
+    assert (
+        get_history(sessions, config, second["session_token"], user_id=ACCOUNT_ID)["messages"] == []
+    )
 
 
 def test_expired_session_is_removed_on_access(sessions):
     config = settings()
-    created = create_session(sessions, config, "127.0.0.1")
+    created = create_session(sessions, config, "127.0.0.1", user_id=ACCOUNT_ID)
     with sessions() as session, session.begin():
         row = session.scalar(select(AgentSession).where(AgentSession.id == created["session_id"]))
         row.expires_at = datetime.now(UTC) - timedelta(seconds=1)
 
     with pytest.raises(AgentError, match="session_expired"):
-        get_history(sessions, config, created["session_token"])
+        get_history(sessions, config, created["session_token"], user_id=ACCOUNT_ID)
 
 
 @pytest.mark.anyio
@@ -406,12 +455,14 @@ async def test_http_session_and_no_source_sse_flow(tmp_path, monkeypatch):
     app, database = make_api_app(tmp_path, monkeypatch)
     try:
         async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app), base_url="http://test"
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://test",
+            headers={"Authorization": "Bearer account-test-token"},
         ) as client:
             created = await client.post("/agent/sessions")
             assert created.status_code == 201
             session = created.json()
-            headers = {"Authorization": f"Bearer {session['session_token']}"}
+            headers = {"X-Agent-Session": session["session_token"]}
             response = await client.post(
                 "/agent/messages/stream",
                 headers=headers,
@@ -449,10 +500,12 @@ async def test_http_model_sse_persists_citations_and_usage(tmp_path, monkeypatch
 
         monkeypatch.setattr("app.api.agent.router.stream_completion", fake_completion)
         async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app), base_url="http://test"
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://test",
+            headers={"Authorization": "Bearer account-test-token"},
         ) as client:
             created = await client.post("/agent/sessions")
-            headers = {"Authorization": f"Bearer {created.json()['session_token']}"}
+            headers = {"X-Agent-Session": created.json()["session_token"]}
             response = await client.post(
                 "/agent/messages/stream",
                 headers=headers,
@@ -488,10 +541,12 @@ async def test_http_model_failure_emits_retryable_error_and_marks_message_failed
 
         monkeypatch.setattr("app.api.agent.router.stream_completion", broken_completion)
         async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app), base_url="http://test"
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://test",
+            headers={"Authorization": "Bearer account-test-token"},
         ) as client:
             created = await client.post("/agent/sessions")
-            headers = {"Authorization": f"Bearer {created.json()['session_token']}"}
+            headers = {"X-Agent-Session": created.json()["session_token"]}
             response = await client.post(
                 "/agent/messages/stream",
                 headers=headers,
@@ -525,7 +580,8 @@ async def test_usage_matches_sent_context_not_discarded_history(monkeypatch, pro
         max_context_chars=350,
     )
     payloads, usages = [], []
-    monkeypatch.setattr(router, "_factory", lambda _request: None)
+    monkeypatch.setattr(router, "_factory", lambda _request: MagicMock())
+    monkeypatch.setattr(router, "authenticated_user", lambda *args: SimpleNamespace(id=ACCOUNT_ID))
     monkeypatch.setattr(router, "get_agent_settings", lambda: config)
     monkeypatch.setattr(router, "finish_request", lambda *args, **kw: usages.append(kw))
     for count in (12, 40):
@@ -548,17 +604,20 @@ async def test_usage_matches_sent_context_not_discarded_history(monkeypatch, pro
         request = Request(
             {
                 "type": "http",
-                "headers": [(b"authorization", b"Bearer test")],
+                "headers": [(b"authorization", b"Bearer test"), (b"x-agent-session", b"test")],
                 "client": ("127.0.0.1", 1),
             }
         )
         response = await router.send_message(
-            request, SendMessageRequest(content="x" * 100, client_request_id=uuid4())
+            request,
+            SendMessageRequest(content="x" * 100, client_request_id=uuid4()),
+            SimpleNamespace(id=ACCOUNT_ID),
         )
         events = [event async for event in response.body_iterator]
         assert any("event: done" in event for event in events)
         payloads.append(fake.calls[0][2]["json"])
     assert payloads[0] == payloads[1]
+    usages = [u for u in usages if u["status"] == "completed"]
     expected = sum(len(m["content"]) for m in payloads[0]["messages"]) // 4
     assert sum(len(m["content"]) for m in payloads[0]["messages"][2:]) == 350
     assert [u["input_tokens"] for u in usages] == [17 if provider_usage else expected] * 2
@@ -574,13 +633,14 @@ def test_reservation_uses_same_bounded_context_as_model(sessions):
         llm_model="test-model",
         max_context_chars=10,
     )
-    created = create_session(sessions, config, "127.0.0.1")
+    created = create_session(sessions, config, "127.0.0.1", user_id=ACCOUNT_ID)
     with sessions() as session, session.begin():
         make_information(session, title="课程", content="课程" * 100)
     state = begin_request(
         sessions,
         config,
         token=created["session_token"],
+        user_id=ACCOUNT_ID,
         content="课程是什么",
         client_request_id=uuid4(),
         ip="127.0.0.1",

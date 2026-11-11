@@ -24,7 +24,7 @@ test -f .env || cp .env.example .env
 npm run dev
 ```
 
-首次配置时复制环境变量样例；已有 `.env` 时保留自己的配置。开发入口为 `http://127.0.0.1:8765/`，哈希路由默认进入引导页。点击“登录并进入”进入样例地图，无需真实账号。`vite.config.ts` 使用严格端口，8765 被占用时启动失败；可停止自己的旧预览，或执行 `npm run dev -- --port 8775` 指定空闲端口。
+首次配置时复制环境变量样例；已有 `.env` 时保留自己的配置。开发入口为 `http://127.0.0.1:8765/`，哈希路由默认进入引导页。登录表单必须填写校园邮箱和密码；注册需邮箱验证码。地图等公开样例页仍可直接访问，Agent 页面需要真实登录。`vite.config.ts` 使用严格端口，8765 被占用时启动失败；可停止自己的旧预览，或执行 `npm run dev -- --port 8775` 指定空闲端口。
 
 ## API 地址与联调
 
@@ -154,3 +154,10 @@ npm run preview
 布局回归：在 Vite 页面进入“我的”等显示底部导航的页面，在 Console 执行 `await (await import('/scripts/viewport-scroll.browser.mjs')).verifyViewportScroll()`，检查无安全区及上下 24/34px 安全区时内容可滚动、根页面不可滚动且导航位置不变。另在 Android 上反复上滑、下拉内容至边界，确认导航不移动、顶部不露白；切换页面、横竖屏及键盘弹出收起后重复检查。
 
 手机浏览器预览先构建，再执行 `npm run preview:phone`，使用电脑局域网 IP 和 8766 端口访问；网络与防火墙需允许连接。Android 工程位于 android/，SDK、IDE、本地 debug 和分发包步骤见[Android 教程](android/README.md)。网页演示的数据边界见[架构说明](../docs/architecture.md#首阶段结构与数据边界)。
+
+
+## 登录注册布局与验证
+
+登录页收紧品牌区与表单间距，输入字号保持 16px，可点击控件至少 44px；安全区由应用外壳统一扣除，页面不再重复扣除。默认字号、键盘收起时，360×640 和 390×844 的登录/注册均应一屏展示。320px 窄屏、横屏、键盘压缩、长错误提示与放大字体允许 `.onboarding-body` 滚动，不能裁掉提交按钮。
+
+本地 Vite 页面可运行 `await (await import('/scripts/account-layout.browser.mjs')).verifyAccountLayout()` 检查当前视口的登录/注册、安全区及错误提示；配合浏览器分别设为上述尺寸、320×568 和 360×320，放大字体后确认仍可滚动到提交按钮。实际 Android 输入法、系统字体缩放及安全区需另行真机验收。鉴权生命周期测试见[API 模块](src/api/README.md#账户认证)。

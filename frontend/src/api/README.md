@@ -24,7 +24,7 @@
 
 ## Agent 对话
 
-[agent.ts](agent.ts) 使用 `sessionStorage` 保存 24 小时匿名会话令牌，通过 Bearer 认证读取历史并 POST 发送问题。`agent-stream.mjs` 解析 SSE 的开始、来源、文本增量、用量、完成和错误事件；失败时保留用户问题供重试。附件不会加入请求。服务端字段和错误语义见[Agent API](../../../backend/app/api/agent/API.md)。
+[agent.ts](agent.ts) 使用账户 Bearer 令牌认证，并用 `X-Agent-Session` 定位当前用户的短期对话。`sessionStorage` 的 v2 缓存绑定账户 ID 与 API 地址，旧 v1 匿名缓存不再恢复。登出、过期、注销、切换账号及跨标签账户变更时清除缓存并中止活动流；请求返回及 SSE 事件回填前检查身份代次，拒绝上一账号的迟到响应。账户 401 要求重新登录，不自动创建匿名会话。`agent-stream.mjs` 解析 SSE 的开始、来源、文本增量、用量、完成和错误事件；失败时保留用户问题供重试。附件不会加入请求。服务端字段和错误语义见[Agent API](../../../backend/app/api/agent/API.md)。
 
 ## 新增业务请求
 
@@ -36,4 +36,6 @@
 
 注销账号只有在服务端确认成功后才清理本地会话；密码错误、服务故障或网络失败均保留令牌和当前用户，供修改密码或重试。独立 Vite 日历测试页的 Console 可执行 `await (await import('/scripts/profile.browser.mjs')).verifyDeletionSession()`，使用虚构响应验证失败保留和成功清理；它与主动退出登录的本地清理策略不同。
 
-临时联调时，在登录页将邮箱和密码均留空可进入后端内置测试账号；这仍是一次真实登录请求，页面不会伪造身份。只填一项时表单要求补齐；注册保持必填和验证码校验。测试入口的关闭配置、共享用户及会话限制见[账户契约](../../../backend/app/api/accounts/API.md#post-authlogin)。
+登录和注册表单均要求校园邮箱、密码；本地可选测试入口只供接口调试，且没有 Agent 权限，见[账户契约](../../../backend/app/api/accounts/API.md#post-authlogin)。
+
+在独立本地 Vite 测试标签页执行 `await (await import('/scripts/agent-auth.browser.mjs')).verifyAgentAuth()`，验证账户/对话凭证分离、切换账号时拒绝迟到历史、清除缓存、中止 SSE、401 不匿名重试及跨标签变更。使用虚构令牌和响应，不访问真实模型。

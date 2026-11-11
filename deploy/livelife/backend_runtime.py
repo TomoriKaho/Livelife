@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 from .common import atomic_json, instance
+from .mail_config import load as mail_environment
 
 # Run using the tested release interpreter, never import branch code into the
 # control interpreter. Validate both the revision and actual mapped columns.
@@ -52,8 +53,8 @@ def state_directory(root, ident):
 
 
 def runtime_environment(url, ident, state):
-    # A stable per-version test secret allows Agent session recovery. No SMTP,
-    # provider, deployment, or inherited DATABASE_URL credentials reach a branch.
+    # A stable per-version test secret allows Agent session recovery. No inherited
+    # SMTP, provider, deployment, or DATABASE_URL credentials reach a branch.
     settings = state / "runtime.json"
     if not settings.exists():
         atomic_json(settings, {"agent_session_secret": secrets.token_hex(32)})
@@ -79,7 +80,7 @@ def runtime_environment(url, ident, state):
         AGENT_SESSION_SECRET=secret,
         LIVELIFE_BACKEND_SHA=ident[3:],
         PYTHONUNBUFFERED="1",
-        AUTH_TEST_LOGIN_ENABLED="true",
+        AUTH_TEST_LOGIN_ENABLED="false",
     )
     return env
 
@@ -111,6 +112,7 @@ def run(root, ident, port, *, server_factory=None):
     )
     if not python.is_file() or not (backend / "app/main.py").is_file():
         raise RuntimeError("tested preview backend is missing")
+    mail = mail_environment(root)
     if server_factory is None:
         if os.name != "posix" or os.geteuid() == 0:
             raise RuntimeError("preview PostgreSQL requires an ordinary Linux user")
@@ -149,7 +151,9 @@ def run(root, ident, port, *, server_factory=None):
                     f"/api/versions/{ident}",
                 ],
                 cwd=backend,
-                env=env,
+                # SMTP is explicitly opted in on the server, only for the API.
+                # Migration/schema subprocesses keep the credential-free env.
+                env={**env, **mail},
             )
             try:
                 return process.wait()

@@ -1,10 +1,12 @@
 // Run in an isolated Vite development tab after the calendar page has mounted:
 // await (await import('/scripts/agent-conversation.browser.mjs')).verifyAgentConversation()
 import router from '../src/router/index.ts';
+import { authState, writeAuthToken, clearSession } from '../src/api/auth.ts';
 
 export async function verifyAgentConversation() {
   const originalFetch = window.fetch, originalRoute = router.currentRoute.value.fullPath;
-  const storageKey = 'livelife.agent.session.v1', savedSession = sessionStorage.getItem(storageKey);
+  const storageKey = 'livelife.agent.session.v2', savedSession = sessionStorage.getItem(storageKey);
+  const savedLocal = localStorage.getItem('livelife.auth.token'), savedTab = sessionStorage.getItem('livelife.auth.token'), savedUser = authState.user;
   const requests = [], results = [], encoder = new TextEncoder();
   const assert = (condition, message) => { if (!condition) throw new Error(message); results.push(message); };
   const waitFor = async (condition, message) => {
@@ -29,8 +31,10 @@ export async function verifyAgentConversation() {
   const complete = index => { emit(index, 'done', { status: 'completed' }); requests[index].controller.close(); };
   try {
     await router.push('/calendar');
+    writeAuthToken('browser-account-test-only');
     window.fetch = async (url, init) => {
       const path = new URL(url instanceof Request ? url.url : String(url), location.href).pathname;
+      if (path.endsWith('/auth/me')) return Response.json({ id: 'browser-user', email: 'browser@stu.pku.edu.cn' });
       if (path.endsWith('/agent/sessions')) return Response.json(session, { status: 201 });
       if (path.endsWith('/agent/sessions/current')) return Response.json({ ...session, messages: [] });
       if (path.endsWith('/agent/messages/stream')) {
@@ -78,6 +82,10 @@ export async function verifyAgentConversation() {
     await router.push('/calendar');
     for (const request of requests) request.controller.error(new DOMException('Test finished', 'AbortError'));
     window.fetch = originalFetch;
+    clearSession();
+    if (savedLocal !== null) localStorage.setItem('livelife.auth.token', savedLocal);
+    if (savedTab !== null) sessionStorage.setItem('livelife.auth.token', savedTab);
+    authState.user = savedUser;
     if (savedSession === null) sessionStorage.removeItem(storageKey);
     else sessionStorage.setItem(storageKey, savedSession);
     await router.push(originalRoute);

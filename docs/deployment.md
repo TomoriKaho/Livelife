@@ -11,6 +11,7 @@
 | npm 安装备用源 | 课程机已安装 `b12be87` 的构建模块并重启 worker；真实下载故障触发换源仍待验收 | [PR #69 服务器启用记录](https://github.com/TomoriKaho/Livelife/pull/69)、[安装与排查教程](../deploy/BUILDING.md#维护者安装与排查教程) |
 | Android 测试包签名与分发 | 工程和自动链路已接入，LIVELIFE_ANDROID_ENABLED=true | [PR #45](https://github.com/TomoriKaho/Livelife/pull/45)、[实际分发运行](https://github.com/TomoriKaho/Livelife/actions/runs/37734472930) |
 | 预览 PostgreSQL、迁移及数据库发布门禁 | 仓库已提供；服务器控制程序升级、依赖安装与线上验收尚待完成 | [启用与恢复教程](../deploy/README.md#预览数据库与启动门禁) |
+| 账户与 Agent 权限收紧 | 新代码默认及启动器关闭空白登录；需合并配套前后端、更新课程机启动器并重启，不能据本地检查认定线上已启用 | [账户/Agent 迁移](../backend/app/api/agent/API.md#登录失效与迁移)、[启动器操作](../deploy/README.md#预览数据库与启动门禁) |
 | 正式发布与 iOS | 正式发布工作流和 iOS 工程尚未提供 | [正式发布约定](#客户端模式与后续正式发布约定) |
 
 上述证据覆盖后端、网页及测试包发布，不代表完整成员验收。Android main 首次自动发布、完整关闭/重开清理和最新 APK 返回键真机回归仍需核对，历史证据见[验证记录索引](#验证记录索引)。业务接口、数据库及登录的范围由[架构说明](architecture.md)维护。
@@ -35,9 +36,9 @@ main 是代码分支，staging 是测试环境。生产不会随 main 自动发�
 
 临时测试账号入口默认开启，正式环境需在后端设置 `AUTH_TEST_LOGIN_ENABLED=false`；关闭入口不撤销已签发会话。共享身份和恢复限制见[后端测试账号说明](../backend/README.md#临时内置测试账号)。
 
-后端启动会自动加载当前 checkout 的 `backend/.env`，但不覆盖进程环境中的值；位置、样例和重启要求见[后端配置说明](../backend/README.md#使用已有数据库或部署入口)。本机机密文件不随 Git 源码构建上传，此变更不表示 Actions 已具备 SMTP 秘密注入或线上已启用邮件服务。
+后端启动会自动加载当前 checkout 的 `backend/.env`，但不覆盖进程环境中的值；位置、样例和重启要求见[后端配置说明](../backend/README.md#使用已有数据库或部署入口)。本机机密文件不随 Git 源码构建上传。自动部署另支持课程机固定的私有 SMTP 配置：一次设置后，所有采用新启动器的 main、分支及 PR API 在启动时读取，构建任务不接收授权码。配置位置、受信启动器更新、现有实例重启与收信验收见[测试邮箱配置](../deploy/README.md#自动部署的测试邮箱配置)。这是整个测试环境共用邮箱的显式开关；代码合并不代表服务器已配置或邮件已送达，当前仍待服务器安装和真实收信验证。
 
-新的预览启动器可自动准备每 SHA 独立的 PostgreSQL、执行迁移并核对业务表，启动后同时检查 hello 和数据库就绪状态。此能力需要先更新两台服务器上已安装的受信控制程序及课程机依赖，**仅重跑 Actions 不会启用**。现有入口在完成升级前仍可能 hello 成功而账号接口返回 `Database is not configured`。更新与验收步骤、同 SHA 保留数据和不同 SHA 从空库开始的限制集中见[预览数据库与启动门禁](../deploy/README.md#预览数据库与启动门禁)。SMTP 和真实模型凭证仍未自动注入。
+新的预览启动器可自动准备每 SHA 独立的 PostgreSQL、执行迁移并核对业务表，启动后同时检查 hello 和数据库就绪状态。此能力需要先更新两台服务器上已安装的受信控制程序及课程机依赖，**仅重跑 Actions 不会启用**。现有入口在完成升级前仍可能 hello 成功而账号接口返回 `Database is not configured`。更新与验收步骤、同 SHA 保留数据和不同 SHA 从空库开始的限制集中见[预览数据库与启动门禁](../deploy/README.md#预览数据库与启动门禁)。SMTP 需额外完成上述服务器配置，真实模型凭证仍未自动注入。
 
 新 SHA 检查并部署成功后才切换入口；仍被其他客户端固定绑定的旧版本继续保留。实例、端口和兼容产物由[部署工具](../deploy/README.md)维护。
 

@@ -26,7 +26,7 @@ TEST_USER_EMAIL = "builtin-test@livelife.invalid"
 
 
 def test_login_enabled() -> bool:
-    return environ.get("AUTH_TEST_LOGIN_ENABLED", "true").strip().lower() in {
+    return environ.get("AUTH_TEST_LOGIN_ENABLED", "false").strip().lower() in {
         "1",
         "true",
         "yes",
@@ -183,3 +183,18 @@ def create_session(session: Session, user: User, remember: bool) -> tuple[str, i
     )
     session.commit()
     return token, int(lifetime.total_seconds())
+
+
+def authenticated_user(session: Session, token: str) -> User | None:
+    """Resolve a current account credential; callers never supply the user ID."""
+    record = session.scalar(
+        select(UserSession).where(
+            UserSession.token_hash == token_digest(token),
+            UserSession.revoked_at.is_(None),
+            UserSession.expires_at > utcnow(),
+        )
+    )
+    user = session.get(User, record.user_id) if record else None
+    if user is not None and user.id == TEST_USER_ID and not test_login_enabled():
+        return None
+    return user
