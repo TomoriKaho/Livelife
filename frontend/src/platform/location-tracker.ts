@@ -4,8 +4,9 @@ import {
   watchCurrentLocation,
   type CurrentLocation,
   type LocationErrorCode,
+  type LocationResult,
   type LocationWatchStop,
-} from './location';
+} from './location.ts';
 
 export type LocationTrackingState = 'idle' | 'locating' | 'located' | LocationErrorCode;
 
@@ -18,6 +19,41 @@ let starting: Promise<void> | null = null;
 let startingGeneration: number | null = null;
 let generation = 0;
 
+/**
+ * Fold a platform result into the shared foreground location state.
+ *
+ * A watch can report a cached fix after a newer GPS result, or report a
+ * transient timeout after it has already produced a usable fix.  Neither
+ * event should move the marker backwards or replace the usable "located"
+ * state shown to the user.  Permission and platform errors remain visible.
+ */
+export function applyLocationResult(
+  current: CurrentLocation | null,
+  result: LocationResult,
+): { location: CurrentLocation | null; state: LocationTrackingState } {
+  if (result.status === 'success') {
+    if (current && result.location.timestamp <= current.timestamp) {
+      return { location: current, state: 'located' };
+    }
+    return { location: result.location, state: 'located' };
+  }
+
+  // Browser and fused-location watches are long lived: a single timeout or
+  // temporarily unavailable provider after a valid fix is not a loss of the
+  // already known foreground position.  Surface errors that require user
+  // action (permission) or mean the capability is absent instead.
+  if (current && (result.error === 'timeout' || result.error === 'unavailable')) {
+    return { location: current, state: 'located' };
+  }
+  return { location: current, state: result.error };
+}
+
+function publishLocationResult(result: LocationResult) {
+  const next = applyLocationResult(currentLocation.value, result);
+  if (next.location !== currentLocation.value) currentLocation.value = next.location;
+  locationTrackingState.value = next.state;
+}
+
 /** Start one shared foreground watch. Repeated calls keep the existing watch. */
 export function startLocationTracking(): Promise<void> {
   if (stopWatch) return Promise.resolve();
@@ -25,15 +61,10 @@ export function startLocationTracking(): Promise<void> {
 
   const watchGeneration = ++generation;
   startingGeneration = watchGeneration;
-  locationTrackingState.value = 'locating';
+  if (!currentLocation.value) locationTrackingState.value = 'locating';
   starting = watchCurrentLocation(result => {
     if (watchGeneration !== generation) return;
-    if (result.status === 'success') {
-      currentLocation.value = result.location;
-      locationTrackingState.value = 'located';
-    } else {
-      locationTrackingState.value = result.error;
-    }
+    publishLocationResult(result);
   }).then(async stop => {
     if (watchGeneration !== generation) {
       await stop();
@@ -67,13 +98,8 @@ export async function restartLocationTracking() {
 
 /** Obtain one fresh foreground fix and publish it to every active consumer. */
 export async function refreshCurrentLocation() {
-  locationTrackingState.value = 'locating';
+  if (!currentLocation.value) locationTrackingState.value = 'locating';
   const result = await getCurrentLocation();
-  if (result.status === 'success') {
-    currentLocation.value = result.location;
-    locationTrackingState.value = 'located';
-  } else {
-    locationTrackingState.value = result.error;
-  }
+  publishLocationResult(result);
   return result;
 }

@@ -31,8 +31,22 @@ export function orientationHeading(event, screenAngle = 0) {
   return alpha === null ? null : normalizeHeading(360 - alpha + rotation);
 }
 
+/**
+ * Return the screen-top compass heading from an AbsoluteOrientationSensor
+ * quaternion. Its reference frame has east on X and magnetic north on Y;
+ * the device/screen +Y vector is the second column of the rotation matrix.
+ */
+export function orientationSensorHeading(quaternion) {
+  if (!quaternion || quaternion.length !== 4) return null;
+  const [x, y, z, w] = quaternion;
+  if (![x, y, z, w].every(Number.isFinite)) return null;
+  const east = 2 * x * y - 2 * z * w;
+  const north = 1 - 2 * x * x - 2 * z * z;
+  return normalizeHeading(Math.atan2(east, north) * 180 / Math.PI);
+}
+
 /** Keep a live compass heading when a fresh geolocation response omits one. */
-export function preserveHeading(location, fallbackHeading) {
+export function preserveHeading(location, fallbackHeading = 0) {
   const heading = normalizeHeading(location?.heading) ?? normalizeHeading(fallbackHeading);
   return { ...location, ...(heading === null ? {} : { heading }) };
 }

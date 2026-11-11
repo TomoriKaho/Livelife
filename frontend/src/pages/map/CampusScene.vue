@@ -235,8 +235,11 @@ function updateDeviceLocation() {
   if (!location) return;
   locationMarker.position.set(location.point[0], locationMarkerRadius, location.point[1]);
   locationRing.position.set(location.point[0], .25, location.point[1]);
-  locationRing.geometry.dispose();
-  locationRing.geometry = new THREE.CircleGeometry(accuracyRadius(location.accuracy), 48);
+  // Keep the unit-circle GPU geometry alive while foreground tracking emits
+  // frequent updates.  Recreating and disposing a geometry for every sample
+  // causes unnecessary WebGL resource churn on Android emulators.
+  const ringRadius = accuracyRadius(location.accuracy);
+  locationRing.scale.set(ringRadius, ringRadius, 1);
   if (Number.isFinite(location.heading)) {
     const headingRadians = location.heading * Math.PI / 180;
     const surfaceOffset = locationMarkerRadius + headingConeSurfaceGap;

@@ -16,7 +16,7 @@ import campus from '../assets/maps/campus.json';
 import { isMapAttributionVisible } from './map/map-drawer-layout.mjs';
 import { activities, categories, filters, venues } from './map/demo.js';
 import { contains } from './map/geometry.mjs';
-import { normalizeHeading, orientationHeading, preserveHeading, toDeviceMapLocation } from './map/device-location.mjs';
+import { normalizeHeading, orientationHeading, orientationSensorHeading, preserveHeading, toDeviceMapLocation } from './map/device-location.mjs';
 import { profileFor } from './map/model-profiles.mjs';
 import { currentLocation, locationTrackingState, refreshCurrentLocation, restartLocationTracking } from '../platform/location-tracker';
 import { watchAndroidDeviceHeading } from '../platform/device-heading';
@@ -32,8 +32,10 @@ function onDrawerLayout({ occlusionHeight, expandedHeight }) {
   drawerExpandedHeight.value = expandedHeight;
 }
 const planView = ref(null);
-let drawerBeforeSelection = null, latestOrientation = null, latestNativeHeading = null, deviceHeadingFrame = 0;
+let drawerBeforeSelection = null, latestOrientation = null, latestNativeHeading = null, latestWebSensorHeading = null, deviceHeadingFrame = 0;
 let stopNativeHeading = null, headingListenerGeneration = 0;
+let centerAfterNextLocation = false;
+let webOrientationSensor = null;
 const campusActivities = activities.filter(item => item.building);
 const visibleActivities = computed(() => campusActivities.filter(item => filter.value === 'all' || item.category === filter.value));
 const locationState = computed(() => outsideCampus.value ? 'outside-campus' : locationTrackingState.value);
@@ -51,8 +53,10 @@ function screenAngle() {
 }
 function applyDeviceHeading() {
   if (!deviceLocation.value) return;
-  const heading = latestNativeHeading ?? orientationHeading(latestOrientation, screenAngle());
-  if (heading === null) return;
+  // A web deviceorientation event has no synchronous "current value" API.
+  // Keep north visible from the moment location is available, then replace it
+  // on every live native/web sensor event.
+  const heading = latestNativeHeading ?? latestWebSensorHeading ?? orientationHeading(latestOrientation, screenAngle()) ?? 0;
   const previous = deviceLocation.value.heading;
   if (previous === heading) return;
   deviceLocation.value = { ...deviceLocation.value, heading };
@@ -73,18 +77,41 @@ function updateNativeDeviceHeading(heading) {
   latestNativeHeading = normalizeHeading(heading);
   scheduleDeviceHeading();
 }
+function startAbsoluteWebHeadingSensor() {
+  // The legacy DeviceOrientationEvent has no getter for a pre-existing value:
+  // it only reports when the browser dispatches its next event. The Generic
+  // Sensor API actively samples the current physical pose as soon as started.
+  const Sensor = Reflect.get(window, 'AbsoluteOrientationSensor');
+  if (typeof Sensor !== 'function') return;
+  try {
+    const sensor = new Sensor({ frequency: 60, referenceFrame: 'screen' });
+    sensor.addEventListener('reading', () => {
+      latestWebSensorHeading = orientationSensorHeading(sensor.quaternion);
+      scheduleDeviceHeading();
+    });
+    sensor.addEventListener('error', () => { /* legacy deviceorientation remains the fallback */ });
+    sensor.start();
+    webOrientationSensor = sensor;
+  } catch { /* unsupported, blocked, or unavailable sensor falls back below */ }
+}
 function startWebHeadingListener() {
-  latestNativeHeading = null;
+  latestNativeHeading = latestWebSensorHeading = null;
   window.addEventListener('deviceorientationabsolute', updateDeviceHeading, true);
   window.addEventListener('deviceorientation', updateDeviceHeading, true);
   window.addEventListener('orientationchange', scheduleDeviceHeading, true);
   window.screen?.orientation?.addEventListener('change', scheduleDeviceHeading);
+  startAbsoluteWebHeadingSensor();
+  // Start immediately rather than waiting for the first physical rotation.
+  scheduleDeviceHeading();
 }
 function stopWebHeadingListener() {
   window.removeEventListener('deviceorientationabsolute', updateDeviceHeading, true);
   window.removeEventListener('deviceorientation', updateDeviceHeading, true);
   window.removeEventListener('orientationchange', scheduleDeviceHeading, true);
   window.screen?.orientation?.removeEventListener('change', scheduleDeviceHeading);
+  try { webOrientationSensor?.stop(); } catch { /* sensor may already be stopped */ }
+  webOrientationSensor = null;
+  latestWebSensorHeading = null;
 }
 async function startDeviceHeadingListener() {
   const generation = ++headingListenerGeneration;
@@ -213,11 +240,33 @@ function syncDeviceLocation(location) {
   outsideCampus.value = false;
   deviceLocation.value = preserveHeading(nextLocation, deviceLocation.value?.heading);
   applyDeviceHeading();
+  if (centerAfterNextLocation) {
+    centerAfterNextLocation = false;
+    void centerOnDeviceLocation();
+  }
+}
+async function centerOnDeviceLocation() {
+  const point = deviceLocation.value?.point;
+  if (!point) return false;
+  // Explicitly locating exits exploration and restores each map's fixed
+  // location view: CampusPlan resets scale and CampusScene resets its camera
+  // offset, rather than merely moving the existing viewport.
+  drawerBeforeSelection = null; selected.value = null; detail.value = null; focusPoint.value = null; routedActivity.value = null;
+  await nextTick();
+  scene.value?.locate(point);
+  return true;
 }
 async function locate({ requestHeading = false } = {}) {
   if (locationState.value === 'locating') return;
   if (requestHeading) await requestDeviceHeadingPermission();
+  // The last foreground fix is already suitable for an immediate, predictable
+  // re-center. A browser's fresh getCurrentPosition call can legitimately take
+  // up to its timeout, so it must not make the control look unresponsive.
+  await centerOnDeviceLocation();
   if (locationTrackingState.value !== 'located' || !deviceLocation.value) {
+    // A retry may replace an old marker too; re-center once its next usable
+    // callback arrives even if we could immediately show the previous fix.
+    centerAfterNextLocation = true;
     await restartLocationTracking();
     return;
   }
@@ -225,10 +274,7 @@ async function locate({ requestHeading = false } = {}) {
   // The shared watch continues in the background; this one-shot request is only
   // for this explicit user action.
   const refreshed = await refreshCurrentLocation();
-  if (refreshed.status !== 'success') return;
-  // 定位只调整地图，保留操作当下的抽屉档位；结束本次建筑探索记录。
-  drawerBeforeSelection = null; selected.value = null; detail.value = null; focusPoint.value = null; routedActivity.value = null;
-  await nextTick(); scene.value?.locate(deviceLocation.value.point);
+  if (refreshed.status === 'success') await centerOnDeviceLocation();
 }
 async function setMode(value) {
   if (value === mode.value) return;

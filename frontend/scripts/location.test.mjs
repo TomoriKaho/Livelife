@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { defaultCurrentLocationOptions, getCurrentLocation, watchCurrentLocation } from '../src/platform/location.ts';
+import { applyLocationResult } from '../src/platform/location-tracker.ts';
 
 const granted = { location: 'granted', coarseLocation: 'granted' };
 const prompt = { location: 'prompt', coarseLocation: 'prompt' };
@@ -147,4 +148,32 @@ test('does not create a watcher after native location permission is denied', asy
   await watchCurrentLocation(result => updates.push(result), {}, api);
   assert.deepEqual(api.calls, ['check', 'request']);
   assert.deepEqual(updates, [{ status: 'error', error: 'permission-denied' }]);
+});
+
+test('keeps a successful foreground location when a later watch callback times out', () => {
+  const located = applyLocationResult(null, {
+    status: 'success', location: { latitude: 39.992, longitude: 116.305, accuracy: 8, timestamp: 2_000 },
+  });
+  const timeout = applyLocationResult(located.location, { status: 'error', error: 'timeout' });
+
+  assert.deepEqual(timeout, located);
+});
+
+test('does not let a delayed cached Android location replace a newer location', () => {
+  const newest = { latitude: 39.992, longitude: 116.305, accuracy: 8, timestamp: 2_000 };
+  const delayed = { latitude: 39.991, longitude: 116.304, accuracy: 15, timestamp: 1_000 };
+
+  assert.deepEqual(
+    applyLocationResult(newest, { status: 'success', location: delayed }),
+    { location: newest, state: 'located' },
+  );
+});
+
+test('still exposes a permission denial after a previously successful fix', () => {
+  const current = { latitude: 39.992, longitude: 116.305, accuracy: 8, timestamp: 2_000 };
+
+  assert.deepEqual(
+    applyLocationResult(current, { status: 'error', error: 'permission-denied' }),
+    { location: current, state: 'permission-denied' },
+  );
 });
