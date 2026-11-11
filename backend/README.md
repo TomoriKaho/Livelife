@@ -1,6 +1,6 @@
 # 后端开发
 
-后端使用 FastAPI 和 Pydantic，采用模块化单体。当前提供 `GET /test/hello`、存活与数据库就绪检查、[校园邮箱账号与会话 API](app/api/accounts/API.md)、[Agent 对话 API](app/api/agent/API.md)，以及[通用信息系统](app/services/content/README.md)的内部采集协议、持久化与查询服务。Agent 模型调用只有在环境提供凭证后可用；信息系统尚未接入真实采集平台。HTTP 契约见[连通性检查 API](app/api/demo/API.md)、[健康检查 API](app/api/health/API.md)、[账户与认证 API](app/api/accounts/API.md)和[Agent API](app/api/agent/API.md)，共享约定与接口索引见[API 入口](../docs/api.md)，整体技术路线见[架构说明](../docs/architecture.md)。
+后端使用 FastAPI 和 Pydantic，采用模块化单体。当前提供 `GET /test/hello`、存活与数据库就绪检查、[校园邮箱账号与会话 API](app/api/accounts/API.md)、[Agent 对话 API](app/api/agent/API.md)、[地图活动查询 API](app/api/locations/API.md)，以及[通用信息系统](app/services/content/README.md)的内部采集协议、持久化与查询服务。地图活动接口从已入库公开记录读取数据；信息系统尚未接入真实采集平台。Agent 模型调用只有在环境提供凭证后可用。共享约定与接口索引见[API 入口](../docs/api.md)，整体技术路线见[架构说明](../docs/architecture.md)。
 
 ## 后端安装、启动与检查
 
@@ -143,7 +143,7 @@ uv run --locked --group local-db python -m app.dev --port 18000 --reload
 
 ## 目录职责与请求处理
 
-- `app/main.py`：创建应用、生命周期和 CORS；`app/api/router.py`：统一注册账号、Agent、hello 和健康检查 router。
+- `app/main.py`：创建应用、生命周期和 CORS；`app/api/router.py`：统一注册业务、hello 和健康检查 router。
 - `app/dev.py`、`app/db/local.py`：本地开发启动入口、专属 PostgreSQL 生命周期和自动迁移；预览受信启动器准备测试库后仍运行 `app.main:app`。
 - `app/api/`：按模块组织路由包，`accounts/` 提供校园邮箱注册、登录、登出和当前用户查询，`agent/` 提供账户所属会话与对话；模块 `API.md` 维护契约；`app/schemas/`：Pydantic 请求与响应模型。
 - `app/core/`：配置；`app/db/`：Engine、Session 工厂、UTC 时间类型及请求依赖；`app/db/models/`：共享 ORM Base 与信息模型。
@@ -170,6 +170,9 @@ app/api/
 ├── health/
 │   ├── __init__.py
 │   ├── router.py         # 存活与数据库就绪检查
+│   └── API.md
+├── locations/
+│   ├── router.py         # 地图公开活动查询
 │   └── API.md
 └── profile/
     ├── __init__.py
