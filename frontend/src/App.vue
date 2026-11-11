@@ -6,7 +6,6 @@ import AppHeader from './components/AppHeader.vue';
 import PageHeading from './components/PageHeading.vue';
 import PageFooter from './components/PageFooter.vue';
 import BottomNav from './components/BottomNav.vue';
-import { authState } from './api/auth';
 import { startLocationTracking, stopLocationTracking } from './platform/location-tracker';
 
 const route = useRoute();
@@ -35,15 +34,9 @@ watch(() => route.fullPath, async () => {
   if (heading.value) heading.value.focusTitle();
   else document.getElementById('page-title')?.focus({ preventScroll: true });
 });
-watch(() => authState.user, user => {
-  if (user) void startLocationTracking();
-  else {
-    void stopLocationTracking(true);
-    if (route.name && route.name !== 'onboarding') void router.replace('/onboarding');
-  }
-}, { immediate: true });
 onMounted(() => {
   updateTitle();
+  void startLocationTracking();
 });
 onBeforeUnmount(() => {
   clearTimeout(toastTimer);
@@ -54,13 +47,13 @@ onBeforeUnmount(() => {
 <template>
   <IconSprite />
   <div v-sketch class="phone-shell">
-    <AppHeader v-if="authState.user && !focusShell" :class="{ 'map-header': page.key === 'map' }" @notify="showNotification" />
+    <AppHeader v-if="!focusShell" :class="{ 'map-header': page.key === 'map' }" @notify="showNotification" />
     <main id="main-content" ref="main" class="page-main" :class="{ 'is-focus': focusShell, 'immersive-main': page.immersive, 'map-main': page.key === 'map' }">
       <PageHeading v-if="!focusShell && !page.customHeading && page.heading !== false" ref="heading" :page="page" @back="goBack" />
-      <RouterView v-if="focusShell || authState.user" />
+      <RouterView />
       <PageFooter v-if="!focusShell && !page.immersive && page.footer !== false" />
     </main>
-    <BottomNav v-if="authState.user && !focusShell" :active="page.nav" />
+    <BottomNav v-if="!focusShell" :active="page.nav" />
   </div>
   <div id="toast" v-sketch v-show="toastVisible" class="toast sketch" role="status"><span>消息通知区域待设计</span></div>
 </template>

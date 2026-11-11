@@ -81,12 +81,8 @@ export function startLocationTracking(): Promise<void> {
 }
 
 /** Stop the shared watch, including one that is still waiting to initialize. */
-export async function stopLocationTracking(clearLocation = false) {
+export async function stopLocationTracking() {
   generation++;
-  if (clearLocation) {
-    currentLocation.value = null;
-    locationTrackingState.value = 'idle';
-  }
   starting = null;
   startingGeneration = null;
   const stop = stopWatch;
@@ -102,9 +98,8 @@ export async function restartLocationTracking() {
 
 /** Obtain one fresh foreground fix and publish it to every active consumer. */
 export async function refreshCurrentLocation() {
-  const requestGeneration = generation;
   if (!currentLocation.value) locationTrackingState.value = 'locating';
   const result = await getCurrentLocation();
-  if (requestGeneration === generation) publishLocationResult(result);
+  publishLocationResult(result);
   return result;
 }

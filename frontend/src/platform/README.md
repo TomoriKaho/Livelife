@@ -21,5 +21,3 @@
 [device-heading.ts](device-heading.ts) 是地图朝向标的唯一平台入口。网页进入地图即优先启动 `AbsoluteOrientationSensor`（60Hz、`screen` 参考系），它会主动读取已有的当前姿态；不支持、未授权或被策略阻止时回退到 `deviceorientationabsolute` / `deviceorientation`。各网页读数以 `requestAnimationFrame` 合并同一帧中的更新，细微转向不会被阈值过滤。Android 通过本地 `DeviceHeadingPlugin`（`android/app/src/main/java/io/github/tomorikaho/livelife/dev/DeviceHeadingPlugin.java`）读取 `TYPE_ROTATION_VECTOR`，按当前显示旋转重映射后发送 0–360° 的磁北航向。传感器不可用或原生桥加载失败时，自动回退到 WebView 事件；在首个航向读数到来前，地图方向标默认指向北方，之后实时替换为传感器读数。
 
 插件仅在地图页存在时订阅，应用暂停时注销传感器、恢复后重新订阅，离开地图或销毁 Activity 时清理。它不请求额外运行时权限，也不保存或上传传感器数据。Android 验收时，先授予位置权限，在 2D 和 3D 地图缓慢旋转设备，确认标记连续转动；再旋转屏幕、切换后台和前台、离开再进入地图，确认朝向保持可用且没有重复监听。
-
-定位监听随已验证登录态启动，登录页不主动请求定位。退出或会话失效时停止监听并清除缓存坐标，晚到的单次定位结果不回填；登录后的定位权限与设备支持仍由平台处理。
