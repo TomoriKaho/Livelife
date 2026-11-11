@@ -29,6 +29,12 @@ LIVELIFE_PREVIEW_DB_INTEGRATION=1 <测试venv>/bin/python -m unittest discover -
 
 按修改范围选取相关回归；安装依赖和完整检查命令见上节。
 
+### 自动部署的 SMTP 配置
+
+运行 `python3 -m unittest discover -s deploy/tests -p test_mail_config.py -v` 和 `python3 -m unittest discover -s deploy/tests -p test_backend_runtime.py -v`。普通测试不连接 SMTP、不发邮件：验证配置缺失时禁用、不读取继承环境及本地 `.env`、私有配置跨 release 保留及原子更新、拒绝非法字段/端口/公开权限/链接、错误与检查输出不披露内容、交互配置隐藏授权码，以及只有 API 子进程接收 SMTP 而迁移和表结构检查不接收。
+
+真实验收必须另在课程机完成[测试邮箱配置](../README.md#自动部署的测试邮箱配置)，核对 main 和 PR 的目标 SHA 与运行模式，重启后验证数据库 readiness，并分别向成员自己的测试地址请求验证码、确认收件并登录；再次部署新 SHA 后确认无需重填配置。未执行服务器安装、SMTP 认证或收信时明确记录未测，不用 `--check` 的格式检查替代。
+
 ### 部署控制的 SSH 复用回归
 
 从仓库根目录先运行 `deploy/.venv/bin/python -m unittest discover -s deploy/tests -p test_ssh_transport.py -v`，再运行本节的完整检查。Unix socket、Supervisor 和 Nginx 的相关集成测试需要对应操作系统与依赖，跳过须明确记录。
@@ -102,3 +108,4 @@ deploy/.venv/bin/python -m unittest discover -s deploy/tests -p test_smoke.py -v
 `test_build_queue.py` 同时覆盖网页和 Android 的 npm 备用源：首源安装失败后 registry 与临时锁文件包地址一起切换，版本、integrity 和自定义源不变；安装成功不重试，两个源均失败时不进入检查，测试或编译失败不重新安装。可运行 `python3 -m unittest discover -s deploy/tests -p test_build_queue.py -v`。这些测试模拟下载失败；真实换源和构建仍需按[安装与排查教程](../BUILDING.md#维护者安装与排查教程)更新课程机 worker 后验收。
 
 维护者验证应覆盖：两个全项目槽位及第三个任务排队；push/PR 同 SHA 去重；旧排队提交替换；构建失败/worker 重启；日志分页；SHA/模块不匹配拒绝；源码路径和静态包链接拒绝；沙箱无法读取 ~/.ssh、控制数据库或部署凭证；原成功路由、固定绑定与回滚引用保持。新路径安装和完整 GitHub 链路以[实施状态](../../docs/deployment.md#当前实施状态)为准。
+

@@ -16,6 +16,7 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from livelife import backend_runtime as runtime
 from livelife.course import Course, check_health
+from livelife import mail_config
 
 A, B = "be-" + "a" * 40, "be-" + "b" * 40
 REPO = Path(__file__).resolve().parents[2]
@@ -87,7 +88,7 @@ class PreviewRuntimeTests(unittest.TestCase):
                     runtime.prepare_schema("python", backend, {})
                 self.assertEqual(run.call_count, 1)
 
-    def exercise_runtime(self, failure=None, interrupted=False):
+    def exercise_runtime(self, failure=None, interrupted=False, mail=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             release = root / "releases" / A
@@ -100,6 +101,8 @@ class PreviewRuntimeTests(unittest.TestCase):
             )
             python.parent.mkdir(parents=True)
             python.touch()
+            if mail is not None:
+                mail_config.save(root, mail)
             events = []
 
             @contextmanager
@@ -135,6 +138,12 @@ class PreviewRuntimeTests(unittest.TestCase):
                         "postgresql+psycopg://postgres@/postgres",
                     )
                     schema.assert_called_once()
+                    for key in mail_config.FIELDS:
+                        self.assertNotIn(key, schema.call_args.args[2])
+                        if mail and key in mail:
+                            self.assertEqual(launch.call_args.kwargs["env"][key], mail[key])
+                        else:
+                            self.assertNotIn(key, launch.call_args.kwargs["env"])
                 self.assertEqual(events, ["database_start", "database_stop"])
                 self.assertTrue((root / "databases" / A / "runtime.json").exists())
                 if interrupted:
@@ -148,6 +157,13 @@ class PreviewRuntimeTests(unittest.TestCase):
 
     def test_signal_stops_api_before_database_cleanup(self):
         self.exercise_runtime(interrupted=True)
+
+    def test_server_mail_configuration_reaches_api_but_not_migrations(self):
+        self.exercise_runtime(mail={
+            "SMTP_HOST": "smtp.example.invalid", "SMTP_PORT": "465",
+            "SMTP_FROM": "sender@example.invalid", "SMTP_USERNAME": "test-user",
+            "SMTP_PASSWORD": "test-only-password",
+        })
 
     def test_hello_success_cannot_hide_unconfigured_database(self):
         hello = MagicMock()
@@ -303,3 +319,4 @@ class RealPreviewDatabaseTests(unittest.TestCase):
                 return True
             except OSError:
                 return False
+
