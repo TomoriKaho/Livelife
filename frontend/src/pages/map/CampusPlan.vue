@@ -10,7 +10,7 @@ import { createPlanPatterns, pencilPlanPath } from './plan-pencil.mjs';
 import { initialPlanScale, planAnchor, worldToPlan, planToWorld, zoomPlan, panPlan, pinchPlan,
   planBounds, intersectsPlan, pickPlanBuilding, planScaleBar } from './plan-view.mjs';
 
-const props = defineProps({ selected: String, focusPoint: Array, activities: Array,
+const props = defineProps({ selected: String, focusPoint: Array, userPosition: Array, activities: Array,
   focusInset: { type: Number, default: 0 }, startingView: Object });
 const emit = defineEmits(['select']);
 const host = ref(null), canvas = ref(null), labels = ref([]), ready = ref(false);
@@ -43,7 +43,7 @@ function focusPlace() { if (props.focusPoint) fly({ center: [...props.focusPoint
 function zoom(ratio, point = anchor()) {
   stop(); view = zoomPlan(view, view.scale / ratio, point, anchor(), campus.boundary); schedule();
 }
-function locate() { fly({ center: [...demoLocation], scale: initialPlanScale(width) }); }
+function locate() { if (props.userPosition) fly({ center: [...props.userPosition], scale: initialPlanScale(width) }); }
 defineExpose({ zoom, locate, getView: () => ({ center: [...view.center], scale: view.scale }) });
 
 function surface(item, color, type) {
@@ -181,9 +181,10 @@ function draw(time) {
     ctx.fillStyle = patterns[tree.color]; ctx.fill(tree.path);
     ctx.strokeStyle = '#526743'; ctx.globalAlpha = .38; ctx.lineWidth = .6 / view.scale; ctx.stroke(tree.path); ctx.globalAlpha = 1;
   }
-  // 示例定位固定，与 3D 蓝点共用 demoLocation，不获取设备位置。
-  ctx.beginPath(); ctx.arc(...demoLocation, 10 / view.scale, 0, Math.PI * 2); ctx.fillStyle = '#84bdf866'; ctx.fill();
-  ctx.beginPath(); ctx.arc(...demoLocation, 4.5 / view.scale, 0, Math.PI * 2); ctx.fillStyle = '#428bd1'; ctx.fill(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.8 / view.scale; ctx.stroke();
+  if (props.userPosition) {
+    ctx.beginPath(); ctx.arc(...props.userPosition, 10 / view.scale, 0, Math.PI * 2); ctx.fillStyle = '#84bdf866'; ctx.fill();
+    ctx.beginPath(); ctx.arc(...props.userPosition, 4.5 / view.scale, 0, Math.PI * 2); ctx.fillStyle = '#428bd1'; ctx.fill(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.8 / view.scale; ctx.stroke();
+  }
   displayView.value = { center: [...view.center], scale: view.scale }; updateLabels();
   if (motion) schedule();
 }
@@ -234,6 +235,7 @@ function keyboard(event) {
 watch(() => props.selected, focusBuilding);
 watch(() => props.focusPoint, focusPlace);
 watch(() => props.activities, schedule);
+watch(() => props.userPosition, schedule);
 watch(() => props.focusInset, schedule);
 onMounted(() => {
   reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)'); ctx = canvas.value.getContext('2d');

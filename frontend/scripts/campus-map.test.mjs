@@ -128,7 +128,7 @@ test('拖动中心按凹形校界约束，边界及校内位置保持稳定', ()
   assert.deepEqual(constrainToBoundary([12, 12], u), [10, 10]);
   assert.deepEqual(constrainToBoundary([7, 6], u), [7, 6]);
 });
-test('初始相机与定位蓝点共用校内位置，视角低于原校园全景', () => {
+test('初始相机使用校内示例位置，视角低于原校园全景', () => {
   assert.deepEqual(initialView.target, [demoLocation[0], 0, demoLocation[1]]);
   assert.ok(contains(demoLocation, campus.boundary));
   assert.ok(initialView.offset[1] < 480);

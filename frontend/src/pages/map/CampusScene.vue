@@ -5,7 +5,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import campus from '../../assets/maps/campus.json';
 import { center, constrainToBoundary } from './geometry.mjs';
-import { venues, demoLocation } from './demo.js';
+import { venues } from './demo.js';
 import { initialView } from './view.mjs';
 import { mapPalette } from './map-palette.mjs';
 import { createBuilding, profileFor, footprintShape, extrudeFootprint } from './architecture.mjs';
@@ -15,7 +15,7 @@ import { pencilMaterial, pencilEdge } from './pencil-material.mjs';
 import { storeysInput, applyStoreysData, transitionModel, animateModel } from './storeys.mjs';
 import { createStoreysWorker } from './storeys-worker';
 
-const props = defineProps({ selected: String, floor: Number, activities: Array, focusPoint: Array, focusInset: { type: Number, default: 0 } });
+const props = defineProps({ selected: String, floor: Number, activities: Array, nearbyBuildings: Array, nearbyActivities: Array, focusPoint: Array, userPosition: Array, focusInset: { type: Number, default: 0 } });
 const emit = defineEmits(['select', 'floor', 'ready']);
 const host = ref(null), failed = ref(false), loading = ref(true), labels = ref([]);
 const modelIdentity = ref(''), modelProgress = ref('0');
@@ -89,10 +89,10 @@ function expand() {
   const scenic = focusedModel?.userData.profile.scenic;
   for (const model of meshes.values()) model.visible = !building || scenic || model === focusedModel || !!model.userData.transition;
   contextBuildings.visible = vegetation.visible = !building || !!scenic;
-  locationMarker.visible = locationRing.visible = !building;
+  locationMarker.visible = locationRing.visible = Boolean(props.userPosition) && !building;
   renderer.shadowMap.needsUpdate = true; invalidate();
   // 收起只合拢模型；终止尚未完成的聚焦，保留当前相机与观察目标。
-  // 返回示例位置由显式 locate() 操作负责。
+  // 移到设备当前位置由显式 locate() 操作负责。
   if (!building) { tween = null; return; }
   const [cx, cz] = center(building.points);
   if (scenic) {
@@ -164,14 +164,27 @@ function tick(now) {
   needsRender = false;
   renderer.render(scene, camera);
   // DOM 标签跟随 3D 相机投影，键盘也能点击；不依赖纹理字体或外网资源。
-  labels.value = props.selected ? floorMeshes.map(f => ({ id: String(f.floor), floor: f.floor, title: `${f.floor}F${f.events.length ? ` · ${f.events[0].room}` : ''}`, count: f.events.length, ...coordinate(new THREE.Vector3(f.x, f.level.position.y + 2, f.z)) })) : venues.map(v => {
-    const b = buildings.find(b => b.id === v.id), c = center(b.points);
-    return { id: v.id, title: v.label, count: props.activities.filter(a => a.building === v.id).length, ...coordinate(new THREE.Vector3(c[0], profileFor(b).height + 7, c[1])) };
+  labels.value = props.selected ? floorMeshes.map(f => ({ id: String(f.floor), floor: f.floor, title: `${f.floor}F${f.events.length ? ` · ${f.events[0].room}` : ''}`, count: f.events.length, ...coordinate(new THREE.Vector3(f.x, f.level.position.y + 2, f.z)) })) : (props.nearbyBuildings || []).map(place => {
+    const b = buildings.find(building => building.id === place.id), c = center(b.points);
+    return { id: b.id, title: b.name, count: (props.nearbyActivities || []).filter(a => a.building === b.id).length, ...coordinate(new THREE.Vector3(c[0], profileFor(b).height + 7, c[1])) };
   });
   if (moved || animating) invalidate();
 }
 function zoom(scale) { if (!camera) return; tween = null; camera.position.sub(controls.target).multiplyScalar(scale).add(controls.target); invalidate(); }
-function locate() { if (!scene) return; fly(initialCamera.clone(), initialTarget.clone()); }
+function locate() {
+  if (!scene || !props.userPosition) return;
+  const target = new THREE.Vector3(props.userPosition[0], initialTarget.y, props.userPosition[1]);
+  fly(target.clone().add(new THREE.Vector3(...initialView.offset)), target);
+}
+function updateLocation() {
+  if (!locationMarker || !locationRing) return;
+  if (props.userPosition) {
+    locationMarker.position.set(props.userPosition[0], 4.5, props.userPosition[1]);
+    locationRing.position.set(props.userPosition[0], .5, props.userPosition[1]);
+  }
+  locationMarker.visible = locationRing.visible = Boolean(props.userPosition) && !props.selected;
+  invalidate();
+}
 function focusPlace() {
   if (!scene || loading.value || !props.focusPoint) return;
   const target = new THREE.Vector3(props.focusPoint[0], initialTarget.y, props.focusPoint[1]);
@@ -192,6 +205,9 @@ watch(() => props.focusPoint, focusPlace);
 watch(() => props.focusInset, resizeViewport);
 watch(() => props.floor, highlight);
 watch(() => props.activities, updateActivities);
+watch(() => props.nearbyBuildings, invalidate);
+watch(() => props.nearbyActivities, invalidate);
+watch(() => props.userPosition, updateLocation);
 onMounted(async () => {
   try {
     let sliceStarted = performance.now();
@@ -267,8 +283,9 @@ onMounted(async () => {
       contextGeometry.forEach(g => g.dispose()); pencilEdge(contextBuildings, { opacity: .18, threshold: 42 }); scene.add(contextBuildings);
     }
     vegetation = createVegetation(campus); scene.add(vegetation); renderer.shadowMap.needsUpdate = true;
-    locationMarker = new THREE.Mesh(new THREE.SphereGeometry(4.5, 16, 10), new THREE.MeshBasicMaterial({ color: 0x4387bb })); locationMarker.position.set(demoLocation[0], 4.5, demoLocation[1]); scene.add(locationMarker);
-    locationRing = new THREE.Mesh(new THREE.RingGeometry(7, 10, 32), new THREE.MeshBasicMaterial({ color: 0x77a5c6, transparent: true, opacity: .5, side: THREE.DoubleSide })); locationRing.rotation.x = -Math.PI / 2; locationRing.position.set(demoLocation[0], .5, demoLocation[1]); scene.add(locationRing);
+    locationMarker = new THREE.Mesh(new THREE.SphereGeometry(4.5, 16, 10), new THREE.MeshBasicMaterial({ color: 0x4387bb })); scene.add(locationMarker);
+    locationRing = new THREE.Mesh(new THREE.RingGeometry(7, 10, 32), new THREE.MeshBasicMaterial({ color: 0x77a5c6, transparent: true, opacity: .5, side: THREE.DoubleSide })); locationRing.rotation.x = -Math.PI / 2; scene.add(locationRing);
+    updateLocation();
     observer = new ResizeObserver(resizeViewport); observer.observe(host.value);
     renderer.domElement.addEventListener('pointerdown', e => { pointerStart = { x: e.clientX, y: e.clientY, time: performance.now() }; });
     renderer.domElement.addEventListener('pointerup', hit);
@@ -291,8 +308,8 @@ onBeforeUnmount(() => { disposed = true; storeysWorker?.dispose(); cancelAnimati
     <div v-if="loading" class="scene-message" role="status">正在展开燕园…</div>
     <div v-if="failed" class="scene-message" role="alert">此设备暂不能绘制 3D 地图。<br>仍可用下方建筑列表查看楼层活动。</div>
     <template v-if="!failed">
-      <div v-for="label in labels" v-show="label.visible && (selected || label.count)" :key="label.id" class="label-anchor" :style="{ left: `${label.x}px`, top: `${label.y}px` }">
-        <button v-sketch v-memo="[label.id, label.title, label.count, selected, floor]" class="scene-label sketch" :class="{ 'floor-label': selected, current: selected && label.floor === floor }" :data-pencil="selected ? (label.floor === floor ? 'blue' : undefined) : 'yellow'" :aria-label="selected ? `查看 ${label.floor} 楼` : `展开${venues.find(v => v.id === label.id)?.short}`" :aria-pressed="selected ? label.floor === floor : undefined" @click="selected ? emit('floor', label.floor) : emit('select', label.id)">
+      <div v-for="label in labels" v-show="label.visible" :key="label.id" class="label-anchor" :style="{ left: `${label.x}px`, top: `${label.y}px` }">
+        <button v-sketch v-memo="[label.id, label.title, label.count, selected, floor]" class="scene-label sketch" :class="{ 'floor-label': selected, current: selected && label.floor === floor }" :data-pencil="selected ? (label.floor === floor ? 'blue' : undefined) : 'yellow'" :aria-label="selected ? `查看 ${label.floor} 楼` : `展开${label.title}`" :aria-pressed="selected ? label.floor === floor : undefined" @click="selected ? emit('floor', label.floor) : emit('select', label.id)">
           <span>{{ label.title }}</span><small v-if="label.count && !selected">{{ label.count }}</small>
         </button>
       </div>

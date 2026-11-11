@@ -1,6 +1,6 @@
 # 通用信息系统
 
-为活动列表、日历、地图、推荐和 Agent 等后端模块提供共同的信息来源。当前包含可接入的采集接口、SQL 持久化与统一查询服务，使用 Python 内部调用；没有新增 HTTP 路由，也没有替换前端样例数据。对应需求为 [#60](https://github.com/TomoriKaho/Livelife/issues/60)，真实公众号渠道在 [#63](https://github.com/TomoriKaho/Livelife/issues/63) 接入，附近筛选由 [#61](https://github.com/TomoriKaho/Livelife/issues/61) 消费本模块数据。
+为活动列表、日历、地图、推荐和 Agent 等后端模块提供共同的信息来源。当前包含可接入的采集接口、SQL 持久化与统一查询服务，使用 Python 内部调用；本模块自身没有 HTTP 路由。[地图活动查询 API](../../api/locations/API.md)经此服务读取公开活动，地图附近区不再用前端样例活动。对应需求为 [#60](https://github.com/TomoriKaho/Livelife/issues/60)，真实公众号渠道在 [#63](https://github.com/TomoriKaho/Livelife/issues/63) 接入，附近筛选由 [#61](https://github.com/TomoriKaho/Livelife/issues/61) 消费本模块数据。
 
 ## 三部分职责
 
