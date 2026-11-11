@@ -359,7 +359,8 @@ class _FakeAsyncClient:
 
 
 @pytest.mark.anyio
-async def test_model_stream_parses_text_and_usage(monkeypatch):
+@pytest.mark.parametrize("effort", ["", "high"])
+async def test_model_stream_parses_text_and_usage(monkeypatch, effort):
     fake = _FakeAsyncClient(
         _FakeStreamResponse(
             [
@@ -379,6 +380,7 @@ async def test_model_stream_parses_text_and_usage(monkeypatch):
                 llm_base_url="https://llm.example.test/v1",
                 llm_api_key="test-key",
                 llm_model="test-model",
+                llm_reasoning_effort=effort,
             ),
             history=[],
             sources=(),
@@ -392,7 +394,17 @@ async def test_model_stream_parses_text_and_usage(monkeypatch):
     ]
     assert fake.calls[0][0:2] == ("POST", "https://llm.example.test/v1/chat/completions")
     assert fake.calls[0][2]["json"]["stream"] is True
-    system_prompt = fake.calls[0][2]["json"]["messages"][0]["content"]
+    payload = fake.calls[0][2]["json"]
+    if effort:
+        assert payload["reasoning_effort"] == "high"
+        assert payload["max_completion_tokens"] == settings().max_output_tokens
+        assert "max_tokens" not in payload
+        assert "temperature" not in payload
+    else:
+        assert payload["max_tokens"] == settings().max_output_tokens
+        assert payload["temperature"] == 0.2
+        assert "reasoning_effort" not in payload
+    system_prompt = payload["messages"][0]["content"]
     assert "校园信息助手" in system_prompt
     assert "历史对话只帮助理解上下文" in system_prompt
     assert "实时课表" in system_prompt
@@ -651,3 +663,13 @@ def test_reservation_uses_same_bounded_context_as_model(sessions):
         state["estimate"]
         == sum(len(m["content"]) for m in messages) // 4 + config.max_output_tokens
     )
+
+
+def test_reasoning_configuration_rejects_invalid_value(monkeypatch):
+    from app.core.config import get_agent_settings
+
+    monkeypatch.setenv("AGENT_LLM_REASONING_EFFORT", "high")
+    assert get_agent_settings().llm_reasoning_effort == "high"
+    monkeypatch.setenv("AGENT_LLM_REASONING_EFFORT", "invalid-secret-value")
+    with pytest.raises(RuntimeError, match="^AGENT_LLM_REASONING_EFFORT is invalid$"):
+        get_agent_settings()
