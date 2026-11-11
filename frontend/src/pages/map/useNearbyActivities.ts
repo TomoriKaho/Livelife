@@ -1,5 +1,5 @@
 import { onBeforeUnmount, ref, watch } from 'vue';
-import { fetchNearbyActivities, type NearbyActivity } from '../../api/information';
+import { fetchMapActivities, type MapActivity, type MapBuilding } from '../../api/map-activities';
 import { currentLocation, locationTrackingState, refreshCurrentLocation } from '../../platform/location-tracker';
 import type { CurrentLocation } from '../../platform/location';
 
@@ -12,7 +12,8 @@ export function distanceMeters(a: { latitude: number; longitude: number }, b: { 
 }
 
 export function useNearbyActivities() {
-  const items = ref<NearbyActivity[]>([]);
+  const items = ref<MapActivity[]>([]);
+  const buildings = ref<MapBuilding[]>([]);
   const radius = ref(300), keyword = ref(''), today = ref(false);
   const state = ref('waiting'), message = ref('允许定位后查看附近活动。');
   let controller: AbortController | null = null;
@@ -32,7 +33,7 @@ export function useNearbyActivities() {
     generation++;
     controller?.abort();
     clearTimeout(timer);
-    items.value = [];
+    items.value = []; buildings.value = [];
   }
   async function load() {
     const issue = unavailable();
@@ -48,11 +49,11 @@ export function useNearbyActivities() {
     state.value = 'loading'; message.value = '正在查找附近活动…';
     const timeout = setTimeout(() => active.abort(), 10000);
     try {
-      const result = await fetchNearbyActivities(position, radius.value, keyword.value, today.value, active.signal);
+      const result = await fetchMapActivities(position, radius.value, keyword.value, today.value, active.signal);
       if (!alive || requestGeneration !== generation) return;
-      items.value = result;
+      items.value = result.items; buildings.value = result.buildings;
       state.value = 'ready';
-      message.value = result.length ? `找到 ${result.length} 条活动` : '当前范围和筛选条件下暂无活动。';
+      message.value = result.items.length ? `找到 ${result.items.length} 条活动` : '当前范围和筛选条件下暂无活动。';
     } catch (error) {
       if (!alive || requestGeneration !== generation) return;
       state.value = 'error';
@@ -72,13 +73,15 @@ export function useNearbyActivities() {
     invalidate(); state.value = 'loading'; message.value = '正在更新筛选…';
     timer = setTimeout(() => void load(), 350);
   });
+  let refreshedAt = Date.now();
   const expiry = setInterval(() => {
     if (state.value !== 'waiting' && unavailable()) locationChanged();
+    else if (state.value === 'ready' && Date.now() - refreshedAt >= 60000) { refreshedAt = Date.now(); void load(); }
   }, 1000);
   async function retry() {
     await refreshCurrentLocation();
     if (alive) await load();
   }
   onBeforeUnmount(() => { alive = false; invalidate(); clearInterval(expiry); });
-  return { items, radius, keyword, today, state, message, retry };
+  return { items, buildings, radius, keyword, today, state, message, retry };
 }

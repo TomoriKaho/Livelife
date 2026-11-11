@@ -68,7 +68,7 @@ class InformationRepository:
         )
         return self.session.scalars(statement.execution_options(populate_existing=True)).one()
 
-    def list(self, query: InformationQuery) -> list[InformationRecord]:
+    def statement(self, query: InformationQuery):
         statement = select(InformationRecord)
         if query.events_only:
             statement = statement.where(
@@ -135,9 +135,15 @@ class InformationRepository:
                     ),
                 )
             )
+        return statement
+
+    def list(self, query: InformationQuery) -> list[InformationRecord]:
+        ordering = (
+            (InformationRecord.activity_start_at.asc(), InformationRecord.id.asc())
+            if query.order_by == "activity"
+            else (InformationRecord.fetched_at.desc(), InformationRecord.id.desc())
+        )
         statement = (
-            statement.order_by(InformationRecord.fetched_at.desc(), InformationRecord.id.desc())
-            .limit(query.limit)
-            .offset(query.offset)
+            self.statement(query).order_by(*ordering).limit(query.limit).offset(query.offset)
         )
         return list(self.session.scalars(statement.execution_options(populate_existing=True)))

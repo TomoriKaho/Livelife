@@ -2,6 +2,22 @@
 
 为活动列表、日历、地图、推荐和 Agent 等后端模块提供共同的信息来源。[#60](https://github.com/TomoriKaho/Livelife/issues/60) 的 Python 服务负责采集契约、SQL 持久化和统一查询。[#63](https://github.com/TomoriKaho/Livelife/issues/63) 本地 Demo 用独立 HTTP 入口验证公众号原文导入、[#61](https://github.com/TomoriKaho/Livelife/issues/61) 所需的附近活动筛选，以及 Agent 可读取的检索文本。
 
+## 地点目录导入与旧数据回填
+
+标准地图接口见[地图活动查询 API](../../api/locations/API.md)。`content.map_query` 负责时间、关键词、半径与建筑排序；`InformationAggregator` 在写入时调用 `LocationResolver`。前端只展示结构化地点，不重复匹配原文。`InformationQuery.order_by` 默认仍为采集时间倒序，地图显式选择 `activity`，按开始时间和 UUID 升序。
+
+在已设置开发用 `DATABASE_URL` 的 backend 终端执行：
+
+```bash
+uv run --locked alembic upgrade head
+uv run --locked python -m app.services.content.catalog
+uv run --locked uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+导入工具只添加缺失地点和别名，不覆盖已维护坐标；随后重新解析尚无 `place_id` 的旧记录，保留来源与采集时间。重复运行不会重复插入；歧义保留候选，不自动选一个地点。正式数据库操作仍需负责人授权，API 启动和 GET 查询均不会自动运行该工具。空目录返回空地图结果，不能靠前端匹配绕过目录初始化。
+
+`places.json` 的具名建筑来自仓库 [campus.json](../../../../frontend/src/assets/maps/campus.json)，坐标是建筑轮廓顶点均值经原投影逆变换的 WGS84 建筑级参考点，不是门口或室内测绘。已有八个地点的稳定 ID 保留，其他地点采用带 OSM 建筑 ID 的目录 ID；后续地图替换需维护 `building_id` 映射。来源与 ODbL 许可见[地图许可](../../../../frontend/src/assets/maps/LICENSE.md)，公开分发须保留署名与许可。地点目录不包含活动或个人位置；Demo 和标准服务共用这份目录。
+
 ## 运行本地 Demo
 
 在 `backend` 目录执行以下命令，打开 [交互式接口](http://127.0.0.1:18763/docs)。进程监听本机，允许 `http://127.0.0.1:8775` 与 `http://localhost:8775` 的 GET/POST 联调请求，并使用退出时清理的 SQLite 数据库，默认导入[北大图书馆讲座](https://lib.pku.edu.cn/hdrl/0a32a64919294d338dd72b58de36d348.htm)和[百周年纪念讲堂公告](https://hall.pku.edu.cn/hdgp/zxyc/l/e1020fa7bc6f463facebacabd50c5340.htm)的两条活动样本，以及三条标为 `platform=demo` 的合成地点解析样本。
@@ -29,7 +45,7 @@ curl 'http://127.0.0.1:18763/events?longitude=116.30452&latitude=39.98857&radius
 
 ### 统一地点库与文本解析
 
-`information_places` 维护独立的地点 ID、名称、校区、WGS84 经纬度，以及可选的地图 `building_id`。`information_place_aliases` 保存地点别名，同一个别名可以对应多个地点。Demo 初始提供燕园图书馆、纪念讲堂、理教、一至四教和古籍图书馆共八个地点。地点坐标取自[校园地图](../../../../frontend/src/assets/maps/campus.json)建筑轮廓的顶点均值，授权见[地图数据说明](../../../../frontend/src/assets/maps/LICENSE.md)。
+`information_places` 维护独立的地点 ID、名称、校区、WGS84 经纬度，以及可选的地图 `building_id`。`information_place_aliases` 保存地点别名，同一个别名可以对应多个地点。目录包含地图中的 161 个具名建筑，其中图书馆、纪念讲堂、理教、一至四教和古籍图书馆保留人工补充的别名。地点坐标取自[校园地图](../../../../frontend/src/assets/maps/campus.json)建筑轮廓的顶点均值，授权见[地图数据说明](../../../../frontend/src/assets/maps/LICENSE.md)。
 
 采集器先把有来源依据的地点文字写入 `activity_location`。汇总服务在同一入库事务中执行 [`LocationResolver`](locations.py)，兼容全角字符、空白及英文字母大小写，通过名称和别名定位建筑，再提取紧随其后的教室号和显式楼层。匹配优先采用完整名称，多个地点候选保留歧义。调用方显式指定已登记的 `place_id` 时以该关联为准，解析方法标为 `explicit`。
 

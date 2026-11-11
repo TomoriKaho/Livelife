@@ -5,7 +5,6 @@ import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from math import cos, radians
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Annotated
@@ -18,6 +17,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import event, select
 
+from app.api.locations.router import router as locations_router
 from app.db.models import MapPlaceRecord, PlaceAliasRecord
 from app.db.session import Database
 from app.schemas.information import (
@@ -29,48 +29,20 @@ from app.schemas.information import (
 )
 from app.schemas.location import NearbyEventsRequest, ResolvedPlace
 from app.services.content import InformationAggregator, InformationProvider
-from app.services.content.locations import LocationResolver, normalize_location
+from app.services.content.catalog import CATALOG, register_places
+from app.services.content.locations import LocationResolver
 from app.services.content.retrieval import RetrievalDocument, retrieval_document
 from app.services.ingestion import collect_information
 from app.services.ingestion.wechat import WeChatSnapshotSource
 
 BACKEND = Path(__file__).resolve().parents[1]
-CAMPUS = BACKEND.parent / "frontend/src/assets/maps/campus.json"
-# Place identity is independent of the map snapshot's building ID.
-PLACE_SEEDS = {
-    "pku:yanyuan:library": ("r3249649", ["图书馆", "北大图书馆"]),
-    "pku:yanyuan:hall": ("188711087", ["讲堂", "百讲", "百周年纪念讲堂"]),
-    "pku:yanyuan:science-teaching": ("444991872", ["理教", "理科教学楼", "黄廷方楼", "教学楼"]),
-    "pku:yanyuan:teaching-1": ("226702307", ["一教", "第一教学楼", "教学楼"]),
-    "pku:yanyuan:teaching-2": ("240825557", ["二教", "第二教学楼", "李兆基楼", "教学楼"]),
-    "pku:yanyuan:teaching-3": ("240825556", ["三教", "第三教学楼", "刘卿楼", "教学楼"]),
-    "pku:yanyuan:teaching-4": ("240825555", ["四教", "第四教学楼", "教学楼"]),
-    "pku:yanyuan:ancient-library": ("628032101", ["古籍图书馆"]),
-}
 
 
 def demo_places() -> list[MapPlace]:
-    campus = json.loads(CAMPUS.read_text(encoding="utf-8"))
-    origin_lon, origin_lat = campus["origin"]
-    places = []
-    buildings = {building["id"]: building for building in campus["buildings"]}
-    for place_id, (building_id, _aliases) in PLACE_SEEDS.items():
-        building = buildings[building_id]
-        points = building["points"]
-        ring = points[:-1] if points[0] == points[-1] else points
-        x = sum(point[0] for point in ring) / len(ring)
-        z = sum(point[1] for point in ring) / len(ring)
-        # Inverse of frontend/src/pages/map/geometry.mjs:project.
-        places.append(
-            MapPlace(
-                id=place_id,
-                building_id=building_id,
-                name=building["name"],
-                longitude=origin_lon + x / (111_320 * cos(radians(origin_lat))),
-                latitude=origin_lat - z / 111_320,
-            )
-        )
-    return places
+    return [
+        MapPlace.model_validate({k: v for k, v in row.items() if k != "aliases"})
+        for row in json.loads(CATALOG.read_text(encoding="utf-8"))
+    ]
 
 
 def demo_items() -> list[InformationInput]:
@@ -116,13 +88,13 @@ def demo_items() -> list[InformationInput]:
 
 def create_demo(wechat_json: Path | None = None) -> FastAPI:
     database: Database
-    places = demo_places()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         nonlocal database
         with TemporaryDirectory(prefix="livelife-content-") as directory:
             database = Database(f"sqlite+pysqlite:///{directory}/demo.db")
+            app.state.database = database
             assert database.engine is not None and database.session_factory is not None
 
             @event.listens_for(database.engine, "connect")
@@ -135,20 +107,7 @@ def create_demo(wechat_json: Path | None = None) -> FastAPI:
                     config.attributes["connection"] = connection
                     command.upgrade(config, "head")
                 with database.session_factory.begin() as session:
-                    session.add_all(
-                        [
-                            MapPlaceRecord(**place.model_dump(exclude={"coordinate_system"}))
-                            for place in places
-                        ]
-                    )
-                    session.flush()
-                    session.add_all(
-                        [
-                            PlaceAliasRecord(place_id=place_id, alias=normalize_location(alias))
-                            for place_id, (_building_id, aliases) in PLACE_SEEDS.items()
-                            for alias in set(aliases)
-                        ]
-                    )
+                    register_places(session)
                 with database.session_factory() as session:
                     InformationAggregator(session).ingest(demo_items())
                 if wechat_json is not None:
@@ -161,6 +120,8 @@ def create_demo(wechat_json: Path | None = None) -> FastAPI:
                 database.close()
 
     app = FastAPI(title="Livelife 信息系统 Demo", lifespan=lifespan)
+
+    app.include_router(locations_router)
 
     app.add_middleware(
         CORSMiddleware,

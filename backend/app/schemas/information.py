@@ -130,6 +130,7 @@ class InformationQuery(BaseModel):
     latitude: Latitude | None = None
     radius_m: Annotated[FiniteFloat, Field(gt=0, le=50_000)] | None = None
     events_only: bool = False
+    order_by: Literal["fetched", "activity"] = "fetched"
     limit: int = Field(default=50, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
 

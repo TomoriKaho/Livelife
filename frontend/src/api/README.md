@@ -1,6 +1,10 @@
 # 客户端 API 调用
 
-本目录维护请求和客户端失败处理。服务端契约从[共享 API 入口](../../../docs/api.md)及对应模块说明读取；页面交互由页面模块维护。当前真实业务请求包括 hello 与 Agent 对话。
+本目录维护请求和客户端失败处理。服务端契约从[共享 API 入口](../../../docs/api.md)及对应模块说明读取；页面交互由页面模块维护。当前真实业务请求包括 hello、账户、个人资料、Agent 对话与地图活动查询。
+
+## 地图活动查询
+
+[`map-activities.ts`](map-activities.ts) 每次进入地图页从 [`GET /locations/activities`](../../../backend/app/api/locations/API.md) 分页读取北京时间今天至后天尚未结束的活动，翻页沿用首个响应的 `as_of`。查询超过 10 秒、数据库不可用、响应格式不符或网络失败时向地图页返回可显示错误，不用演示活动补位。请求前核对 Android 安装包状态；测试预览配置启用时核对响应后端 SHA。离开地图时中止请求。设备坐标只用于客户端计算附近建筑，不发送到此接口；地点原文和建筑名称的匹配规则在[地图说明](../pages/map/README.md)维护。
 
 ## hello 调用与失败处理
 
@@ -43,4 +47,4 @@
 
 ## 地图附近活动
 
-[`information.ts`](information.ts) 复用平台 API 地址和版本校验，通过 `POST /events/nearby` 传递 #82 的位置对象与筛选参数。响应经格式校验后供地图共享使用。十秒超时和旧响应处理在 [`useNearbyActivities.ts`](../pages/map/useNearbyActivities.ts) 中维护。字段与位置有效期见[信息系统契约](../../../backend/app/services/content/README.md#对齐-82-的设备位置接口)，本地启动与验证见[地图联调](../pages/map/README.md#本地信息系统联调)。
+[`map-activities.ts`](map-activities.ts) 复用平台地址、Android 状态与后端 SHA 校验，调用标准 `GET /locations/activities`。传递设备经纬度、时间戳、半径、关键词与时间窗口；翻页固定服务端返回的时间边界，校验结构化地点、距离、活动及分页字段，按 ID 去重。十秒超时、旧请求取消、迟到响应与定位失效处理在 [`useNearbyActivities.ts`](../pages/map/useNearbyActivities.ts) 中维护。正式字段见[地图接口](../../../backend/app/api/locations/API.md)，启动步骤见[地图联调](../pages/map/README.md#本地信息系统联调)。

@@ -131,7 +131,13 @@ def test_real_local_postgresql_migrates_persists_and_stops(request, tmp_path):
                 )
             with database.session_factory.begin() as session:
                 session.add(
-                    MapPlaceRecord(id="hall", name="讲堂", longitude=116.304, latitude=39.9915)
+                    MapPlaceRecord(
+                        id="hall",
+                        name="讲堂",
+                        longitude=116.304,
+                        latitude=39.9915,
+                        building_id="hall-map",
+                    )
                 )
                 session.flush()
                 session.add(PlaceAliasRecord(place_id="hall", alias="讲堂"))
@@ -173,6 +179,25 @@ def test_real_local_postgresql_migrates_persists_and_stops(request, tmp_path):
                 )
                 assert provider.list(query) == (record,)
                 assert provider.list(query.model_copy(update={"longitude": 116.306})) == ()
+                from datetime import UTC, datetime
+
+                from app.schemas.location_activity import MapActivityQuery
+                from app.services.content.map_query import map_activities
+
+                page = map_activities(
+                    session,
+                    MapActivityQuery(
+                        as_of="2026-10-11T00:00:00Z",
+                        latitude=39.9915,
+                        longitude=116.304,
+                        radius_m=100,
+                        timestamp=datetime.now(UTC).timestamp() * 1000,
+                    ),
+                )
+                assert page.items[0].id == record.id
+                assert page.nearby_buildings[0].place.building_id == "hall-map"
+                assert page.nearby_buildings[0].first_activity_at == record.activity_start_at
+
             pid = int((data_dir / "postmaster.pid").read_text().splitlines()[0])
         finally:
             database.close()
