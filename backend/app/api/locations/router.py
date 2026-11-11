@@ -29,15 +29,15 @@ def list_map_activities(
     limit: Annotated[int, Query(ge=1, le=100)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> MapActivityPage:
-    """Return non-ended activities in the current Beijing day, with source positions."""
+    """Return non-ended activities through the next three Beijing dates."""
 
     instant = as_of.astimezone(UTC) if as_of is not None else datetime.now(UTC)
     local_day = instant.astimezone(BEIJING).date()
-    tomorrow = datetime.combine(local_day + timedelta(days=1), time.min, BEIJING)
+    window_end = datetime.combine(local_day + timedelta(days=3), time.min, BEIJING)
     records = InformationProvider(session).list(
         InformationQuery(
             activity_after=instant,
-            activity_before=tomorrow,
+            activity_before=window_end,
             limit=limit,
             offset=offset,
         )

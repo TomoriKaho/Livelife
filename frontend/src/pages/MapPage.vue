@@ -16,14 +16,15 @@ import campus from '../assets/maps/campus.json';
 import { isMapAttributionVisible } from './map/map-drawer-layout.mjs';
 import { activities, categories, filters, venues } from './map/demo.js';
 import { fetchMapActivities } from '../api/map-activities';
-import { buildingDistance, campusPoint, matchActivities, nearestNamedBuildings } from './map/nearby.mjs';
+import { activityFirstBuildings, buildingDistance, campusPoint, matchActivities } from './map/nearby.mjs';
 import { profileFor } from './map/model-profiles.mjs';
 const CampusScene = defineAsyncComponent(() => import('./map/CampusScene.vue'));
 const CampusPlan = defineAsyncComponent(() => import('./map/CampusPlan.vue'));
 const route = useRoute(), focusPoint = ref(null), routedActivity = ref(null);
 const mode = ref('3d'), filter = ref('all'), search = ref(''), selected = ref(null), floor = ref(2), scene = ref(null), located = ref(false), detail = ref(null);
 const userPoint = ref(null), locationState = ref('loading'), locationMessage = ref('正在获取位置…');
-const activityState = ref('loading'), activityMessage = ref('正在查询今天的活动…'), liveRecords = ref([]), liveDetail = ref(null);
+const activityState = ref('loading'), activityMessage = ref('正在查询活动…'), liveRecords = ref([]), liveDetail = ref(null);
+const currentTime = ref(Date.now());
 let locationWatch = null, activityController = null, dayTimer = null;
 const drawer = ref(null), mapFocusInset = ref(180), drawerOcclusion = ref(180), drawerExpandedHeight = ref(540);
 const mapAttributionVisible = computed(() => isMapAttributionVisible(drawerOcclusion.value, drawerExpandedHeight.value));
@@ -34,13 +35,16 @@ function onDrawerLayout({ occlusionHeight, expandedHeight }) {
 const planView = ref(null);
 let drawerBeforeSelection = null;
 const campusActivities = activities.filter(item => item.building);
-const nearestBuildings = computed(() => userPoint.value ? nearestNamedBuildings(campus.buildings, userPoint.value) : []);
-const matchedActivities = computed(() => matchActivities(liveRecords.value, campus.buildings));
+const matchedActivities = computed(() => matchActivities(liveRecords.value.filter(record =>
+  record.end_at ? Date.parse(record.end_at) > currentTime.value : Date.parse(record.start_at) >= currentTime.value
+), campus.buildings));
+const nearbyBuildings = computed(() => userPoint.value
+  ? activityFirstBuildings(campus.buildings, userPoint.value, matchedActivities.value) : []);
 const nearbyActivities = computed(() => {
-  const nearbyIds = new Set(nearestBuildings.value.map(item => item.id));
+  const nearbyIds = new Set(nearbyBuildings.value.map(item => item.id));
   return matchedActivities.value.filter(item => nearbyIds.has(item.building)).map(item => ({
     ...item,
-    distance: nearestBuildings.value.find(building => building.id === item.building)?.distance ?? 0,
+    distance: nearbyBuildings.value.find(building => building.id === item.building)?.distance ?? 0,
   }));
 });
 const currentLiveActivities = computed(() => matchedActivities.value.filter(item => item.building === selected.value));
@@ -74,7 +78,7 @@ function showAll(section) {
 }
 const buildingPalette = ['pink', 'yellow', 'blue', 'mint'];
 const venuePencil = Object.fromEntries(sessionShuffle('map-demo-venues', venues).map((venue, index) => [venue.id, buildingPalette[index % buildingPalette.length]]));
-const venueCards = computed(() => nearestBuildings.value.map((building, index) => ({
+const venueCards = computed(() => nearbyBuildings.value.map((building, index) => ({
   ...building,
   short: building.name,
   distanceLabel: `直线约 ${Math.round(building.distance)} 米`,
@@ -88,12 +92,13 @@ function activityInk(type) { return pencilInk[activityPencil(type)] || pencilInk
 function buildingPencil(id) { return venuePencil[id] || 'yellow'; }
 function roomLabel(activity) { return /^\d/.test(activity.room) ? `${currentBuilding.value?.label || '教室'} ${activity.room}` : activity.room; }
 function startTime(time) { return time.split('–')[0]; }
-function liveTime(value) { return new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value)); }
+function liveTime(value) { return new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value)); }
 function liveTimeRange(item) { return `${liveTime(item.start_at)}${item.end_at ? `–${liveTime(item.end_at)}` : ' 开始'}`; }
 async function refreshActivities() {
   activityController?.abort();
   const controller = new AbortController(); activityController = controller;
-  activityState.value = 'loading'; activityMessage.value = '正在查询今天的活动…'; liveRecords.value = [];
+  currentTime.value = Date.now();
+  activityState.value = 'loading'; activityMessage.value = '正在查询活动…'; liveRecords.value = [];
   try {
     const records = await fetchMapActivities(controller.signal);
     if (controller.signal.aborted) return;
@@ -203,6 +208,7 @@ onMounted(() => {
   refreshActivities();
   let day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   dayTimer = setInterval(() => {
+    currentTime.value = Date.now();
     const next = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     if (next !== day) { day = next; refreshActivities(); }
   }, 60_000);
@@ -219,7 +225,7 @@ watch(() => route.query.activity, applyActivityRoute);
   <section id="page-title" class="map-page" aria-label="燕园活动探索" tabindex="-1">
     <div class="map-rule" aria-hidden="true"></div>
     <div class="map-stage" :class="{ 'building-focus': selected, 'plan-mode': mode === '2d' }" :style="{ '--drawer-occlusion': `${drawerOcclusion}px` }">
-        <CampusScene v-if="mode === '3d'" ref="scene" :focus-inset="mapFocusInset" :focus-point="focusPoint" :user-position="userPoint" :nearby-buildings="nearestBuildings" :nearby-activities="nearbyActivities" :selected="selected" :floor="floor" :activities="visibleActivities" @select="select" @floor="floor = $event" />
+        <CampusScene v-if="mode === '3d'" ref="scene" :focus-inset="mapFocusInset" :focus-point="focusPoint" :user-position="userPoint" :nearby-buildings="nearbyBuildings" :nearby-activities="nearbyActivities" :selected="selected" :floor="floor" :activities="visibleActivities" @select="select" @floor="floor = $event" />
         <CampusPlan v-else ref="scene" :focus-inset="mapFocusInset" :focus-point="focusPoint" :user-position="userPoint" :selected="selected" :activities="matchedActivities" :starting-view="planView" @select="select" />
         <span v-if="mode === '3d'" class="campus-caption">北京大学 · 燕园</span>
         <div class="map-hint">{{ routedActivity ? `${routedActivity.title}${focusPoint ? ' · 地点示意' : ` · ${floor}F`}` : mode === '2d' ? selected ? '俯视建筑 · 下方有已查询活动和楼层演示' : '点建筑查看活动 · 拖动平移 · 双指缩放' : currentBuilding?.scenic ? '拖动环绕博雅塔 · 缩小看看未名湖' : selected ? '点楼层查看演示 · 拖动查看另一侧' : '点建筑，查看已查询活动和楼层演示' }}</div>
@@ -346,7 +352,7 @@ watch(() => route.query.activity, applyActivityRoute);
           <p v-if="locationState !== 'ready'" class="nearby-status">取得校内位置后显示相应活动。</p>
           <p v-else-if="activityState === 'loading'" class="nearby-status" role="status">{{ activityMessage }}</p>
           <p v-else-if="activityState === 'error'" class="nearby-status" role="alert">{{ activityMessage }} <button type="button" @click="refreshActivities">重试查询</button></p>
-          <p v-else-if="!nearbyActivities.length" class="nearby-status">最近 5 栋建筑暂无可确认的活动。</p>
+          <p v-else-if="!nearbyActivities.length" class="nearby-status">暂无可确认的附近活动。</p>
           <div class="snap-row" aria-label="附近活动" @scroll.passive="syncPage($event, 'activity')">
             <button v-for="activity in nearbyActivities" :key="activity.id" v-sketch class="event-card sketch sketch-white sketch-cast" data-cast="blue" @click="openLiveActivity(activity)">
               <span v-sketch class="place-badge sketch pencil-fill sketch-cast" data-pencil="blue" data-cast="blue"><AppIcon name="pin" /></span>
@@ -358,7 +364,7 @@ watch(() => route.query.activity, applyActivityRoute);
         </section>
         <section class="nearby-block">
           <div class="block-head">
-            <div class="block-title"><AppIcon class="title-spark" name="spark" /><h2>演示推荐</h2><AppIcon class="title-spark is-right" name="spark" /></div>
+            <div class="block-title"><AppIcon class="title-spark" name="spark" /><h2>猜你喜欢</h2><AppIcon class="title-spark is-right" name="spark" /></div>
             <button class="see-all" type="button" @click="showAll('liked')">查看全部 <AppIcon name="chevron" /></button>
           </div>
           <div class="snap-row" aria-label="猜你喜欢" @scroll.passive="syncPage($event, 'liked')">

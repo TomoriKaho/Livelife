@@ -4,7 +4,7 @@
 
 ## 地图活动查询
 
-[`map-activities.ts`](map-activities.ts) 每次进入地图页从 [`GET /locations/activities`](../../../backend/app/api/locations/API.md) 分页读取北京当天尚未结束的活动，翻页沿用首个响应的 `as_of`。查询超过 10 秒、数据库不可用、响应格式不符或网络失败时向地图页返回可显示错误，不用演示活动补位。请求前核对 Android 安装包状态；测试预览配置启用时核对响应后端 SHA。离开地图时中止请求。设备坐标只用于客户端计算附近建筑，不发送到此接口；地点原文和建筑名称的匹配规则在[地图说明](../pages/map/README.md)维护。
+[`map-activities.ts`](map-activities.ts) 每次进入地图页从 [`GET /locations/activities`](../../../backend/app/api/locations/API.md) 分页读取北京时间今天至后天尚未结束的活动，翻页沿用首个响应的 `as_of`。查询超过 10 秒、数据库不可用、响应格式不符或网络失败时向地图页返回可显示错误，不用演示活动补位。请求前核对 Android 安装包状态；测试预览配置启用时核对响应后端 SHA。离开地图时中止请求。设备坐标只用于客户端计算附近建筑，不发送到此接口；地点原文和建筑名称的匹配规则在[地图说明](../pages/map/README.md)维护。
 
 ## hello 调用与失败处理
 

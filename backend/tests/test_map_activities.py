@@ -101,3 +101,34 @@ async def test_map_activity_pages_skip_missing_location_and_expired_events(
 async def test_map_activity_rejects_naive_time(client: httpx.AsyncClient) -> None:
     response = await client.get("/locations/activities", params={"as_of": "2026-11-11T10:00:00"})
     assert response.status_code == 422
+
+
+@pytest.mark.anyio
+async def test_map_activity_window_includes_today_and_next_two_beijing_dates(
+    client: httpx.AsyncClient, database: Database
+) -> None:
+    with database.session_factory() as session:
+        InformationAggregator(session).ingest(
+            [
+                InformationInput(
+                    platform="manual",
+                    source_id=f"window-{index}",
+                    title=f"日期 {index}",
+                    content="公开活动正文",
+                    fetched_at=f"2026-11-11T0{index}:00:00+08:00",
+                    activity_location="理科教学楼 101",
+                    activity_start_at=start,
+                )
+                for index, start in [
+                    (1, "2026-11-11T14:00:00+08:00"),
+                    (2, "2026-11-12T14:00:00+08:00"),
+                    (3, "2026-11-13T23:59:00+08:00"),
+                    (4, "2026-11-14T00:00:00+08:00"),
+                ]
+            ]
+        )
+    response = await client.get(
+        "/locations/activities", params={"as_of": "2026-11-11T10:00:00+08:00"}
+    )
+    assert response.status_code == 200
+    assert {item["title"] for item in response.json()["items"]} == {"日期 1", "日期 2", "日期 3"}

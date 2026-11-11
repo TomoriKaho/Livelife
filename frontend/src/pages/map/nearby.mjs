@@ -26,6 +26,20 @@ export function nearestNamedBuildings(buildings, point, limit = 5) {
   })).sort((a, b) => a.distance - b.distance || a.id.localeCompare(b.id)).slice(0, limit);
 }
 
+export function activityFirstBuildings(buildings, point, activities, limit = 5) {
+  const candidates = nearestNamedBuildings(buildings, point, buildings.length);
+  const firstStart = new Map();
+  for (const activity of activities) {
+    const start = Date.parse(activity.start_at);
+    if (!Number.isFinite(start)) continue;
+    firstStart.set(activity.building, Math.min(start, firstStart.get(activity.building) ?? Infinity));
+  }
+  const active = candidates.filter(building => firstStart.has(building.id))
+    .sort((a, b) => firstStart.get(a.id) - firstStart.get(b.id) || a.distance - b.distance || a.id.localeCompare(b.id));
+  const fill = candidates.filter(building => !firstStart.has(building.id));
+  return [...active, ...fill].slice(0, limit);
+}
+
 export function campusPoint(longitude, latitude, boundary) {
   if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return null;
   const point = project({ lon: longitude, lat: latitude });
