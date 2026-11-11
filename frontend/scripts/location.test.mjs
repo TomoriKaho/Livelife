@@ -104,7 +104,8 @@ test('uses the browser watcher for ongoing web positions and clears it on stop',
     success(position);
     failure({ code: 3 });
     await stop();
-    assert.deepEqual(calls, [['watch', defaultCurrentLocationOptions], ['clear', 42]]);
+    const { timeout: _timeout, ...expectedWatchOptions } = defaultCurrentLocationOptions;
+    assert.deepEqual(calls, [['watch', expectedWatchOptions], ['clear', 42]]);
     assert.deepEqual(updates, [
       { status: 'success', location: { latitude: 39.991, longitude: 116.304, accuracy: 12.5, timestamp: 1_700_000_000_000 } },
       { status: 'error', error: 'timeout' },
@@ -128,8 +129,9 @@ test('requests native permission once, relays watcher updates, and clears the na
   callback(null, { code: 2 });
   await stop();
   assert.deepEqual(api.calls, ['check', 'request']);
+  const { timeout: _timeout, ...expectedWatchOptions } = defaultCurrentLocationOptions;
   assert.deepEqual(calls, [
-    ['watch', { ...defaultCurrentLocationOptions, timeout: 5_000 }],
+    ['watch', expectedWatchOptions],
     ['clear', 'watch-1'],
   ]);
   assert.deepEqual(updates, [
@@ -157,6 +159,17 @@ test('keeps a successful foreground location when a later watch callback times o
   const timeout = applyLocationResult(located.location, { status: 'error', error: 'timeout' });
 
   assert.deepEqual(timeout, located);
+});
+
+test('keeps initial foreground tracking in locating state through transient provider errors', () => {
+  assert.deepEqual(
+    applyLocationResult(null, { status: 'error', error: 'timeout' }),
+    { location: null, state: 'locating' },
+  );
+  assert.deepEqual(
+    applyLocationResult(null, { status: 'error', error: 'unavailable' }),
+    { location: null, state: 'locating' },
+  );
 });
 
 test('does not let a delayed cached Android location replace a newer location', () => {

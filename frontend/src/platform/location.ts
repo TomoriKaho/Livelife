@@ -50,6 +50,18 @@ export const defaultCurrentLocationOptions: Required<CurrentLocationOptions> = {
   interval: 1_000,
 };
 
+/**
+ * A foreground watcher must not inherit the one-shot timeout. Capacitor's
+ * Android implementation treats `timeout` on watchPosition as a deadline for
+ * the first callback and unregisters the native fused-location request when
+ * it expires. Keep all accuracy and cadence options, but leave that deadline
+ * to explicit getCurrentPosition calls.
+ */
+function continuousLocationOptions(options: CurrentLocationOptions): PositionOptions {
+  const { timeout: _timeout, ...watchOptions } = { ...defaultCurrentLocationOptions, ...options };
+  return watchOptions;
+}
+
 function permissionGranted(status: PermissionStatus) {
   return status.location === 'granted' || status.coarseLocation === 'granted';
 }
@@ -148,7 +160,7 @@ export async function watchCurrentLocation(
     return async () => {};
   }
 
-  const positionOptions = { ...defaultCurrentLocationOptions, ...options };
+  const positionOptions = continuousLocationOptions(options);
   try {
     // Capacitor's web wrapper delegates to this same browser API but cannot
     // request permission itself. Calling the standard watcher prompts as needed.

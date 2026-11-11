@@ -22,10 +22,11 @@ let generation = 0;
 /**
  * Fold a platform result into the shared foreground location state.
  *
- * A watch can report a cached fix after a newer GPS result, or report a
- * transient timeout after it has already produced a usable fix.  Neither
- * event should move the marker backwards or replace the usable "located"
- * state shown to the user.  Permission and platform errors remain visible.
+ * A watch can report a cached fix after a newer GPS result, or time out
+ * before it has produced its first usable fix.  A foreground watcher remains
+ * active in both cases: initial transient provider errors keep the UI in its
+ * locating state, while later errors keep the usable "located" marker.
+ * Permission and platform errors remain visible.
  */
 export function applyLocationResult(
   current: CurrentLocation | null,
@@ -38,12 +39,16 @@ export function applyLocationResult(
     return { location: result.location, state: 'located' };
   }
 
-  // Browser and fused-location watches are long lived: a single timeout or
-  // temporarily unavailable provider after a valid fix is not a loss of the
-  // already known foreground position.  Surface errors that require user
-  // action (permission) or mean the capability is absent instead.
-  if (current && (result.error === 'timeout' || result.error === 'unavailable')) {
-    return { location: current, state: 'located' };
+  // Browser and fused-location watches are long lived. Before the first
+  // usable fix, a transient timeout/unavailable callback must not turn the
+  // initial experience into a terminal-looking error: the existing watch
+  // keeps listening until it reports a position. After a fix, retain that
+  // marker for the same transient failures. Errors requiring user action or
+  // a missing capability still surface normally.
+  if (result.error === 'timeout' || result.error === 'unavailable') {
+    return current
+      ? { location: current, state: 'located' }
+      : { location: null, state: 'locating' };
   }
   return { location: current, state: result.error };
 }
