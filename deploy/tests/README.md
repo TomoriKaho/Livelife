@@ -43,6 +43,10 @@ LIVELIFE_PREVIEW_DB_INTEGRATION=1 <测试venv>/bin/python -m unittest discover -
 
 实际测试服验证使用只读的 `port_available` 或已存在任务的 `build_status` 查询，记录共享主连接 PID和独立进程并发结果。验证主连接恢复时只关闭确认没有在途请求的项目控制 socket，不能重启 SSH 服务或停止后端；验收步骤及维护命令见[课程机 SSH 控制连接复用](../BUILDING.md#课程机-ssh-控制连接复用)。验证 HTTPS staging hello 仍正常，再重跑原先失败的工作流，以真实检查和产物结果确认恢复。
 
+### 模型配置
+
+`test_model_config.py` 验证完整 SHA 白名单、未授权版本不注入、权限/链接/损坏内容拒绝、环境字段白名单及错误不泄露配置。`test_backend_runtime.py` 同时验证模型密钥及代理只进入 API，不进入迁移和表结构检查。后端 `test_agent.py` 验证推理参数、普通兼容模型请求及流式用量解析；自动测试不调用付费模型。
+
 ### RPC 输入与网关
 
 `test_rpc_input.py` 覆盖 SSH JSON 输入边界：使用真实子进程管道，故意保持写端打开，确认收到完整 JSON 后返回；另外验证嵌套、转义、Unicode 跨块、旧格式/换行格式兼容、大小限制及非法输入。实际服务器验证也仅用受限 SSH 的 snapshot 操作，保持 stdin 打开，不用部署请求代替只读检查。

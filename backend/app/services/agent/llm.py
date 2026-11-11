@@ -96,9 +96,14 @@ async def stream_completion(
         "messages": messages,
         "stream": True,
         "stream_options": {"include_usage": True},
-        "max_tokens": settings.max_output_tokens,
-        "temperature": 0.2,
     }
+
+    if settings.llm_reasoning_effort:
+        payload["reasoning_effort"] = settings.llm_reasoning_effort
+        payload["max_completion_tokens"] = settings.max_output_tokens
+    else:
+        payload["max_tokens"] = settings.max_output_tokens
+        payload["temperature"] = 0.2
 
     try:
         async with api_stream(

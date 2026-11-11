@@ -90,7 +90,7 @@ class PreviewRuntimeTests(unittest.TestCase):
                     runtime.prepare_schema("python", backend, {})
                 self.assertEqual(run.call_count, 1)
 
-    def exercise_runtime(self, failure=None, interrupted=False, mail=None):
+    def exercise_runtime(self, failure=None, interrupted=False, mail=None, model=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             release = root / "releases" / A
@@ -123,6 +123,7 @@ class PreviewRuntimeTests(unittest.TestCase):
             child.wait.side_effect = [KeyboardInterrupt(), 0] if interrupted else [9]
             child.poll.return_value = None if interrupted else 9
             with (
+                patch.object(runtime, "model_environment", return_value=model or {}),
                 patch.object(runtime, "prepare_schema", side_effect=failure) as schema,
                 patch.object(runtime.subprocess, "Popen", return_value=child) as launch,
             ):
@@ -140,6 +141,9 @@ class PreviewRuntimeTests(unittest.TestCase):
                         "postgresql+psycopg://postgres@/postgres",
                     )
                     schema.assert_called_once()
+                    for key, value in (model or {}).items():
+                        self.assertNotIn(key, schema.call_args.args[2])
+                        self.assertEqual(launch.call_args.kwargs["env"][key], value)
                     for key in mail_config.FIELDS:
                         self.assertNotIn(key, schema.call_args.args[2])
                         if mail and key in mail:
@@ -152,6 +156,11 @@ class PreviewRuntimeTests(unittest.TestCase):
                 self.assertTrue((root / "databases" / A / "runtime.json").exists())
                 if interrupted:
                     child.terminate.assert_called_once()
+
+    def test_model_credentials_only_reach_api(self):
+        self.exercise_runtime(
+            model={"AGENT_LLM_API_KEY": "test-secret", "HTTPS_PROXY": "test-proxy"}
+        )
 
     def test_failed_migration_stops_database_without_launching_api(self):
         self.exercise_runtime(failure=RuntimeError("migration failed"))
