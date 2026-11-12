@@ -1,5 +1,10 @@
-import { project } from './geometry.mjs';
+import { contains, project } from './geometry.mjs';
 import { insideFootprint } from './rings.mjs';
+
+// GPS readings at the edge of campus can easily fall a few metres outside
+// the OSM boundary. Keep a modest display-only buffer without widening map
+// interactions, searchable buildings, or campus data classification.
+export const campusLocationBoundaryTolerance = 30;
 
 // Device geolocation is WGS-84 latitude/longitude. The campus snapshot uses
 // the same local-meter projection as its OSM source data.
@@ -60,6 +65,16 @@ function distanceToRing(point, ring) {
     distance = Math.min(distance, Math.hypot(point[0] - ax - dx * ratio, point[1] - az - dz * ratio));
   }
   return distance;
+}
+
+/**
+ * The offline map may still show a device marker just outside the campus
+ * boundary. The buffer is measured in the map's local metre coordinates.
+ */
+export function isWithinCampusLocationRange(point, boundary, tolerance = campusLocationBoundaryTolerance) {
+  if (!Array.isArray(point) || point.length !== 2 || !point.every(Number.isFinite)
+    || !Array.isArray(boundary) || boundary.length < 3 || !Number.isFinite(tolerance) || tolerance < 0) return false;
+  return contains(point, boundary) || distanceToRing(point, boundary) <= tolerance;
 }
 
 /** Return every building whose footprint intersects the displayed accuracy circle. */
