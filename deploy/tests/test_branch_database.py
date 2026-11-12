@@ -86,6 +86,7 @@ class BranchRegistryTests(unittest.TestCase):
         latest = self.deploy('pr:1', 'topic', B, 2)
         self.assertEqual(self.runtime.databases[one['instance']], self.runtime.databases[latest['instance']])
         self.assertEqual(self.runtime.databases[two['instance']]['source'], databases.branch_id('main'))
+        self.assertEqual(self.runtime.databases[two['instance']]['copy_mode'], 'public')
         self.assertEqual(latest['backend_sha'], B)
         self.assertIn(databases.release_id(B, 'topic'), latest['api_path'])
 
@@ -93,6 +94,7 @@ class BranchRegistryTests(unittest.TestCase):
         legacy = self.registry.deploy('pr:88', A, 1, b'package')
         first = self.deploy('pr:88', 'events', B, 2)
         self.assertEqual(self.runtime.databases[first['instance']]['source'], legacy['instance'])
+        self.assertEqual(self.runtime.databases[first['instance']]['copy_mode'], 'full')
         self.registry.release('pr:88', 3)
         new = self.deploy('pr:88', 'events', C, 4, source='different-base')
         self.assertEqual(self.runtime.databases[first['instance']], self.runtime.databases[new['instance']])
@@ -139,6 +141,22 @@ class BranchRegistryTests(unittest.TestCase):
     def test_preview_cannot_claim_main_database(self):
         with self.assertRaisesRegex(ValueError, 'main deployment owner'):
             self.deploy('pr:2', 'main')
+
+    def test_full_copy_cannot_be_requested_for_a_new_branch(self):
+        with self.assertRaisesRegex(ValueError, 'invalid database request'):
+            databases.validate_request({'branch': 'topic', 'source_branch': 'main', 'copy_mode': 'full'})
+        with self.assertRaisesRegex(ValueError, 'same branch'):
+            databases.validate_specification({'id': databases.branch_id('topic'), 'branch': 'topic',
+                'source': 'be-' + A, 'source_branch': 'main', 'copy_mode': 'full'})
+
+    def test_main_and_branch_lease_adoption_preserve_all_data(self):
+        for key, branch in [('main', 'main'), ('branch:' + databases.branch_id('lease')[7:], 'lease')]:
+            old = self.registry.deploy(key, A, 1, b'package')
+            new = self.deploy(key, branch, B, 2)
+            specification = self.runtime.databases[new['instance']]
+            self.assertEqual(specification['copy_mode'], 'full')
+            self.assertEqual(specification['source'], old['instance'])
+            self.assertEqual(specification['source_branch'], branch)
 
     def test_course_recovery_preserves_branch_assignment_and_sha(self):
         from livelife.course import Course
@@ -212,6 +230,59 @@ class RealBranchDatabaseTests(unittest.TestCase):
             with self.connect(main.get_uri(database='postgres')) as conn:
                 self.assertEqual(conn.execute('SELECT count(*) FROM information_items').fetchone()[0], 1)
                 self.assertEqual(conn.execute('SELECT count(*) FROM users').fetchone()[0], 1)
+
+    def test_same_branch_adoption_preserves_accounts_chats_unknown_tables_blobs_and_secret(self):
+        legacy = databases.directory(self.root, 'be-' + A)
+        legacy.mkdir()
+        specification = {'id': databases.branch_id('topic'), 'branch': 'topic',
+                         'source': 'be-' + A, 'source_branch': 'topic', 'copy_mode': 'full'}
+        with self.server_factory(legacy / 'postgres', cleanup_mode='stop') as server:
+            self.migrate(server, legacy)
+            old_secret = json.loads((legacy / 'runtime.json').read_text())['agent_session_secret']
+            with self.connect(server.get_uri(database='postgres')) as conn:
+                conn.execute("INSERT INTO users VALUES (7, 'account@example.test')")
+                conn.execute('CREATE TABLE user_sessions (token text, user_id integer REFERENCES users(id))')
+                conn.execute("INSERT INTO user_sessions VALUES ('existing-token-hash', 7)")
+                conn.execute('CREATE TABLE agent_sessions (user_id integer REFERENCES users(id), messages jsonb)')
+                conn.execute('INSERT INTO agent_sessions VALUES (7, %s)', ('[{"role":"user","content":"saved chat"}]',))
+                conn.execute("INSERT INTO unknown_private_table VALUES ('future private record')")
+                conn.execute("SELECT lo_from_bytea(12345, convert_to('private attachment', 'UTF8'))")
+        def verify(server, state):
+            self.migrate(server, state)
+            with self.connect(server.get_uri(database='postgres')) as conn:
+                self.assertEqual(conn.execute('SELECT * FROM users').fetchall(), [(7, 'account@example.test')])
+                self.assertEqual(conn.execute('SELECT * FROM user_sessions').fetchall(), [('existing-token-hash', 7)])
+                self.assertEqual(conn.execute('SELECT messages FROM agent_sessions').fetchone()[0],
+                                 [{'role': 'user', 'content': 'saved chat'}])
+                self.assertEqual(conn.execute('SELECT * FROM unknown_private_table').fetchone()[0], 'future private record')
+                self.assertEqual(conn.execute("SELECT convert_from(lo_get(12345), 'UTF8')").fetchone()[0], 'private attachment')
+            self.assertEqual(json.loads((state / 'runtime.json').read_text())['agent_session_secret'], old_secret)
+        for _ in range(2):
+            with self.prepared(specification, verify) as (_, state):
+                self.assertEqual(json.loads((state / 'initialized.json').read_text())['copy_mode'], 'full')
+        self.assertTrue((legacy / 'postgres/PG_VERSION').exists())
+        # Forking the adopted branch must still sanitize all private records.
+        fork = {'id': databases.branch_id('new-topic'), 'branch': 'new-topic',
+                'source': specification['id'], 'source_branch': 'topic', 'copy_mode': 'public'}
+        with self.prepared(fork) as (server, state):
+            with self.connect(server.get_uri(database='postgres')) as conn:
+                for table in ('users', 'user_sessions', 'agent_sessions', 'unknown_private_table'):
+                    self.assertEqual(conn.execute('SELECT count(*) FROM ' + table).fetchone()[0], 0)
+                self.assertEqual(conn.execute('SELECT count(*) FROM pg_largeobject_metadata').fetchone()[0], 0)
+            self.assertNotEqual(json.loads((state / 'runtime.json').read_text())['agent_session_secret'], old_secret)
+
+    def test_adoption_without_original_secret_fails_without_publishing(self):
+        legacy = databases.directory(self.root, 'be-' + A)
+        legacy.mkdir()
+        with self.server_factory(legacy / 'postgres', cleanup_mode='stop') as server:
+            self.migrate(server, legacy)
+        (legacy / 'runtime.json').unlink()
+        specification = {'id': databases.branch_id('topic'), 'branch': 'topic',
+                         'source': 'be-' + A, 'source_branch': 'topic', 'copy_mode': 'full'}
+        with self.assertRaisesRegex(ValueError, 'original runtime settings'):
+            with self.prepared(specification):
+                self.fail('must not publish')
+        self.assertFalse((databases.directory(self.root, specification['id']) / 'initialized.json').exists())
 
     def test_initialization_failure_can_retry_without_publishing_partial_database(self):
         with self.prepared(self.main):

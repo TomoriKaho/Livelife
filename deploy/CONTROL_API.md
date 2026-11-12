@@ -21,7 +21,7 @@
 
 后端 `deploy` / `deploy_built` / `recover` 对明确选择 `postgres-v1` 的 release 使用受信启动器准备按分支持久的 PostgreSQL（无 database 字段的历史请求保留按 SHA 隔离）、执行迁移、校验实际业务表，并要求数据库探针成功才发布。旧 metadata 无模式时保持 legacy；新产物通过 `backend/preview-runtime.json` 显式选择模式。失败沿用原有候选清理及旧引用保留语义。RPC 不接收任意数据库连接、凭证或模式修改字段。生命周期和升级见[预览数据库说明](README.md#预览数据库与启动门禁)。
 
-`deploy` / `deploy_built` 可带 `database: {"branch":"feature", "source_branch":"main"}`，新自动控制器始终发送；PR base 来自可信 GitHub metadata，未开 PR 默认 main。可选 `source_owner` 是来源分支尚未升级时的旧预览引用（如 `pr:82`）。公网仅首次登记来源，后续请求沿用既有记录；`snapshot` 额外返回 `branch_databases`。课程机接收由公网解析的 `database: {id, branch, source, source_branch}`，source 只能是受校验的分支库或旧实例 ID，不接受任意路径、连接或凭证。release metadata 固化配置，recover 不需要重传；回收不删除分支数据。
+`deploy` / `deploy_built` 可带 `database: {"branch":"feature", "source_branch":"main"}`，新自动控制器始终发送；PR base 来自可信 GitHub metadata，未开 PR 默认 main。可选 `source_owner` 是来源分支尚未升级时的旧预览引用（如 `pr:82`）。公网仅首次登记来源，后续请求沿用既有记录；`snapshot` 额外返回 `branch_databases`。课程机接收由公网解析的 `database: {id, branch, source, source_branch, copy_mode}`，source 只能是受校验的分支库或旧实例 ID，不接受任意路径、连接或凭证。release metadata 固化配置，recover 不需要重传；回收不删除分支数据。 `copy_mode` 由公网依据原有同分支引用选择：同分支旧预览升级为 `full`（所有业务数据及原 Agent 密钥），新分支为 `public`（仅公开数据、独立密钥）；公网部署请求不接受调用方指定此字段。旧记录缺少该字段时仍按 `public` 处理，已初始化库不重新导入；模式在来源记录和 release metadata 中固定。
 
 新实例 ID 为 `be-<40位代码SHA>-<32位分支摘要>`，旧 `be-SHA` 仍有效；lookup 返回的 `backend_sha` 和响应版本头仍为代码 SHA。所有客户端应使用返回的 `api_base_url`；网页及 APK 校验允许可选 32 位后缀，同时仍强制 SHA、origin、路径匹配。历史固定版本 URL 不变，固定代码不意味着数据库也冻结。来源、迁移失败与升级限制见[生命周期](README.md#预览数据库与启动门禁)。
 

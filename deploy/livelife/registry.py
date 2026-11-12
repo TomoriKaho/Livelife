@@ -135,7 +135,7 @@ class Registry:
                     specification = json.loads(saved[0])
                 else:
                     # Upgrade an existing preview before considering its base. This
-                    # preserves manually imported public events in that preview.
+                    # preserves all existing data when adopting that same preview.
                     old = db.execute("SELECT instance FROM refs WHERE owner=?", (key,)).fetchone()
                     if old is None and branch != "main":
                         old = db.execute("SELECT instance FROM refs WHERE owner=?", ("branch:" + branch_id(branch)[7:],)).fetchone()
@@ -153,7 +153,8 @@ class Registry:
                         if source is None:
                             raise ValueError("source branch database is not deployed; select an existing source")
                     specification = {"id": branch_id(branch), "branch": branch,
-                                     "source": source, "source_branch": branch if old else database.get("source_branch")}
+                                     "source": source, "source_branch": branch if old else database.get("source_branch"),
+                                     "copy_mode": "full" if old else "public"}
                     db.execute("INSERT INTO branch_databases VALUES (?, ?)", (branch, json.dumps(specification)))
             if created:
                 used = {r[0] for r in db.execute("SELECT port FROM instances UNION SELECT port FROM retirements")}

@@ -1,4 +1,4 @@
-"""Persistent branch databases; one sanitized snapshot, then forward migrations."""
+"""Persistent branch databases; full adoption or sanitized fork, then forward migrations."""
 from contextlib import contextmanager
 import fcntl
 import hashlib
@@ -45,13 +45,18 @@ def validate_request(value):
 
 
 def validate_specification(value):
-    if not isinstance(value, dict) or set(value) != {"id", "branch", "source", "source_branch"}:
+    if not isinstance(value, dict) or set(value) - {"copy_mode"} != {"id", "branch", "source", "source_branch"}:
         raise ValueError("invalid database specification")
     if value["id"] != branch_id(value["branch"]):
         raise ValueError("database branch identity mismatch")
     if value["source_branch"] is not None:
         branch_name(value["source_branch"])
+    mode = value.get("copy_mode", "public")
+    if mode not in ("public", "full"):
+        raise ValueError("invalid database copy mode")
     source = value["source"]
+    if mode == "full" and (source is None or value["source_branch"] != value["branch"]):
+        raise ValueError("full copy requires an existing database of the same branch")
     if source is None:
         if value["branch"] != "main":
             raise ValueError("only initial main can start empty")
@@ -89,26 +94,41 @@ def locked(path):
         yield
 
 
-def snapshot(source, archive):
+def snapshot(source, archive, *, full=False):
     # Use the very same PostgreSQL distribution as pgembed (no system PATH tool).
     from pgembed.postgres_server import POSTGRES_BIN_PATH
     uri = source.get_uri(database="postgres")
-    tables = subprocess.check_output([
-        str(POSTGRES_BIN_PATH / "psql"), uri, "-XAt", "-v", "ON_ERROR_STOP=1", "-c",
-        "SELECT json_agg(json_build_array(schemaname, tablename)) FROM pg_tables "
-        "WHERE schemaname NOT IN ('pg_catalog','information_schema')",
-    ], timeout=30)
     exclusions = []
-    for schema, table in json.loads(tables) or []:
-        if schema != "public" or table not in PUBLIC_TABLES:
-            # pg_dump patterns are identifiers, not SQL or shell fragments.
-            quoted = '.'.join('"' + x.replace('"', '""') + '"' for x in (schema, table))
-            exclusions.append("--exclude-table-data=" + quoted)
+    if not full:
+        tables = subprocess.check_output([
+            str(POSTGRES_BIN_PATH / "psql"), uri, "-XAt", "-v", "ON_ERROR_STOP=1", "-c",
+            "SELECT json_agg(json_build_array(schemaname, tablename)) FROM pg_tables "
+            "WHERE schemaname NOT IN ('pg_catalog','information_schema')",
+        ], timeout=30)
+        for schema, table in json.loads(tables) or []:
+            if schema != "public" or table not in PUBLIC_TABLES:
+                # pg_dump patterns are identifiers, not SQL or shell fragments.
+                quoted = '.'.join('"' + x.replace('"', '""') + '"' for x in (schema, table))
+                exclusions.append("--exclude-table-data=" + quoted)
     subprocess.run([
         str(POSTGRES_BIN_PATH / "pg_dump"), "--dbname", uri, "--format=custom",
-        "--no-owner", "--no-acl", "--no-blobs", *exclusions, "--file", str(archive),
+        "--no-owner", "--no-acl", *([] if full else ["--no-blobs"]), *exclusions, "--file", str(archive),
     ], check=True, timeout=120)
     archive.chmod(0o600)
+
+
+def copy_runtime_settings(source_state, staging):
+    # Existing signed Agent sessions must retain their key during same-branch
+    # adoption. Never regenerate it silently or copy it into a new branch.
+    path = source_state / "runtime.json"
+    if path.is_symlink() or not path.is_file() or path.stat().st_size > 16384:
+        raise ValueError("same-branch adoption requires valid original runtime settings")
+    settings = json.loads(path.read_text())
+    secret = settings.get("agent_session_secret")
+    if not isinstance(secret, str) or len(secret) < 32:
+        raise ValueError("invalid original Agent session secret")
+    atomic_json(staging / "runtime.json", {"agent_session_secret": secret})
+    (staging / "runtime.json").chmod(0o600)
 
 
 def restore(server, archive):
@@ -162,6 +182,10 @@ def prepared_database(root, specification, server_factory, migrate):
             if (staging / "postgres").exists():
                 with server_factory(staging / "postgres", cleanup_mode="delete"):
                     pass
+            settings = staging / "runtime.json"
+            if settings.is_symlink():
+                raise ValueError("temporary runtime settings must not be a symlink")
+            settings.unlink(missing_ok=True)
             archive = staging / "snapshot.dump"
             if archive.is_symlink():
                 raise ValueError("snapshot must not be a symlink")
@@ -173,7 +197,10 @@ def prepared_database(root, specification, server_factory, migrate):
                     if source_state == state:
                         raise ValueError("source resolves to target database")
                     with locked(source_state), server_factory(source_state / "postgres", cleanup_mode="stop") as server:
-                        snapshot(server, archive)
+                        full = specification.get("copy_mode", "public") == "full"
+                        if full:
+                            copy_runtime_settings(source_state, staging)
+                        snapshot(server, archive, full=full)
                 with server_factory(staging / "postgres", cleanup_mode="stop") as server:
                     if source is not None:
                         restore(server, archive)
