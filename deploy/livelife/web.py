@@ -199,7 +199,10 @@ class WebRegistry:
                 raise ValueError('staging is not deployed')
             commit = row[0]
         else:
-            commit = deployment['target'][3:]
+            row = db.execute('SELECT sha FROM instances WHERE id=?', (instance(deployment['target']),)).fetchone()
+            if row is None:
+                raise ValueError('paired backend is not deployed')
+            commit = row[0]
         path = '/api/staging/' if deployment['target'] == 'staging' else f"/api/versions/{deployment['target']}/"
         return {'schema_version': 1, 'environment': deployment['environment'],
                 'frontend_sha': manifest['frontend_sha'], 'build_id': manifest['build_id'],

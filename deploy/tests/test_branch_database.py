@@ -24,6 +24,38 @@ class BranchRuntime(Runtime):
         super().ensure(ident, commit, port, bundle)
 
 
+def published_web_configs():
+    """Real registry publication output shared with the frontend contract test."""
+    from test_web import artifact
+    with tempfile.TemporaryDirectory() as root:
+        runtime = BranchRuntime()
+        registry = Registry(root, runtime, 'https://preview.test')
+        registry.deploy('main', A, 1, b'package', database={'branch': 'main', 'source_branch': 'main'})
+        branch = registry.deploy('pr:2', B, 1, b'package', database={'branch': 'topic', 'source_branch': 'main'})
+        legacy = registry.deploy('pr:3', C, 1, b'package')
+        results = []
+        for index, (mode, target, expected) in enumerate([
+            ('own', branch['instance'], B),
+            ('fixed', branch['instance'], B),
+            ('fixed', legacy['instance'], C),
+            ('staging', 'staging', A),
+        ]):
+            pr = 40 + index
+            environment = 'branch-' + str(index) * 32
+            if mode == 'fixed':
+                registry.bind('frontend:' + str(pr), target, 2)
+            manifest, bundle = artifact(A, index + 1)
+            result = registry.web.publish(dict(
+                environment=environment, branch='web-' + str(index), pr=pr,
+                source_sha=A, generation=3, target=target, mode='staging' if mode == 'staging' else 'own',
+                manifest=manifest, bundle=bundle,
+            ))
+            config = runtime.routes[f'/preview/pr-{pr}/']['config']
+            results.append({'status': result['status'], 'expected_sha': expected,
+                            'target': target, 'mode': mode, 'config': config})
+        return results
+
+
 class BranchRegistryTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -34,6 +66,17 @@ class BranchRegistryTests(unittest.TestCase):
     def deploy(self, owner, branch, commit=A, generation=1, source='main'):
         return self.registry.deploy(owner, commit, generation, b'package', database={
             'branch': branch, 'source_branch': source})
+
+    def test_web_publication_uses_registered_sha_for_branch_and_legacy_instances(self):
+        for result in published_web_configs():
+            with self.subTest(mode=result['mode'], target=result['target']):
+                self.assertEqual(result['status'], 'ready')
+                config = result['config']
+                self.assertEqual(config['backend_sha'], result['expected_sha'])
+                self.assertEqual(len(config['backend_sha']), 40)
+                self.assertEqual(config['backend_mode'], result['mode'])
+                path = '/api/staging/' if result['mode'] == 'staging' else f"/api/versions/{result['target']}/"
+                self.assertEqual(config['api_base_url'], 'https://preview.test' + path)
 
     def test_same_commit_isolated_and_next_commit_reuses_branch_after_pr_open(self):
         main = self.deploy('main', 'main')
