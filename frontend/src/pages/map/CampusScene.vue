@@ -5,6 +5,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import campus from '../../assets/maps/campus.json';
 import { center, constrainToBoundary } from './geometry.mjs';
+import { accuracyRadius, buildingsAtDeviceLocation } from './device-location.mjs';
 import { venues } from './demo.js';
 import { initialView } from './view.mjs';
 import { mapPalette } from './map-palette.mjs';
@@ -15,20 +16,25 @@ import { pencilMaterial, pencilEdge } from './pencil-material.mjs';
 import { storeysInput, applyStoreysData, transitionModel, animateModel } from './storeys.mjs';
 import { createStoreysWorker } from './storeys-worker';
 
-const props = defineProps({ selected: String, floor: Number, activities: Array, nearbyBuildings: Array, nearbyActivities: Array, focusPoint: Array, userPosition: Array, focusInset: { type: Number, default: 0 } });
+const props = defineProps({ selected: String, floor: Number, activities: Array, nearbyBuildings: { type: Array, default: () => [] }, focusPoint: Array, deviceLocation: Object, focusInset: { type: Number, default: 0 } });
 const emit = defineEmits(['select', 'floor', 'ready']);
 const host = ref(null), failed = ref(false), loading = ref(true), labels = ref([]);
 const modelIdentity = ref(''), modelProgress = ref('0');
 const panTarget = ref(initialView.target.filter((_, i) => i !== 1).join(','));
-let renderer, scene, camera, controls, observer, frame, buildings = [], focusedModel, floorMeshes = [], tween, pointerStart, disposed = false, locationMarker, locationRing, contextBuildings, vegetation;
+let renderer, scene, camera, controls, observer, frame, buildings = [], focusedModel, floorMeshes = [], tween, pointerStart, disposed = false, locationMarker, locationRing, headingCone, contextBuildings, vegetation, centeredOnDevice = false, translucentLocationBuildings = [];
 let storeysWorker, needsRender = true;
+let locationBuildingMaterials = [];
 function invalidate() {
   needsRender = true;
   if (!disposed && !loading.value && !frame) frame = requestAnimationFrame(tick);
 }
 const meshes = new Map(), selectable = [], raycaster = new THREE.Raycaster();
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+// 水平圆锥位于蓝点朝向一侧，底部向尖端拱起以指示航向。
+const locationBlue = 0x4387bb, locationMarkerRadius = 4.5, headingConeRadius = 2.5, headingConeLength = 1.8, headingConeSurfaceGap = 1.3;
+const locationRoofOpacity = .16, locationFacadeOpacity = .04;
 const initialTarget = new THREE.Vector3(...initialView.target);
+const initialCamera = initialTarget.clone().add(new THREE.Vector3(...initialView.offset));
 function shape(points) { return footprintShape(points); }
 function surface(points, color, y) {
   const g = new THREE.ShapeGeometry(shape(points)); g.rotateX(-Math.PI / 2);
@@ -88,10 +94,12 @@ function expand() {
   const scenic = focusedModel?.userData.profile.scenic;
   for (const model of meshes.values()) model.visible = !building || scenic || model === focusedModel || !!model.userData.transition;
   contextBuildings.visible = vegetation.visible = !building || !!scenic;
-  locationMarker.visible = locationRing.visible = Boolean(props.userPosition) && !building;
+  const locationVisible = !building && Boolean(props.deviceLocation);
+  locationMarker.visible = locationRing.visible = locationVisible;
+  headingCone.visible = locationVisible && Number.isFinite(props.deviceLocation?.heading);
   renderer.shadowMap.needsUpdate = true; invalidate();
   // 收起只合拢模型；终止尚未完成的聚焦，保留当前相机与观察目标。
-  // 移到设备当前位置由显式 locate() 操作负责。
+  // 返回示例位置由显式 locate() 操作负责。
   if (!building) { tween = null; return; }
   const [cx, cz] = center(building.points);
   if (scenic) {
@@ -163,26 +171,92 @@ function tick(now) {
   needsRender = false;
   renderer.render(scene, camera);
   // DOM 标签跟随 3D 相机投影，键盘也能点击；不依赖纹理字体或外网资源。
-  labels.value = props.selected ? floorMeshes.map(f => ({ id: String(f.floor), floor: f.floor, title: `${f.floor}F${f.events.length ? ` · ${f.events[0].room}` : ''}`, count: f.events.length, ...coordinate(new THREE.Vector3(f.x, f.level.position.y + 2, f.z)) })) : (props.nearbyBuildings || []).map(place => {
-    const b = buildings.find(building => building.id === place.id), c = center(b.points);
-    return { id: b.id, title: b.name, count: (props.nearbyActivities || []).filter(a => a.building === b.id).length, ...coordinate(new THREE.Vector3(c[0], profileFor(b).height + 7, c[1])) };
+  labels.value = props.selected ? floorMeshes.map(f => ({ id: String(f.floor), floor: f.floor, title: `${f.floor}F${f.events.length ? ` · ${f.events[0].room}` : ''}`, count: f.events.length, ...coordinate(new THREE.Vector3(f.x, f.level.position.y + 2, f.z)) })) : [...new Set([...props.activities.map(a => a.building), ...props.nearbyBuildings.map(b => b.id)])].map(id => ({ id, label: buildings.find(b => b.id === id)?.name })).filter(v => v.label).map(v => {
+    const b = buildings.find(b => b.id === v.id), c = center(b.points);
+    return { id: v.id, title: v.label, count: props.activities.filter(a => a.building === v.id).length, ...coordinate(new THREE.Vector3(c[0], profileFor(b).height + 7, c[1])) };
   });
   if (moved || animating) invalidate();
 }
 function zoom(scale) { if (!camera) return; tween = null; camera.position.sub(controls.target).multiplyScalar(scale).add(controls.target); invalidate(); }
-function locate() {
-  if (!scene || !props.userPosition) return;
-  const target = new THREE.Vector3(props.userPosition[0], initialTarget.y, props.userPosition[1]);
-  fly(target.clone().add(new THREE.Vector3(...initialView.offset)), target);
+function headingGeometry() {
+  // 底面中心向尖端拱起，形成与蓝点球面曲率呼应的球冠（纵剖面为 ∩）。
+  const capRise = locationMarkerRadius - Math.sqrt(locationMarkerRadius ** 2 - headingConeRadius ** 2);
+  const base = Array.from({ length: 13 }, (_, index) => {
+    const radius = headingConeRadius * index / 12;
+    const height = capRise - (locationMarkerRadius - Math.sqrt(locationMarkerRadius ** 2 - radius ** 2));
+    return new THREE.Vector2(radius, height);
+  });
+  base.push(new THREE.Vector2(0, capRise + headingConeLength));
+  const geometry = new THREE.LatheGeometry(base, 32);
+  geometry.rotateX(-Math.PI / 2);
+  return geometry;
 }
-function updateLocation() {
-  if (!locationMarker || !locationRing) return;
-  if (props.userPosition) {
-    locationMarker.position.set(props.userPosition[0], 4.5, props.userPosition[1]);
-    locationRing.position.set(props.userPosition[0], .5, props.userPosition[1]);
+function restoreLocationBuilding() {
+  for (const { material, opacity, transparent, depthWrite } of locationBuildingMaterials) {
+    material.opacity = opacity;
+    material.transparent = transparent;
+    material.depthWrite = depthWrite;
+    material.needsUpdate = true;
   }
-  locationMarker.visible = locationRing.visible = Boolean(props.userPosition) && !props.selected;
+  locationBuildingMaterials = [];
+  translucentLocationBuildings = [];
+}
+function isRoofPart(object, model) {
+  for (let current = object; current && current !== model; current = current.parent)
+    if (current.userData.role === 'roof') return true;
+  return false;
+}
+function revealLocationOverlap(locationBuildings) {
+  const models = locationBuildings.map(building => meshes.get(building.id)).filter(Boolean);
+  if (models.length === translucentLocationBuildings.length && models.every((model, index) => model === translucentLocationBuildings[index])) return;
+  restoreLocationBuilding();
+  for (const model of models) {
+    model.traverse(object => {
+      const materials = object.material ? (Array.isArray(object.material) ? object.material : [object.material]) : [];
+      for (const material of materials) {
+        locationBuildingMaterials.push({ material, opacity: material.opacity, transparent: material.transparent, depthWrite: material.depthWrite });
+        // 楼顶仍保留弱轮廓；外墙、窗格和外立面描边几乎隐去，让定位标清晰可见。
+        material.opacity = Math.min(material.opacity, isRoofPart(object, model) ? locationRoofOpacity : locationFacadeOpacity);
+        material.transparent = true;
+        material.depthWrite = false;
+        material.needsUpdate = true;
+      }
+    });
+  }
+  translucentLocationBuildings = models;
+}
+function updateDeviceLocation() {
+  if (!locationMarker || !locationRing || !headingCone) return;
+  const location = props.deviceLocation;
+  revealLocationOverlap(location ? buildingsAtDeviceLocation(location.point, location.accuracy, buildings) : []);
+  const visible = Boolean(location);
+  locationMarker.visible = locationRing.visible = visible;
+  headingCone.visible = visible && Number.isFinite(location?.heading);
+  if (!location) return;
+  locationMarker.position.set(location.point[0], locationMarkerRadius, location.point[1]);
+  locationRing.position.set(location.point[0], .25, location.point[1]);
+  // Keep the unit-circle GPU geometry alive while foreground tracking emits
+  // frequent updates.  Recreating and disposing a geometry for every sample
+  // causes unnecessary WebGL resource churn on Android emulators.
+  const ringRadius = accuracyRadius(location.accuracy);
+  locationRing.scale.set(ringRadius, ringRadius, 1);
+  if (Number.isFinite(location.heading)) {
+    const headingRadians = location.heading * Math.PI / 180;
+    const surfaceOffset = locationMarkerRadius + headingConeSurfaceGap;
+    headingCone.position.set(
+      location.point[0] + Math.sin(headingRadians) * surfaceOffset,
+      locationMarkerRadius,
+      location.point[1] - Math.cos(headingRadians) * surfaceOffset,
+    );
+    headingCone.rotation.y = -headingRadians;
+  }
+  renderer.shadowMap.needsUpdate = true;
   invalidate();
+}
+function locate(point = props.deviceLocation?.point) {
+  if (!scene || !point) return;
+  const target = new THREE.Vector3(point[0], initialTarget.y, point[1]);
+  fly(target.clone().add(new THREE.Vector3(...initialView.offset)), target);
 }
 function focusPlace() {
   if (!scene || loading.value || !props.focusPoint) return;
@@ -201,12 +275,15 @@ function resizeViewport() {
 }
 watch(() => props.selected, expand);
 watch(() => props.focusPoint, focusPlace);
+watch(() => props.deviceLocation, (location, previous) => {
+  updateDeviceLocation();
+  const pointChanged = !previous || location?.point?.some((value, index) => value !== previous.point?.[index]);
+  if (!loading.value && location && pointChanged && !centeredOnDevice) { centeredOnDevice = true; locate(); }
+});
 watch(() => props.focusInset, resizeViewport);
 watch(() => props.floor, highlight);
 watch(() => props.activities, updateActivities);
-watch(() => props.nearbyBuildings, invalidate);
-watch(() => props.nearbyActivities, invalidate);
-watch(() => props.userPosition, updateLocation);
+watch(() => props.nearbyBuildings, updateActivities);
 onMounted(async () => {
   try {
     let sliceStarted = performance.now();
@@ -216,15 +293,13 @@ onMounted(async () => {
       sliceStarted = performance.now();
     }
     scene = new THREE.Scene(); scene.background = new THREE.Color(mapPalette.sky); scene.fog = new THREE.Fog(mapPalette.sky, 650, 2000);
-    const overviewTarget = !props.selected && !props.focusPoint && props.userPosition
-      ? new THREE.Vector3(props.userPosition[0], initialTarget.y, props.userPosition[1]) : initialTarget;
-    camera = new THREE.PerspectiveCamera(42, 1, 1, 7000); camera.position.copy(overviewTarget.clone().add(new THREE.Vector3(...initialView.offset)));
+    camera = new THREE.PerspectiveCamera(42, 1, 1, 7000); camera.position.copy(initialCamera);
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false }); renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor(mapPalette.sky); renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.NoToneMapping;
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap; renderer.shadowMap.autoUpdate = false;
     renderer.domElement.setAttribute('aria-label', '燕园三维地图，拖动旋转，双指缩放。建筑也可通过下方列表选择。');
     host.value.prepend(renderer.domElement);
-    controls = new OrbitControls(camera, renderer.domElement); controls.target.copy(overviewTarget); controls.enableDamping = true;
+    controls = new OrbitControls(camera, renderer.domElement); controls.target.copy(initialTarget); controls.enableDamping = true;
     controls.minDistance = 65; controls.maxDistance = 2350; controls.minPolarAngle = .25; controls.maxPolarAngle = Math.PI * .46; controls.enablePan = true;
     controls.screenSpacePanning = false;
     controls.addEventListener('start', () => { tween = null; });
@@ -284,9 +359,10 @@ onMounted(async () => {
       contextGeometry.forEach(g => g.dispose()); pencilEdge(contextBuildings, { opacity: .18, threshold: 42 }); scene.add(contextBuildings);
     }
     vegetation = createVegetation(campus); scene.add(vegetation); renderer.shadowMap.needsUpdate = true;
-    locationMarker = new THREE.Mesh(new THREE.SphereGeometry(4.5, 16, 10), new THREE.MeshBasicMaterial({ color: 0x4387bb })); scene.add(locationMarker);
-    locationRing = new THREE.Mesh(new THREE.RingGeometry(7, 10, 32), new THREE.MeshBasicMaterial({ color: 0x77a5c6, transparent: true, opacity: .5, side: THREE.DoubleSide })); locationRing.rotation.x = -Math.PI / 2; scene.add(locationRing);
-    updateLocation();
+    locationMarker = new THREE.Mesh(new THREE.SphereGeometry(locationMarkerRadius, 16, 10), new THREE.MeshBasicMaterial({ color: locationBlue })); locationMarker.visible = false; scene.add(locationMarker);
+    locationRing = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshBasicMaterial({ color: 0x77a5c6, transparent: true, opacity: .28, side: THREE.DoubleSide, depthWrite: false })); locationRing.rotation.x = -Math.PI / 2; locationRing.visible = false; scene.add(locationRing);
+    headingCone = new THREE.Mesh(headingGeometry(), new THREE.MeshBasicMaterial({ color: locationBlue })); headingCone.castShadow = true; headingCone.visible = false; scene.add(headingCone);
+    updateDeviceLocation();
     observer = new ResizeObserver(resizeViewport); observer.observe(host.value);
     renderer.domElement.addEventListener('pointerdown', e => { pointerStart = { x: e.clientX, y: e.clientY, time: performance.now() }; });
     renderer.domElement.addEventListener('pointerup', hit);
@@ -295,13 +371,14 @@ onMounted(async () => {
     loading.value = false;
     if (props.selected) expand();
     else if (props.focusPoint) focusPlace();
+    else if (props.deviceLocation) { centeredOnDevice = true; locate(); }
     emit('ready'); invalidate();
   } catch (error) {
     storeysWorker?.dispose(); storeysWorker = null;
     if (!disposed) { console.error('校园 3D 地图初始化失败', error); failed.value = true; loading.value = false; }
   }
 });
-onBeforeUnmount(() => { disposed = true; storeysWorker?.dispose(); cancelAnimationFrame(frame); observer?.disconnect(); controls?.dispose(); if (scene) disposeGroup(scene); renderer?.dispose(); });
+onBeforeUnmount(() => { disposed = true; restoreLocationBuilding(); storeysWorker?.dispose(); cancelAnimationFrame(frame); observer?.disconnect(); controls?.dispose(); if (scene) disposeGroup(scene); renderer?.dispose(); });
 </script>
 
 <template>
@@ -309,7 +386,7 @@ onBeforeUnmount(() => { disposed = true; storeysWorker?.dispose(); cancelAnimati
     <div v-if="loading" class="scene-message" role="status">正在展开燕园…</div>
     <div v-if="failed" class="scene-message" role="alert">此设备暂不能绘制 3D 地图。<br>仍可用下方建筑列表查看楼层活动。</div>
     <template v-if="!failed">
-      <div v-for="label in labels" v-show="label.visible" :key="label.id" class="label-anchor" :style="{ left: `${label.x}px`, top: `${label.y}px` }">
+      <div v-for="label in labels" v-show="label.visible && (selected || label.count || nearbyBuildings.some(b => b.id === label.id))" :key="label.id" class="label-anchor" :style="{ left: `${label.x}px`, top: `${label.y}px` }">
         <button v-sketch v-memo="[label.id, label.title, label.count, selected, floor]" class="scene-label sketch" :class="{ 'floor-label': selected, current: selected && label.floor === floor }" :data-pencil="selected ? (label.floor === floor ? 'blue' : undefined) : 'yellow'" :aria-label="selected ? `查看 ${label.floor} 楼` : `展开${label.title}`" :aria-pressed="selected ? label.floor === floor : undefined" @click="selected ? emit('floor', label.floor) : emit('select', label.id)">
           <span>{{ label.title }}</span><small v-if="label.count && !selected">{{ label.count }}</small>
         </button>

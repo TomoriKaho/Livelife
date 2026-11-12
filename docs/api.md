@@ -13,13 +13,13 @@
 | 连通性检查 | [连通性检查 API](../backend/app/api/demo/API.md) | 客户端与后端连通性测试 |
 | 健康检查 | [健康检查 API](../backend/app/api/health/API.md) | 进程存活及数据库就绪检查 |
 | 个人资料 | [个人资料 API](../backend/app/api/profile/API.md) | 兴趣标签目录、当前用户资料读取与更新 |
-| 地图活动 | [地图活动查询 API](../backend/app/api/locations/API.md) | 公开活动的三日分页查询；客户端按建筑关联 |
+| 地图活动 | [地图活动查询 API](../backend/app/api/locations/API.md) | 信息系统统一完成地点关联、时间/关键词/半径筛选，返回地图结构化结果 |
 | Agent 对话 | [Agent API](../backend/app/api/agent/API.md) | 账户 Bearer + 对话凭证、所有权、用户额度与 SSE |
 | 账户与认证 | [账户与认证 API](../backend/app/api/accounts/API.md) | 校园邮箱验证、注册、登录、会话与用户身份 |
 
 此表按模块提供入口，具体端点、请求和响应由对应模块契约及 OpenAPI 维护。新业务模块确定后，在此表增加模块契约链接；不为尚未确定的接口预建目录或空文档。
 
-内部服务契约：[通用信息系统](../backend/app/services/content/README.md)提供采集输入、汇总和统一查询的 Python 接口，供其他后端模块调用；没有注册 HTTP 路由，因此不出现在上述 OpenAPI 中。字段、时间范围、幂等和 Session 使用规则由该模块说明与 Pydantic 模型维护。
+[通用信息系统](../backend/app/services/content/README.md)提供采集输入、汇总和统一查询的 Python 接口。标准地图接口消费其统一地点与筛选结果。地点解析和 Agent 分块等额外 HTTP 示例由[独立本地 Demo](../backend/app/services/content/README.md#运行本地-demo)提供，对应 OpenAPI 随 Demo 启动。
 
 ## 共享约定
 
