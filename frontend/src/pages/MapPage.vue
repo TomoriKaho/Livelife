@@ -16,8 +16,7 @@ import campus from '../assets/maps/campus.json';
 import { isMapAttributionVisible } from './map/map-drawer-layout.mjs';
 import { activities, categories, filters, venues } from './map/demo.js';
 import { useNearbyActivities } from './map/useNearbyActivities';
-import { contains } from './map/geometry.mjs';
-import { normalizeHeading, orientationHeading, orientationSensorHeading, preserveHeading, toDeviceMapLocation } from './map/device-location.mjs';
+import { isWithinCampusLocationRange, normalizeHeading, orientationHeading, orientationSensorHeading, preserveHeading, toDeviceMapLocation } from './map/device-location.mjs';
 import { currentLocation, locationTrackingState, refreshCurrentLocation, restartLocationTracking } from '../platform/location-tracker';
 import { watchAndroidDeviceHeading } from '../platform/device-heading';
 import { profileFor } from './map/model-profiles.mjs';
@@ -245,7 +244,7 @@ function select(id) {
 function syncDeviceLocation(location) {
   if (!location) { deviceLocation.value = null; outsideCampus.value = false; return; }
   const nextLocation = toDeviceMapLocation(location);
-  if (!nextLocation || !contains(nextLocation.point, campus.boundary)) {
+  if (!nextLocation || !isWithinCampusLocationRange(nextLocation.point, campus.boundary)) {
     deviceLocation.value = null;
     outsideCampus.value = true;
     return;

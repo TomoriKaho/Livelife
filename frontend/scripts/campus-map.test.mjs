@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { contains, clipRoad, project, origin, constrainToBoundary } from '../src/pages/map/geometry.mjs';
-import { accuracyRadius, buildingsAtDeviceLocation, normalizeHeading, orientationHeading, orientationSensorHeading, preserveHeading, toDeviceMapLocation } from '../src/pages/map/device-location.mjs';
+import { accuracyRadius, buildingsAtDeviceLocation, campusLocationBoundaryTolerance, isWithinCampusLocationRange, normalizeHeading, orientationHeading, orientationSensorHeading, preserveHeading, toDeviceMapLocation } from '../src/pages/map/device-location.mjs';
 import { activities, venues, demoLocation } from '../src/pages/map/demo.js';
 import { initialView } from '../src/pages/map/view.mjs';
 import { joinRings, insideFootprint } from '../src/pages/map/rings.mjs';
@@ -128,6 +128,14 @@ test('拖动中心按凹形校界约束，边界及校内位置保持稳定', ()
   assert.deepEqual(constrainToBoundary([5, 6], u), [7, 6]);
   assert.deepEqual(constrainToBoundary([12, 12], u), [10, 10]);
   assert.deepEqual(constrainToBoundary([7, 6], u), [7, 6]);
+});
+test('设备定位在校界外的有限米制容差内仍可显示，不放宽地图交互校界', () => {
+  const square = [[0, 0], [100, 0], [100, 100], [0, 100]];
+  assert.equal(isWithinCampusLocationRange([100, 50], square), true, '校界上的点应可显示');
+  assert.equal(isWithinCampusLocationRange([100 + campusLocationBoundaryTolerance, 50], square), true, '容差边缘应可显示');
+  assert.equal(isWithinCampusLocationRange([100 + campusLocationBoundaryTolerance + .1, 50], square), false, '超过容差仍是校外');
+  assert.equal(isWithinCampusLocationRange([50, 50], square), true, '校内点保持可显示');
+  assert.equal(contains([100 + campusLocationBoundaryTolerance, 50], square), false, '严格校界判断不得改变');
 });
 test('未取得设备位置时初始相机使用校内示例位置，视角低于原校园全景', () => {
   assert.deepEqual(initialView.target, [demoLocation[0], 0, demoLocation[1]]);
