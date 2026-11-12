@@ -177,3 +177,77 @@ test('still exposes a permission denial after a previously successful fix', () =
     { location: current, state: 'permission-denied' },
   );
 });
+
+async function onAndroid(run) {
+  const { Capacitor } = await import('@capacitor/core');
+  const original = Capacitor.getPlatform;
+  Capacitor.getPlatform = () => 'android';
+  try { await run(); } finally { Capacitor.getPlatform = original; }
+}
+
+test('Android allows a bounded recent cache and GPS cold start while preserving caller overrides', async () => {
+  await onAndroid(async () => {
+    const api = provider(); await getCurrentLocation({}, api);
+    assert.equal(api.calls[1].timeout, 60000);
+    assert.equal(api.calls[1].maximumAge, 15000);
+    assert.equal(api.calls[1].enableLocationFallback, true);
+    const custom = provider(); await getCurrentLocation({ timeout: 2000, maximumAge: 0 }, custom);
+    assert.equal(custom.calls[1].timeout, 2000); assert.equal(custom.calls[1].maximumAge, 0);
+  });
+});
+
+test('Android one-shot precise timeout retries balanced once, preserving position accuracy and timestamp', async () => {
+  await onAndroid(async () => {
+    const api = provider(), options = [];
+    api.getCurrentPosition = async option => { options.push(option); if (options.length === 1) throw {code: 'OS-PLUG-GLOC-0010'}; return position; };
+    const result = await getCurrentLocation({}, api);
+    assert.equal(result.status, 'success'); assert.equal(result.location.accuracy, 12.5); assert.equal(result.location.timestamp, position.timestamp);
+    assert.deepEqual(options.map(o=>[o.enableHighAccuracy,o.timeout]), [[true,60000],[false,15000]]);
+  });
+});
+
+test('Android never retries permission denial or already-balanced requests', async () => {
+  await onAndroid(async () => {
+    for (const [options,error] of [[{}, {code:1}], [{enableHighAccuracy:false},{code:3}]]) {
+      const api=provider({error}); assert.equal((await getCurrentLocation(options,api)).status,'error');
+      assert.equal(api.calls.filter(c=>typeof c==='object').length,1);
+    }
+  });
+});
+
+async function fallbackWatch(run) {
+  await onAndroid(async () => {
+    const updates=[],calls=[];let callback,resolve,reject;
+    const api={...provider(),async watchPosition(options,listener){callback=listener;return 'native';},async clearWatch(value){calls.push(value);},
+      getCurrentPosition(options){calls.push(options);return new Promise((yes,no)=>{resolve=yes;reject=no;});}};
+    const stop=await watchCurrentLocation(value=>updates.push(value),{},api);
+    await run({updates,calls,stop,emit:(p,e)=>callback(p,e),resolve:p=>resolve(p),reject:e=>reject(e)});
+    await stop();
+  });
+}
+
+test('Android watch supplements first timeout once, suppresses duplicate timeouts, and keeps precise updates', async () => {
+  await fallbackWatch(async ({updates,calls,emit,resolve})=>{
+    emit(null,{code:3});emit(null,{code:3});assert.equal(calls.length,1);assert.equal(calls[0].enableHighAccuracy,false);assert.deepEqual(updates,[]);
+    resolve(position);await new Promise(r=>setImmediate(r));assert.equal(updates[0].status,'success');
+    emit({...position,timestamp:position.timestamp+1000});assert.equal(updates.length,2);
+    emit(null,{code:3});assert.equal(calls.length,1);
+  });
+});
+
+test('Android stopped watches ignore in-flight balanced positions and callbacks', async () => {
+  await fallbackWatch(async ({updates,stop,emit,resolve})=>{
+    emit(null,{code:3});await stop();resolve(position);emit(position);await new Promise(r=>setImmediate(r));assert.deepEqual(updates,[]);
+  });
+});
+
+test('Android fallback cannot hide a permission revocation and surfaces a bounded failure', async () => {
+  await fallbackWatch(async ({updates,emit,resolve})=>{
+    emit(null,{code:3});emit(null,{code:1});resolve(position);await new Promise(r=>setImmediate(r));
+    assert.deepEqual(updates,[{status:'error',error:'permission-denied'}]);
+  });
+  await fallbackWatch(async ({updates,emit,reject})=>{
+    emit(null,{code:3});reject({code:3});await new Promise(r=>setImmediate(r));
+    assert.deepEqual(updates,[{status:'error',error:'timeout'}]);
+  });
+});

@@ -93,7 +93,7 @@ const locationHint = computed(() => ({
   locating: '正在获取当前位置…',
   'permission-denied': '未获得位置权限；点击定位按钮可再次尝试。',
   unavailable: '暂时无法获取位置；请检查定位服务后重试。',
-  timeout: '定位超时；点击定位按钮重试。',
+  timeout: '定位超时；请确认系统定位已开启，在信号较好处点击定位按钮重试。',
   unsupported: '此设备暂不支持定位。',
   'outside-campus': '当前位置不在燕园离线地图范围内。',
 }[locationState.value] || ''));

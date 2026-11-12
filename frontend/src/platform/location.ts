@@ -18,7 +18,7 @@ export type LocationResult =
   | { status: 'error'; error: LocationErrorCode };
 
 export type CurrentLocationOptions = Pick<PositionOptions,
-  'enableHighAccuracy' | 'timeout' | 'maximumAge' | 'minimumUpdateInterval' | 'interval'>;
+  'enableHighAccuracy' | 'timeout' | 'maximumAge' | 'minimumUpdateInterval' | 'interval' | 'enableLocationFallback'>;
 
 type PositionLike = Pick<Position, 'timestamp'> & {
   coords: Pick<Position['coords'], 'latitude' | 'longitude' | 'accuracy'> & { heading?: number | null };
@@ -38,7 +38,7 @@ export interface LocationWatchProvider extends LocationProvider {
 
 export type LocationWatchStop = () => Promise<void>;
 
-export const defaultCurrentLocationOptions: Required<CurrentLocationOptions> = {
+export const defaultCurrentLocationOptions: CurrentLocationOptions = {
   // The map needs a usable on-campus point. On Android this also requests the
   // fine-location alias instead of accepting a roughly 100 m fused fix.
   enableHighAccuracy: true,
@@ -49,6 +49,30 @@ export const defaultCurrentLocationOptions: Required<CurrentLocationOptions> = {
   minimumUpdateInterval: 1_000,
   interval: 1_000,
 };
+
+/** GPS cold starts on Android can outlast the web timeout, especially indoors. */
+export function resolveLocationOptions(options: CurrentLocationOptions = {}, platform = Capacitor.getPlatform()): PositionOptions {
+  return { ...defaultCurrentLocationOptions,
+    ...(platform === 'android' ? { timeout: 60_000, maximumAge: 15_000, enableLocationFallback: true } : {}),
+    ...options };
+}
+
+function canRetryBalanced(error: unknown, options: PositionOptions) {
+  return Capacitor.getPlatform() === 'android' && options.enableHighAccuracy
+    && ['timeout', 'unavailable'].includes(mapError(error));
+}
+
+function balancedOptions(options: PositionOptions): PositionOptions {
+  return { ...options, enableHighAccuracy: false, timeout: Math.min(options.timeout ?? 15_000, 15_000) };
+}
+
+async function requestPosition(provider: LocationProvider, options: PositionOptions): Promise<PositionLike> {
+  try { return await provider.getCurrentPosition(options); }
+  catch (error) {
+    if (!canRetryBalanced(error, options)) throw error;
+    return provider.getCurrentPosition(balancedOptions(options));
+  }
+}
 
 function permissionGranted(status: PermissionStatus) {
   return status.location === 'granted' || status.coarseLocation === 'granted';
@@ -123,7 +147,7 @@ export async function getCurrentLocation(
     if (!permissionGranted(permission)) permission = await provider.requestPermissions();
     if (!permissionGranted(permission)) return { status: 'error', error: 'permission-denied' };
 
-    const position = await provider.getCurrentPosition({ ...defaultCurrentLocationOptions, ...options });
+    const position = await requestPosition(provider, resolveLocationOptions(options));
     const location = toLocation(position);
     return location ? { status: 'success', location } : { status: 'error', error: 'unavailable' };
   } catch (error) {
@@ -148,7 +172,7 @@ export async function watchCurrentLocation(
     return async () => {};
   }
 
-  const positionOptions = { ...defaultCurrentLocationOptions, ...options };
+  const positionOptions = resolveLocationOptions(options);
   try {
     // Capacitor's web wrapper delegates to this same browser API but cannot
     // request permission itself. Calling the standard watcher prompts as needed.
@@ -168,10 +192,28 @@ export async function watchCurrentLocation(
       return async () => {};
     }
 
+    let active = true, balancedAttempted = false, balancedPending = false, receivedPosition = false;
+    let fallbackGeneration = 0;
     const id = await provider.watchPosition(positionOptions, (position, error) => {
+      if (!active) return;
+      // Keep the precise watch alive: a late GPS fix should still improve the
+      // marker. Only one bounded balanced request is made per watch lifetime.
+      if (position) receivedPosition = true;
+      if (!position && ['permission-denied', 'unsupported'].includes(mapError(error))) fallbackGeneration++;
+      if (!position && balancedPending && canRetryBalanced(error, positionOptions)) return;
+      if (!position && !receivedPosition && !balancedAttempted && canRetryBalanced(error, positionOptions)) {
+        balancedAttempted = true;
+        balancedPending = true;
+        const attempt = fallbackGeneration;
+        void provider.getCurrentPosition(balancedOptions(positionOptions)).then(
+          fallback => { if (active && attempt === fallbackGeneration) reportWatchedPosition(listener, fallback); },
+          failure => { if (active && attempt === fallbackGeneration) reportWatchedPosition(listener, null, failure); },
+        ).finally(() => { balancedPending = false; });
+        return;
+      }
       reportWatchedPosition(listener, position, error);
     });
-    return async () => { await provider.clearWatch({ id }); };
+    return async () => { if (!active) return; active = false; await provider.clearWatch({ id }); };
   } catch (error) {
     listener({ status: 'error', error: mapError(error) });
     return async () => {};

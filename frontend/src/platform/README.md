@@ -16,6 +16,14 @@
 
 自动测试：`node --test scripts/location.test.mjs`。网页手动验证可在 Chrome DevTools 的 **Sensors** 设置模拟坐标：从任一非地图页首次进入应用时确认授权请求，修改模拟坐标后再进入地图，检查蓝点与精度圈采用最新位置；停留在地图时再次修改坐标，蓝点应更新且不会抢走用户手动调整的视角，点击定位按钮才重新居中。另验证拒绝、超时或不可用提示。Android 持续监听仍须在真实设备上验收。
 
+### Android 首次定位超时排查
+
+Android 默认等待精确位置最多 60 秒，允许使用最近 15 秒的系统缓存；网页仍使用 10 秒超时、不接受缓存。调用方显式传入的超时与缓存期限优先。插件 8.2.4 已默认启用 `enableLocationFallback`，适配层也明确启用：Google 定位服务检查失败时回退到 Android 系统定位，并不意味着任何手机、室内环境都能取得位置。[插件选项说明](https://github.com/ionic-team/capacitor-geolocation#positionoptions)指出仅 GPS 可用时首次获取可能更慢。
+
+Android 单次精确请求超时或不可用时，再尝试一次最多 15 秒的平衡精度请求；持续监听在首次失败后也只补一次该请求，并保留原精确监听接收迟到的 GPS 更新。补充请求等待期间重复超时不会启动更多请求；停止监听或权限被撤销后不采纳迟到的补充结果。权限拒绝、不支持和已选择平衡精度的请求不会再次降级。平衡精度结果仍使用系统实际的 WGS-84 坐标、时间戳和精度，可能无法区分校园边界内外；不会用演示点或过期位置冒充定位成功。
+
+OPPO 等真机复测：确认系统位置服务开启，分别授予精确/粗略位置，首次冷启动等待上述获取窗口；在室内 Wi-Fi/移动网络和室外开阔处分别检查蓝点及精度圈。关闭系统位置服务、拒绝权限时应显示错误；恢复后点击定位按钮应重新获取。取得位置后离开再进入地图、切换前后台及手动居中，确认没有重复监听。记录设备、Android/WebView、APK 版本、网络/信号环境和等待时间；不要记录真实经纬度。模拟器注入坐标和替身测试不能证明 OPPO 的实际 GPS/网络定位已恢复。
+
 ## 设备朝向
 
 [device-heading.ts](device-heading.ts) 是地图朝向标的唯一平台入口。网页进入地图即优先启动 `AbsoluteOrientationSensor`（60Hz、`screen` 参考系），它会主动读取已有的当前姿态；不支持、未授权或被策略阻止时回退到 `deviceorientationabsolute` / `deviceorientation`。各网页读数以 `requestAnimationFrame` 合并同一帧中的更新，细微转向不会被阈值过滤。Android 通过本地 `DeviceHeadingPlugin`（`android/app/src/main/java/io/github/tomorikaho/livelife/dev/DeviceHeadingPlugin.java`）读取 `TYPE_ROTATION_VECTOR`，按当前显示旋转重映射后发送 0–360° 的磁北航向。传感器不可用或原生桥加载失败时，自动回退到 WebView 事件；在首个航向读数到来前，地图方向标默认指向北方，之后实时替换为传感器读数。
