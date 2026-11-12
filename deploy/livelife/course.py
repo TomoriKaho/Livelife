@@ -15,6 +15,7 @@ import urllib.request
 
 from .common import atomic_json, instance, sha, read_request
 from .supervisor import Supervisor
+from .branch_database import release_id, validate_specification
 
 MAX_BUNDLE = 20 * 1024 * 1024
 
@@ -156,7 +157,12 @@ class Course:
         if op != "ensure":
             raise ValueError("unsupported course operation")
         commit = sha(request["sha"])
-        if ident != f"be-{commit}":
+        supplied = request.get("database")
+        existing = directory / "release.json"
+        database = supplied or (json.loads(existing.read_text()).get("database") if existing.exists() else None)
+        if database is not None:
+            validate_specification(database)
+        if ident != (release_id(commit, database["branch"]) if database else f"be-{commit}"):
             raise ValueError("instance/SHA mismatch")
         port = self.port(request["port"])
         metadata = directory / "release.json"
@@ -195,7 +201,15 @@ class Course:
             atomic_json(metadata, {"sha": commit, "port": port, "runtime_mode": mode})
         elif any(json.loads(metadata.read_text()).get(k) != v for k, v in {'sha': commit, 'port': port}.items()):
             raise ValueError("immutable release metadata mismatch")
-        mode = runtime_mode(json.loads(metadata.read_text()))
+        installed = json.loads(metadata.read_text())
+        if database is not None:
+            if installed.get("database") not in (None, database):
+                raise ValueError("immutable database assignment mismatch")
+            if runtime_mode(installed) != "postgres-v1":
+                raise ValueError("branch databases require postgres-v1")
+            if "database" not in installed:
+                atomic_json(metadata, {**installed, "database": database})
+        mode = runtime_mode(installed)
         if mode == "postgres-v1":
             self.supervisor.configure(ident,
                 f"{self.root}/control-venv/bin/python -m livelife.backend_runtime "
@@ -211,7 +225,7 @@ class Course:
                 f"--host 127.0.0.1 --port {port} --root-path /api/versions/{ident}",
                 directory / "backend", f'LIVELIFE_BACKEND_SHA="{commit}"')
         require_database = mode == "postgres-v1"
-        check_health(port, timeout=180, require_database=require_database)
+        check_health(port, timeout=600 if database else 180, require_database=require_database)
         return {"status": "ready", "sha": commit, "port": port,
                 "runtime_mode": mode, "require_database": require_database}
 

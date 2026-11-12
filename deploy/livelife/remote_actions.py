@@ -174,6 +174,7 @@ class RemoteActions:
                     "sha": commit,
                     "generation": generation,
                     "job": result["id"],
+                    "database": self.database_request(run["head_branch"], context.get("source_branch", "main")),
                 }
             )
             self.summary(deployed)

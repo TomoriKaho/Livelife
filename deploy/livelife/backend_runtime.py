@@ -1,6 +1,7 @@
-"""Supervised preview API with a private, persistent PostgreSQL per source SHA."""
+"""Supervised preview API with persistent branch or legacy version PostgreSQL."""
 
 import argparse
+from contextlib import ExitStack
 import json
 import os
 import secrets
@@ -10,6 +11,7 @@ import sys
 from pathlib import Path
 
 from .common import atomic_json, instance
+from .branch_database import prepared_database
 from .mail_config import load as mail_environment
 from .model_config import load as model_environment
 
@@ -79,7 +81,7 @@ def runtime_environment(url, ident, state):
     env.update(
         DATABASE_URL=url,
         AGENT_SESSION_SECRET=secret,
-        LIVELIFE_BACKEND_SHA=ident[3:],
+        LIVELIFE_BACKEND_SHA=ident[3:43],
         PYTHONUNBUFFERED="1",
         AUTH_TEST_LOGIN_ENABLED="false",
     )
@@ -114,14 +116,16 @@ def run(root, ident, port, *, server_factory=None):
     if not python.is_file() or not (backend / "app/main.py").is_file():
         raise RuntimeError("tested preview backend is missing")
     mail = mail_environment(root)
-    model = model_environment(root, ident)
+    model = model_environment(root, ident[:43])
     if server_factory is None:
         if os.name != "posix" or os.geteuid() == 0:
             raise RuntimeError("preview PostgreSQL requires an ordinary Linux user")
         from pgembed import get_server
 
         server_factory = get_server
-    state = state_directory(root, ident)
+    metadata = release / "release.json"
+    database = json.loads(metadata.read_text()).get("database") if metadata.exists() else None
+    state = None if database else state_directory(root, ident)
     process = None
     previous_handlers = {}
 
@@ -133,12 +137,21 @@ def run(root, ident, port, *, server_factory=None):
     try:
         for number in (signal.SIGTERM, signal.SIGINT):
             previous_handlers[number] = signal.signal(number, terminate)
-        with server_factory(state / "postgres", cleanup_mode="stop") as server:
+        def migrate(server, directory):
+            url = server.get_uri(database="postgres").replace("postgresql://", "postgresql+psycopg://", 1)
+            prepare_schema(python, backend, runtime_environment(url, ident, directory))
+
+        with ExitStack() as stack:
+            if database:
+                server, state = stack.enter_context(prepared_database(root, database, server_factory, migrate))
+            else:
+                server = stack.enter_context(server_factory(state / "postgres", cleanup_mode="stop"))
             url = server.get_uri(database="postgres").replace(
                 "postgresql://", "postgresql+psycopg://", 1
             )
             env = runtime_environment(url, ident, state)
-            prepare_schema(python, backend, env)
+            if not database:
+                prepare_schema(python, backend, env)
             process = subprocess.Popen(
                 [
                     str(python),

@@ -10,7 +10,7 @@
 | 课程机统一检查与网页自动预览 | 已接入，LIVELIFE_FRONTEND_ENABLED=true；网页/API 无额外预览 key | [main 网页运行](https://github.com/TomoriKaho/Livelife/actions/runs/37613254277)、[PR 网页运行](https://github.com/TomoriKaho/Livelife/actions/runs/37613465083) |
 | npm 安装备用源 | 课程机已安装 `b12be87` 的构建模块并重启 worker；真实下载故障触发换源仍待验收 | [PR #69 服务器启用记录](https://github.com/TomoriKaho/Livelife/pull/69)、[安装与排查教程](../deploy/BUILDING.md#维护者安装与排查教程) |
 | Android 测试包签名与分发 | 工程和自动链路已接入，LIVELIFE_ANDROID_ENABLED=true | [PR #45](https://github.com/TomoriKaho/Livelife/pull/45)、[实际分发运行](https://github.com/TomoriKaho/Livelife/actions/runs/37734472930) |
-| 预览 PostgreSQL、迁移及数据库发布门禁 | 仓库已提供；服务器控制程序升级、依赖安装与线上验收尚待完成 | [启用与恢复教程](../deploy/README.md#预览数据库与启动门禁) |
+| 分支持久 PostgreSQL、首次快照及迁移发布门禁 | 仓库已提供；服务器控制程序升级、依赖安装与线上验收尚待完成 | [启用与恢复教程](../deploy/README.md#预览数据库与启动门禁) |
 | 账户与 Agent 权限收紧 | 新代码默认及启动器关闭空白登录；需合并配套前后端、更新课程机启动器并重启，不能据本地检查认定线上已启用 | [账户/Agent 迁移](../backend/app/api/agent/API.md#登录失效与迁移)、[启动器操作](../deploy/README.md#预览数据库与启动门禁) |
 | GPT 测试模型 | 支持高推理参数及私有配置的固定 SHA 启用；具体已启用版本及真实调用结果记录在接入 PR | [测试模型配置](../deploy/README.md#测试模型配置) |
 | 正式发布与 iOS | 正式发布工作流和 iOS 工程尚未提供 | [正式发布约定](#客户端模式与后续正式发布约定) |
@@ -39,7 +39,7 @@ main 是代码分支，staging 是测试环境。生产不会随 main 自动发�
 
 后端启动会自动加载当前 checkout 的 `backend/.env`，但不覆盖进程环境中的值；位置、样例和重启要求见[后端配置说明](../backend/README.md#使用已有数据库或部署入口)。本机机密文件不随 Git 源码构建上传。自动部署另支持课程机固定的私有 SMTP 配置：一次设置后，所有采用新启动器的 main、分支及 PR API 在启动时读取，构建任务不接收授权码。配置位置、受信启动器更新、现有实例重启与收信验收见[测试邮箱配置](../deploy/README.md#自动部署的测试邮箱配置)。这是整个测试环境共用邮箱的显式开关；代码合并不代表服务器已配置或邮件已送达，当前仍待服务器安装和真实收信验证。
 
-新的预览启动器可自动准备每 SHA 独立的 PostgreSQL、执行迁移并核对业务表，启动后同时检查 hello 和数据库就绪状态。此能力需要先更新两台服务器上已安装的受信控制程序及课程机依赖，**仅重跑 Actions 不会启用**。现有入口在完成升级前仍可能 hello 成功而账号接口返回 `Database is not configured`。更新与验收步骤、同 SHA 保留数据和不同 SHA 从空库开始的限制集中见[预览数据库与启动门禁](../deploy/README.md#预览数据库与启动门禁)。SMTP 需额外完成上述服务器配置，真实模型凭证仍未自动注入。
+新的预览启动器可为每分支复制一次来源快照，后续提交复用 PostgreSQL、执行迁移并核对业务表，启动后同时检查 hello 和数据库就绪状态。此能力需要先更新两台服务器上已安装的受信控制程序及课程机依赖，**仅重跑 Actions 不会启用**。现有入口在完成升级前仍可能 hello 成功而账号接口返回 `Database is not configured`。更新与验收步骤、分支来源、公开数据复制、旧版本兼容及迁移回滚限制集中见[预览数据库与启动门禁](../deploy/README.md#预览数据库与启动门禁)。SMTP 需额外完成上述服务器配置，真实模型凭证仍未自动注入。
 
 新 SHA 检查并部署成功后才切换入口；仍被其他客户端固定绑定的旧版本继续保留。实例、端口和兼容产物由[部署工具](../deploy/README.md)维护。
 
@@ -76,10 +76,10 @@ https://192.144.253.40/api/versions/be-<完整40位SHA>/   不可变版本
 
 1. 确认目标后端 PR 已部署最新提交，例如 #40。
 2. **Actions → Preview environments → Run workflow**，operation 选 `bind`，frontend_pr 填 `41`，backend_target 填 `pr-40`。
-3. 工具检查两个 PR 属于本仓库且打开，解析 #40 的成功部署，保存 `frontend:41 → be-完整SHA`。最新提交尚未部署时，报错并保留原绑定。
+3. 工具检查两个 PR 属于本仓库且打开，解析 #40 的成功部署，保存 `frontend:41 → 返回的后端实例ID`。最新提交尚未部署时，报错并保留原绑定。
 4. 返回 `api_base_url`、`api_path`、`backend_sha`、`frontend_sha`。网页开关启用后控制器立即更新运行时配置；未启用时只记录后端绑定。
 
-#40 更新后，#41 仍连接原 SHA。需要切换时重新 bind；target 改成 `staging` 恢复默认，填 `be-完整SHA` 可选择仍存在的特定版本。#27 更新前端时先 lookup 原绑定，保留后端 SHA 并同步前端 SHA，不能每次推送都覆盖成 staging。
+#40 更新后，#41 仍连接原 SHA。需要切换时重新 bind；target 改成 `staging` 恢复默认，填写返回的完整实例 ID（旧 `be-SHA` 或新 `be-SHA-分支摘要`）可选择仍存在的特定版本。#27 更新前端时先 lookup 原绑定，保留后端 SHA 并同步前端 SHA，不能每次推送都覆盖成 staging。
 
 ## 构建结果怎么判断
 

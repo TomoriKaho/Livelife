@@ -52,7 +52,7 @@ def sha(value):
 
 
 def instance(value):
-    if not isinstance(value, str) or not re.fullmatch(r"be-[0-9a-f]{40}", value):
+    if not isinstance(value, str) or not re.fullmatch(r"be-[0-9a-f]{40}(?:-[0-9a-f]{32})?", value):
         raise ValueError("invalid backend instance ID")
     return value
 

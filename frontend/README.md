@@ -111,6 +111,8 @@ npm run preview
 
 `build:production` 自动检查输出 JS/CSS/HTML，包括异步 chunk，确认测试组件和 hello 测试请求代码的标记均不在产物中。浏览器刷新后进入帮助页，仍有正常帮助内容，接口测试、内部版本信息和测试按钮均不出现。每次构建会替换 dist；测试报告必须记录模式和提交 SHA，不能把旧浏览器页或上一次构建当成新结果。
 
+预览配置的固定后端 URL 允许 `be-<40位提交SHA>` 和 `be-<40位提交SHA>-<32位分支摘要>` 两种实例标识，网页与 Android 均校验 origin、路径与提交 SHA。应使用控制器返回的 `api_base_url`，不能从 `backend_sha` 自行拼接地址。分支数据库生命周期与兼容要求见[部署控制契约](../deploy/CONTROL_API.md#后端控制接口)。
+
 普通 `npm run build` 默认使用 production。现有课程机构建在进程环境设置 `VITE_WEB_PREVIEW=true`，Vite 因此默认选择 preview，保留旧构建命令兼容；显式 `--mode` 优先。`VITE_WEB_PREVIEW` 控制网关资源路径与 runtime-config.json，`VITE_INTERNAL_TOOLS` 控制用户可见的内部工具，二者不是同一开关。仅选择 preview mode 不会强制读取服务器配置，便于本地静态联调。
 
 临时隐藏本地工具可运行 `VITE_INTERNAL_TOOLS=false npm run dev`，停止后再次正常启动恢复默认。构建时值为空、拼错或 production 模式强行开启工具会报错，修正配置后重试。不要在通用 `.env` 固定启用工具，避免影响其他模式。

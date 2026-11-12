@@ -36,7 +36,7 @@ def dispatch(registry, request):
     if op in ('build_submit', 'build_status'):
         return registry.runtime.rpc(request)
     if op == 'deploy_built':
-        return registry.deploy(request['owner'], request['sha'], request['generation'], None, request['job'])
+        return registry.deploy(request['owner'], request['sha'], request['generation'], None, request['job'], database=request.get('database'))
     if op == 'web_publish_built':
         result = registry.runtime.rpc({'op': 'build_artifact', 'job': request['job'], 'sha': request['source_sha']})
         manifest = result['manifest']
@@ -62,7 +62,7 @@ def dispatch(registry, request):
             bundle = base64.b64decode(request["bundle"], validate=True)
             if len(bundle) > 20 * 1024 * 1024 or hashlib.sha256(bundle).hexdigest() != request["digest"]:
                 raise ValueError("invalid bundle digest/size")
-        return registry.deploy(request["owner"], request["sha"], request["generation"], bundle)
+        return registry.deploy(request["owner"], request["sha"], request["generation"], bundle, database=request.get("database"))
     if op == "bind":
         return registry.bind(request["owner"], request["target"], request["generation"], request.get("frontend_sha"))
     if op == "release":

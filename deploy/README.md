@@ -29,17 +29,19 @@
 
 ## 预览数据库与启动门禁
 
-`livelife/backend_runtime.py` 是课程机的受信启动器，由项目 Supervisor 管理。每个 `be-完整SHA` 使用独立 PostgreSQL 集群，路径为 `/home/group5/livelife/databases/be-完整SHA/postgres/`，使用该集群内的 `postgres` 数据库。同 SHA 的 PR、网页与 APK 引用共享这份测试数据；不同 SHA 不共享表、账号或迁移，即使来自同一分支。新提交从空库开始，不自动复制上一版数据；这不是正式用户数据库的跨版本升级方案。
+采用 `postgres-v1` 的新自动部署使用**每分支持久数据库**。课程机目录为 `databases/branch-<分支名SHA256前32位>/postgres/`，公网注册表的 `branch_databases` 保存分支与来源。API 实例仍按代码版本保留，ID 为 `be-<40位提交SHA>-<32位分支摘要>`；不同分支即使提交相同也有独立实例、端口与数据库。网页、APK 和 PR 别名指向返回的实例地址，不能自行用提交 SHA 拼地址。旧 `be-SHA` 地址与无 database 字段的历史部署继续按原规则恢复。
 
-启动器使用控制虚拟环境固定的 `pgembed==0.2.0` 中的 PostgreSQL 程序，无需 Docker、sudo 或系统数据库服务。Linux 数据库只监听本地 Unix socket，数据父目录权限 0700；目录必须位于支持 Unix 权限的 Linux 文件系统，不能使用 WSL 的 Windows 挂载盘。这是同一课程机账号下的测试隔离，不是抵御恶意分支代码的安全沙箱，不用于正式数据或正式凭证。业务依赖及已测试 venv 的复用方式不变，不把 PostgreSQL 程序塞进后端产物。
+首次部署的来源规则：优先复制该 PR／分支已经部署的旧版本（保留过去手动导入的公开活动）；没有旧预览时，复制 PR 的 base 分支当前数据库。未开 PR 的分支默认来源 main；Git 本身没有可靠的“从哪个分支创建”记录，需要其他来源时应在首次部署前设置 PR base，或通过受信部署请求传 `database.source_branch`。已有分支的来源不随改 base、创建/关闭 PR 或新 commit 改变。来源没有数据库时失败，只有首次 main 允许空库初始化。
 
-启动顺序为：准备或复用集群 → 为该 API 子进程设置 `DATABASE_URL` → 用该版本的已测试 Python 执行 `alembic upgrade head` → 比较数据库 revision 与源码 heads 并实际查询所有 ORM 表的列 → 启动 Uvicorn。迁移、表结构验证或连接失败均拒绝候选发布；API 启动后，课程机和公网隧道探针同时要求 hello 与 `/health/ready` 成功，不能只凭 hello 报告可用。准备阶段最长等待 180 秒，具体失败查看该实例 Supervisor 日志。
+快照取于**首次部署执行复制时**，不是 Git 建分支时。启动器在来源迁移锁内用 pgembed 同发行版的 `pg_dump` 获取一致性逻辑快照，再用 `pg_restore --single-transaction` 恢复到私有临时集群；不直接复制运行中的 PostgreSQL 文件。复制完整 schema、Alembic revision，以及公开数据白名单 `information_items`、`information_places`、`information_place_aliases`。账号、验证码、令牌、聊天、个人资料及未知表的行不复制，避免新表默认泄露私人数据；新分支须重新注册测试账号，已有服务器的专用测试账号初始化扩展应由维护者核对后保留，不从来源复制密码。新增公开数据表时须评审后加入白名单。
 
-停止、回收后端实例时先关闭 API、再关闭本次持有的数据库，保留整个 `databases/be-SHA/` 目录；同 SHA 重建和恢复时重新迁移校验并复用数据。Supervisor 给该启动器 30 秒正常退出窗口。强制终止后的数据库由下次启动复用并恢复。数据库目录不跟随 releases、构建任务或 venv 删除，也不在自动回收中删除；维护者需监测磁盘，只有确认该 SHA 无引用、进程停止且完成备份后才手动归档或删除。
+首次复制、迁移和 ORM 列检查全部成功后才保留分支集群并写 `initialized.json`（来源与时间）；失败不发布候选，临时集群可重试。极端中断若留下有 postgres 而无 marker 的目标目录，会拒绝覆盖，需要维护者检查备份和日志后恢复，不能直接删库重试。首次复制成功后，后续 commit 仅复用本分支集群、串行执行 `alembic upgrade head`、检查 revision/ORM 列，再启动 API。并发迁移使用跨进程文件锁；来源迁移与复制也互斥。数据库与启动器由固定 `pgembed==0.2.0` 管理，Linux 只监听 Unix socket，无需 Docker/root。业务 venv 仍来自经过测试的 release。
 
-同一目录内 `runtime.json` 保存自动生成的测试 Agent 会话密钥（权限 0600），重启后复用。启动器仅向业务子进程传入必要运行环境和本版本测试连接，不继承部署凭证、SMTP 或模型密钥；公开实例固定设置 `AUTH_TEST_LOGIN_ENABLED=false`，不继承控制进程的开启值。邮件可按下节显式配置团队测试邮箱；模型凭证需按下节明确启用固定版本。正式环境不要使用该启动器。
+新分支启动探针最多等待 600 秒，旧模式保持 180 秒；课程机和公网同时要求 hello 与 `/health/ready` 成功。失败保留旧路由，但**迁移已经提交的结构变更不会因后续发布失败而自动撤销**。同一分支的新旧固定代码版本共享该分支数据库，必须采用向后兼容的扩展式迁移。旧代码不认识已有 revision 时恢复会失败；不能把固定代码 URL 当成数据库时间快照。破坏性迁移须单独协调旧引用、备份和恢复，不自动 downgrade。
 
-更新空白登录策略须在课程机替换受信 `control/livelife/backend_runtime.py` 并逐个重启引用中的 API 实例；仅推 PR 不会更新常驻启动器。先备份模块、确认实例名称与端口；重启后核对进程环境为 false、空白登录返回 403、普通账号可登录、hello/ready 成功。升级前已签发的测试账号令牌还需新版账户校验才能拒绝；旧版本实例及固定 APK 不应注入模型凭证。账户与 Agent 的迁移兼容说明见[契约](../backend/app/api/agent/API.md#登录失效与迁移)。
+合并分支只合并代码：目标分支升级自己的数据库，源分支测试数据不自动合并。停止 API 时释放本进程的 pgembed handle；其他版本仍使用该分支库时数据库继续运行。回收 release、关闭 PR、分支引用到期都不删除数据库及来源记录；重开同名分支会复用原数据。维护者需监测磁盘，确认全部引用和进程停止、备份完成后才能手动归档或删除。
+
+数据目录权限 0700，`runtime.json` 中 Agent 会话密钥权限 0600，同分支跨 commit 复用，新分支重新生成。API 仅接收必要环境、该分支连接和显式配置的测试 SMTP/模型凭证；`LIVELIFE_BACKEND_SHA` 始终是真实提交 SHA，不含分支摘要。`AUTH_TEST_LOGIN_ENABLED=false` 保持既有行为。此方案是同一课程机账号内的测试隔离，不是抵御恶意代码的安全沙箱，也不用于正式数据或正式凭证。
 
 ### 自动部署的测试邮箱配置
 
@@ -107,13 +109,13 @@ task_instance=be-替换为目标的完整40位SHA
 
 ### 首次启用与现有服务器升级
 
-新增安装由下节 `bootstrap-course.sh` 安装 Supervisor 与固定 pgembed。已有服务器需要维护者从**已评审版本**更新课程机 `/home/group5/livelife/control/livelife/` 下的 `backend_runtime.py`、`course.py`、`supervisor.py`，以及公网机 `/opt/livelife/control/livelife/` 下的 `course.py`、`runtime.py`。课程机另执行：
+新增安装由下节 `bootstrap-course.sh` 安装 Supervisor 与固定 pgembed。已有服务器需要维护者从**已评审版本**更新课程机 `/home/group5/livelife/control/livelife/` 下的 `backend_runtime.py`、`branch_database.py`、`common.py`、`course.py`、`supervisor.py`，以及公网机 `/opt/livelife/control/livelife/` 下的 `branch_database.py`、`common.py`、`registry.py`、`manager.py`、`course.py`、`runtime.py`、`android_build.py`。课程机另执行：
 
 ```bash
 /home/group5/livelife/control-venv/bin/python -m pip install 'pgembed==0.2.0'
 ```
 
-更新前备份上述控制文件，保留既有 config、注册表、凭证和其他服务。不要将未评审分支中的控制程序直接装入服务器。工作流控制代码仍从 main 执行，所以只 push 业务分支或重跑构建不会更新这些已安装的控制文件。
+更新前备份上述控制文件、注册表和数据库，保留既有 config、凭证和其他服务；逐项比对服务器已有的测试账号初始化、模型配置扩展，不能整包覆盖丢失这些配置。先合并客户端地址校验和 Actions 控制代码，让要切换的业务分支同步这一版本，再安装两机受信控制程序并重跑目标构建。旧前端无法识别新分支后缀，因此不能只升级服务器后让旧客户端使用新 URL。不要将未评审分支中的控制程序直接装入服务器。工作流控制代码仍从 main 执行，所以只 push 业务分支或重跑构建不会更新这些已安装的控制文件。
 
 运行模式按 release 固定。新安装只在产物包含 `backend/preview-runtime.json` 且内容为 `{"runtime_mode":"postgres-v1"}` 时启用数据库，并把模式写入 `release.json`；无标记的历史 SHA 重装和 smoke fixture 仍使用 `legacy`。未知模式或损坏标记拒绝启动。已有 `release.json` 缺少 `runtime_mode` 时始终视为 legacy，不因源码有迁移或标记而自动升级；recover 保留其既有 Supervisor 配置，只尝试启动原进程，不创建数据库或密钥。缺失配置时重建原 Uvicorn 启动方式。legacy 只检查 hello，postgres-v1 同时检查数据库 readiness。
 
@@ -121,7 +123,7 @@ task_instance=be-替换为目标的完整40位SHA
 
 目标升级失败的回退：停止该目标数据库启动器，恢复备份的 release metadata 和 Supervisor 配置，执行项目 Supervisor 的 reread/update 并启动原目标，验证原 hello 和路由。不能只删除 metadata 模式字段而保留数据库启动命令。保留数据库目录及备份，不自动删除或降级数据库；回退只恢复原运行方式，并不会给旧 API 增加数据库能力。
 
-验证当前入口的 hello、`/health/ready`（应为 `database: connected`），再用空白登录验证 `/auth/me`、退出及同 SHA 重启恢复。仓库提供启动器不代表线上已启用，证据见[当前实施状态](../docs/deployment.md#当前实施状态)。回退控制代码时保留仍被运行实例使用的启动器模块和 pgembed；不自动降级或删除数据库。
+验证当前入口的 hello、`/health/ready`（应为 `database: connected`），再用正常测试账号验证 `/auth/me`、退出、同分支新提交保留数据、新分支公开数据复制以及私人数据未复制。仓库提供启动器不代表线上已启用，证据见[当前实施状态](../docs/deployment.md#当前实施状态)。回退控制代码时保留仍被运行实例使用的启动器模块和 pgembed；不自动降级或删除数据库。
 
 ## 维护者初始化教程
 
@@ -292,7 +294,7 @@ uv 参数参考：[锁文件与导出教程](https://docs.astral.sh/uv/concepts/
 - 网关失败：`journalctl -u livelife-gateway.service` 与 gateway/logs；更新先 nginx -t，失败恢复原路由。
 - 清理失败：数据库保留待清理占用，网络恢复后 collect；不直接删数据库或按端口杀未知进程。
 - 证书失败：`journalctl -u livelife-renew-ip.service`，修复 443/ACME 条件后手动 renew。
-- 业务回滚：重新部署确认的旧 SHA；预览复用仍保留的该 SHA 独立数据库，不对其他版本降级或复制数据。正式数据库的回滚策略需另行确认，细节见[预览数据恢复限制](#预览数据库与启动门禁)。
+- 业务回滚：重新部署确认的旧 SHA；新分支模式继续使用该分支数据库，不自动降级。须先确认旧代码与当前 schema 兼容；历史无分支配置的 release 仍使用原 SHA 数据库。正式数据库的回滚策略需另行确认，细节见[预览数据恢复限制](#预览数据库与启动门禁)。
 
 ### PR 评论返回 403 时如何处理
 

@@ -25,6 +25,14 @@ LIVELIFE_PREVIEW_DB_INTEGRATION=1 <测试venv>/bin/python -m unittest discover -
 
 该测试只用临时目录、可用的预览端口及真实 PostgreSQL：验证空白登录、正常停止后数据库退出、同 SHA 重启保留账号/令牌，以及迁移记录正确但 ORM 列缺失时拒绝启动 API。普通测试另覆盖不同 SHA 的目录/密钥隔离、迁移失败清理、hello 成功但数据库未就绪时拒绝发布，以及回收 release 后保留数据。不要使用正式数据库或 root 用户运行；Linux 完整部署测试不能用 Windows 的部分测试结果替代。
 
+`test_branch_database.py` 覆盖分支与 PR 引用变更、相同 SHA 跨分支隔离、旧预览公开数据继承、缺少来源拒绝、失败保留引用。独立临时目录中的真实 PostgreSQL 测试可在已安装 pgembed 和后端依赖的普通用户环境执行：
+
+```bash
+LIVELIFE_BRANCH_DB_INTEGRATION=1 <测试venv>/bin/python -m unittest discover -s deploy/tests -p test_branch_database.py -v
+```
+
+真实测试验证逻辑快照、公开活动保留、账号和未知表不复制、分支写入隔离、再次部署不重复制、表结构前向升级、初始化失败重试，以及仓库实际 Alembic 迁移与 ORM 列检查。使用临时集群，无需服务器凭证，不代表 Linux Supervisor/隧道或线上已验收。网页/APK 地址回归使用 frontend 下 `node --test scripts/runtime-config.test.mjs scripts/android-config.test.mjs`，同时验证旧地址、新分支后缀及错误 SHA 拒绝。
+
 ## 回归范围
 
 按修改范围选取相关回归；安装依赖和完整检查命令见上节。
