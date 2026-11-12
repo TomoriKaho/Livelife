@@ -15,18 +15,20 @@ import mascot from '../assets/mascot.png';
 import campus from '../assets/maps/campus.json';
 import { isMapAttributionVisible } from './map/map-drawer-layout.mjs';
 import { activities, categories, filters, venues } from './map/demo.js';
-import { fetchMapActivities } from '../api/map-activities';
-import { activityFirstBuildings, buildingDistance, campusPoint, matchActivities } from './map/nearby.mjs';
+import { useNearbyActivities } from './map/useNearbyActivities';
+import { contains } from './map/geometry.mjs';
+import { normalizeHeading, orientationHeading, orientationSensorHeading, preserveHeading, toDeviceMapLocation } from './map/device-location.mjs';
+import { currentLocation, locationTrackingState, refreshCurrentLocation, restartLocationTracking } from '../platform/location-tracker';
+import { watchAndroidDeviceHeading } from '../platform/device-heading';
 import { profileFor } from './map/model-profiles.mjs';
 const CampusScene = defineAsyncComponent(() => import('./map/CampusScene.vue'));
 const CampusPlan = defineAsyncComponent(() => import('./map/CampusPlan.vue'));
 const route = useRoute(), focusPoint = ref(null), routedActivity = ref(null);
-const mode = ref('3d'), filter = ref('all'), search = ref(''), selected = ref(null), floor = ref(2), scene = ref(null), located = ref(false), detail = ref(null);
-const userPoint = ref(null), locationState = ref('loading'), locationMessage = ref('正在获取位置…');
-const activityState = ref('loading'), activityMessage = ref('正在查询活动…'), liveRecords = ref([]), liveDetail = ref(null);
-const currentTime = ref(Date.now());
-let locationWatch = null, activityController = null, dayTimer = null;
-let mapReady = false, initialCenterPending = true;
+const mode = ref('3d'), filter = ref('all'), search = ref(''), selected = ref(null), floor = ref(2), scene = ref(null), detail = ref(null);
+const deviceLocation = ref(null), outsideCampus = ref(false);
+const liveDetail = ref(null);
+const { items: matchedActivities, buildings: nearbyBuildings, radius, keyword, today, state: activityState, message: activityMessage, retry: refreshActivities } = useNearbyActivities();
+const nearbyActivities = matchedActivities;
 const drawer = ref(null), mapFocusInset = ref(180), drawerOcclusion = ref(180), drawerExpandedHeight = ref(540);
 const mapAttributionVisible = computed(() => isMapAttributionVisible(drawerOcclusion.value, drawerExpandedHeight.value));
 function onDrawerLayout({ occlusionHeight, expandedHeight }) {
@@ -34,20 +36,13 @@ function onDrawerLayout({ occlusionHeight, expandedHeight }) {
   drawerExpandedHeight.value = expandedHeight;
 }
 const planView = ref(null);
-let drawerBeforeSelection = null;
+let drawerBeforeSelection = null, latestOrientation = null, latestNativeHeading = null, latestWebSensorHeading = null, deviceHeadingFrame = 0;
+let stopNativeHeading = null, headingListenerGeneration = 0;
+let centerAfterNextLocation = false;
+let centeredOnDevice = false;
+let webOrientationSensor = null;
+
 const campusActivities = activities.filter(item => item.building);
-const matchedActivities = computed(() => matchActivities(liveRecords.value.filter(record =>
-  record.end_at ? Date.parse(record.end_at) > currentTime.value : Date.parse(record.start_at) >= currentTime.value
-), campus.buildings));
-const nearbyBuildings = computed(() => userPoint.value
-  ? activityFirstBuildings(campus.buildings, userPoint.value, matchedActivities.value) : []);
-const nearbyActivities = computed(() => {
-  const nearbyIds = new Set(nearbyBuildings.value.map(item => item.id));
-  return matchedActivities.value.filter(item => nearbyIds.has(item.building)).map(item => ({
-    ...item,
-    distance: nearbyBuildings.value.find(building => building.id === item.building)?.distance ?? 0,
-  }));
-});
 const currentLiveActivities = computed(() => matchedActivities.value.filter(item => item.building === selected.value));
 const visibleActivities = computed(() => campusActivities.filter(item => filter.value === 'all' || item.category === filter.value));
 const currentBuilding = computed(() => {
@@ -58,9 +53,8 @@ const currentBuilding = computed(() => {
 });
 const floorActivities = computed(() => visibleActivities.value.filter(a => a.building === selected.value && a.floor === floor.value));
 const buildingWalk = computed(() => {
-  if (!userPoint.value || !selected.value) return '当前位置不可用';
-  const building = campus.buildings.find(item => item.id === selected.value);
-  return building ? `直线距离约 ${Math.round(buildingDistance(userPoint.value, building))} 米` : '当前位置不可用';
+  const building = nearbyBuildings.value.find(item => item.id === selected.value);
+  return building ? `直线距离约 ${Math.round(building.distance)} 米` : '建筑位置见地图';
 });
 const results = computed(() => {
   const value = search.value.trim().toLowerCase();
@@ -95,46 +89,108 @@ function roomLabel(activity) { return /^\d/.test(activity.room) ? `${currentBuil
 function startTime(time) { return time.split('–')[0]; }
 function liveTime(value) { return new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value)); }
 function liveTimeRange(item) { return `${liveTime(item.start_at)}${item.end_at ? `–${liveTime(item.end_at)}` : ' 开始'}`; }
-async function refreshActivities() {
-  activityController?.abort();
-  const controller = new AbortController(); activityController = controller;
-  currentTime.value = Date.now();
-  activityState.value = 'loading'; activityMessage.value = '正在查询活动…'; liveRecords.value = [];
+const locationState = computed(() => outsideCampus.value ? 'outside-campus' : locationTrackingState.value);
+const locationHint = computed(() => ({
+  locating: '正在获取当前位置…',
+  'permission-denied': '未获得位置权限；点击定位按钮可再次尝试。',
+  unavailable: '暂时无法获取位置；请检查定位服务后重试。',
+  timeout: '定位超时；点击定位按钮重试。',
+  unsupported: '此设备暂不支持定位。',
+  'outside-campus': '当前位置不在燕园离线地图范围内。',
+}[locationState.value] || ''));
+function screenAngle() {
+  const angle = window.screen?.orientation?.angle;
+  return Number.isFinite(angle) ? angle : 0;
+}
+function applyDeviceHeading() {
+  if (!deviceLocation.value) return;
+  // A web deviceorientation event has no synchronous "current value" API.
+  // Keep north visible from the moment location is available, then replace it
+  // on every live native/web sensor event.
+  const heading = latestNativeHeading ?? latestWebSensorHeading ?? orientationHeading(latestOrientation, screenAngle()) ?? 0;
+  const previous = deviceLocation.value.heading;
+  if (previous === heading) return;
+  deviceLocation.value = { ...deviceLocation.value, heading };
+}
+function scheduleDeviceHeading() {
+  // 传感器可在一帧内给出多次读数；合并到下一次绘制，既不丢弃细微转向，也不重复重画地图。
+  if (deviceHeadingFrame) return;
+  deviceHeadingFrame = requestAnimationFrame(() => {
+    deviceHeadingFrame = 0;
+    applyDeviceHeading();
+  });
+}
+function updateDeviceHeading(event) {
+  latestOrientation = { alpha: event.alpha, webkitCompassHeading: event.webkitCompassHeading };
+  scheduleDeviceHeading();
+}
+function updateNativeDeviceHeading(heading) {
+  latestNativeHeading = normalizeHeading(heading);
+  scheduleDeviceHeading();
+}
+function startAbsoluteWebHeadingSensor() {
+  // The legacy DeviceOrientationEvent has no getter for a pre-existing value:
+  // it only reports when the browser dispatches its next event. The Generic
+  // Sensor API actively samples the current physical pose as soon as started.
+  const Sensor = Reflect.get(window, 'AbsoluteOrientationSensor');
+  if (typeof Sensor !== 'function') return;
   try {
-    const records = await fetchMapActivities(controller.signal);
-    if (controller.signal.aborted) return;
-    liveRecords.value = records;
-    activityState.value = 'ready'; activityMessage.value = '';
-  } catch (error) {
-    if (controller.signal.aborted) return;
-    activityState.value = 'error';
-    activityMessage.value = error instanceof Error ? error.message : '附近活动查询失败，请重试。';
+    const sensor = new Sensor({ frequency: 60, referenceFrame: 'screen' });
+    sensor.addEventListener('reading', () => {
+      latestWebSensorHeading = orientationSensorHeading(sensor.quaternion);
+      scheduleDeviceHeading();
+    });
+    sensor.addEventListener('error', () => { /* legacy deviceorientation remains the fallback */ });
+    sensor.start();
+    webOrientationSensor = sensor;
+  } catch { /* unsupported, blocked, or unavailable sensor falls back below */ }
+}
+function startWebHeadingListener() {
+  latestNativeHeading = latestWebSensorHeading = null;
+  window.addEventListener('deviceorientationabsolute', updateDeviceHeading, true);
+  window.addEventListener('deviceorientation', updateDeviceHeading, true);
+  window.addEventListener('orientationchange', scheduleDeviceHeading, true);
+  window.screen?.orientation?.addEventListener('change', scheduleDeviceHeading);
+  startAbsoluteWebHeadingSensor();
+  // Start immediately rather than waiting for the first physical rotation.
+  scheduleDeviceHeading();
+}
+function stopWebHeadingListener() {
+  window.removeEventListener('deviceorientationabsolute', updateDeviceHeading, true);
+  window.removeEventListener('deviceorientation', updateDeviceHeading, true);
+  window.removeEventListener('orientationchange', scheduleDeviceHeading, true);
+  window.screen?.orientation?.removeEventListener('change', scheduleDeviceHeading);
+  try { webOrientationSensor?.stop(); } catch { /* sensor may already be stopped */ }
+  webOrientationSensor = null;
+  latestWebSensorHeading = null;
+}
+async function startDeviceHeadingListener() {
+  const generation = ++headingListenerGeneration;
+  const stop = await watchAndroidDeviceHeading(updateNativeDeviceHeading);
+  if (generation !== headingListenerGeneration) {
+    await stop?.();
+    return;
   }
+  if (stop) {
+    stopNativeHeading = stop;
+    return;
+  }
+  startWebHeadingListener();
 }
-function startLocation() {
-  if (locationWatch !== null) navigator.geolocation.clearWatch(locationWatch);
-  userPoint.value = null; locationState.value = 'loading'; locationMessage.value = '正在获取位置…';
-  if (!navigator.geolocation) { locationState.value = 'error'; locationMessage.value = '当前设备不支持定位，请在安全连接下打开。'; return; }
-  locationWatch = navigator.geolocation.watchPosition(position => {
-    if (position.coords.accuracy > 150) { userPoint.value = null; locationState.value = 'error'; locationMessage.value = '定位精度不足，请移到信号更好的位置后重试。'; return; }
-    const point = campusPoint(position.coords.longitude, position.coords.latitude, campus.boundary);
-    if (!point) { userPoint.value = null; locationState.value = 'outside'; locationMessage.value = '当前位置在燕园地图范围外，无法显示附近建筑。'; return; }
-    userPoint.value = point; locationState.value = 'ready'; locationMessage.value = '';
-  }, error => {
-    userPoint.value = null;
-    locationState.value = error.code === 1 ? 'denied' : 'error';
-    locationMessage.value = error.code === 1 ? '未获得定位权限，请在系统设置中允许定位。' : '定位暂时不可用，请稍后重试。';
-  }, { enableHighAccuracy: true, maximumAge: 15_000, timeout: 15_000 });
+function stopDeviceHeadingListener() {
+  headingListenerGeneration++;
+  stopWebHeadingListener();
+  const stop = stopNativeHeading;
+  stopNativeHeading = null;
+  latestNativeHeading = null;
+  void stop?.();
 }
-async function centerOnFirstLocation() {
-  if (!initialCenterPending || !mapReady || !userPoint.value || selected.value || focusPoint.value || route.query.activity) return;
-  await nextTick();
-  if (!initialCenterPending || !mapReady || !userPoint.value || selected.value || focusPoint.value || route.query.activity || !scene.value?.locate) return;
-  scene.value.locate();
-  initialCenterPending = false;
-  located.value = true;
+async function requestDeviceHeadingPermission() {
+  const orientationEvent = globalThis.DeviceOrientationEvent;
+  const requestPermission = orientationEvent && Reflect.get(orientationEvent, 'requestPermission');
+  if (typeof requestPermission !== 'function') return;
+  try { await requestPermission.call(orientationEvent); } catch { /* requires an explicit user gesture on some browsers */ }
 }
-function onMapReady() { mapReady = true; centerOnFirstLocation(); }
 function openLiveActivity(activity) {
   if (!selected.value) drawerBeforeSelection = drawer.value?.getState() ?? 'middle';
   selected.value = activity.building; liveDetail.value = activity; detail.value = null;
@@ -168,7 +224,7 @@ const removeBackHandler = registerBackHandler(() => {
   if (search.value) { search.value = ''; return true; }
   return false;
 });
-onBeforeUnmount(removeBackHandler);
+onBeforeUnmount(() => { removeBackHandler(); cancelAnimationFrame(deviceHeadingFrame); stopDeviceHeadingListener(); });
 function closeDetail() {
   detail.value = null;
   drawer.value?.setState(drawer.value?.getState() || 'expanded');
@@ -186,17 +242,59 @@ function select(id) {
   selected.value = id; search.value = '';
   floor.value = visibleActivities.value.find(a => a.building === id)?.floor || 1;
 }
-async function locate() {
-  if (!userPoint.value) { startLocation(); return; }
-  // 复位只调整地图，保留操作当下的抽屉档位；结束本次建筑探索记录。
-  drawerBeforeSelection = null; initialCenterPending = false; located.value = true; selected.value = null; detail.value = null; liveDetail.value = null; focusPoint.value = null; routedActivity.value = null;
-  await nextTick(); scene.value?.locate();
+function syncDeviceLocation(location) {
+  if (!location) { deviceLocation.value = null; outsideCampus.value = false; return; }
+  const nextLocation = toDeviceMapLocation(location);
+  if (!nextLocation || !contains(nextLocation.point, campus.boundary)) {
+    deviceLocation.value = null;
+    outsideCampus.value = true;
+    return;
+  }
+  outsideCampus.value = false;
+  deviceLocation.value = preserveHeading(nextLocation, deviceLocation.value?.heading);
+  applyDeviceHeading();
+  if (centerAfterNextLocation || !centeredOnDevice) {
+    centerAfterNextLocation = false;
+    void centerOnDeviceLocation();
+  }
+}
+async function centerOnDeviceLocation() {
+  const point = deviceLocation.value?.point;
+  if (!point || !scene.value) return false;
+  centeredOnDevice = true;
+  // Explicitly locating exits exploration and restores each map's fixed
+  // location view: CampusPlan resets scale and CampusScene resets its camera
+  // offset, rather than merely moving the existing viewport.
+  drawerBeforeSelection = null; selected.value = null; liveDetail.value = null; detail.value = null; focusPoint.value = null; routedActivity.value = null;
+  await nextTick();
+  scene.value?.locate(point);
+  return true;
+}
+async function locate({ requestHeading = false } = {}) {
+  if (locationState.value === 'locating') return;
+  if (requestHeading) await requestDeviceHeadingPermission();
+  // The last foreground fix is already suitable for an immediate, predictable
+  // re-center. A browser's fresh getCurrentPosition call can legitimately take
+  // up to its timeout, so it must not make the control look unresponsive.
+  await centerOnDeviceLocation();
+  if (locationTrackingState.value !== 'located' || !deviceLocation.value) {
+    // A retry may replace an old marker too; re-center once its next usable
+    // callback arrives even if we could immediately show the previous fix.
+    centerAfterNextLocation = true;
+    await restartLocationTracking();
+    return;
+  }
+  // A location button must not deliberately re-center on an old watcher value.
+  // The shared watch continues in the background; this one-shot request is only
+  // for this explicit user action.
+  const refreshed = await refreshCurrentLocation();
+  if (refreshed.status === 'success') await centerOnDeviceLocation();
 }
 async function setMode(value) {
   if (value === mode.value) return;
   if (mode.value === '2d') planView.value = scene.value?.getView();
   // 两种地图共用建筑、楼层和抽屉状态，切换后继续查看同一处活动。
-  mapReady = false; mode.value = value; search.value = '';
+  mode.value = value; search.value = '';
   await nextTick();
 }
 async function applyActivityRoute() {
@@ -212,33 +310,22 @@ async function applyActivityRoute() {
   focusPoint.value = item.mapPosition || null;
   routedActivity.value = item;
 }
-onMounted(() => {
-  applyActivityRoute();
-  startLocation();
-  refreshActivities();
-  let day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-  dayTimer = setInterval(() => {
-    currentTime.value = Date.now();
-    const next = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-    if (next !== day) { day = next; refreshActivities(); }
-  }, 60_000);
-});
-onBeforeUnmount(() => {
-  activityController?.abort();
-  if (locationWatch !== null) navigator.geolocation.clearWatch(locationWatch);
-  if (dayTimer !== null) clearInterval(dayTimer);
-});
+onMounted(() => { void startDeviceHeadingListener(); applyActivityRoute(); });
 watch(() => route.query.activity, applyActivityRoute);
-watch(userPoint, centerOnFirstLocation);
+watch(currentLocation, syncDeviceLocation, { immediate: true });
+watch(scene, value => { if (value && !centeredOnDevice) void centerOnDeviceLocation(); });
+// A changed query must not leave an old event detail visible.
+watch(matchedActivities, records => { if (liveDetail.value) liveDetail.value = records.find(item => item.id === liveDetail.value.id) || null; });
+const mapActivities = computed(() => matchedActivities.value.map(item => ({ ...item, floor: null })));
 </script>
 
 <template>
   <section id="page-title" class="map-page" aria-label="燕园活动探索" tabindex="-1">
     <div class="map-rule" aria-hidden="true"></div>
     <div class="map-stage" :class="{ 'building-focus': selected, 'plan-mode': mode === '2d' }" :style="{ '--drawer-occlusion': `${drawerOcclusion}px` }">
-        <CampusScene v-if="mode === '3d'" ref="scene" :focus-inset="mapFocusInset" :focus-point="focusPoint" :user-position="userPoint" :nearby-buildings="nearbyBuildings" :nearby-activities="nearbyActivities" :selected="selected" :floor="floor" :activities="visibleActivities" @select="select" @floor="floor = $event" @ready="onMapReady" />
-        <CampusPlan v-else ref="scene" :focus-inset="mapFocusInset" :focus-point="focusPoint" :user-position="userPoint" :selected="selected" :activities="matchedActivities" :starting-view="planView" @select="select" @ready="onMapReady" />
-        <span v-if="mode === '3d'" class="campus-caption">北京大学 · 燕园</span>
+        <CampusScene v-if="mode === '3d'" ref="scene" :focus-inset="mapFocusInset" :focus-point="focusPoint" :device-location="deviceLocation" :nearby-buildings="nearbyBuildings" :selected="selected" :floor="floor" :activities="mapActivities" @select="select" @floor="floor = $event" />
+        <CampusPlan v-else ref="scene" :focus-inset="mapFocusInset" :focus-point="focusPoint" :device-location="deviceLocation" :selected="selected" :activities="mapActivities" :starting-view="planView" @select="select" />
+        <span v-if="mode === '3d'" class="campus-caption">北京大学 · 燕园</span><p v-if="locationHint" class="location-note" role="status">{{ locationHint }}</p>
         <div class="map-hint">{{ routedActivity ? `${routedActivity.title}${focusPoint ? ' · 地点示意' : ` · ${floor}F`}` : mode === '2d' ? selected ? '俯视建筑 · 下方有已查询活动和楼层演示' : '点建筑查看活动 · 拖动平移 · 双指缩放' : currentBuilding?.scenic ? '拖动环绕博雅塔 · 缩小看看未名湖' : selected ? '点楼层查看演示 · 拖动查看另一侧' : '点建筑，查看已查询活动和楼层演示' }}</div>
       <OsmAttribution v-if="mapAttributionVisible" class="map-attribution" />
       <div class="map-overlay">
@@ -261,18 +348,25 @@ watch(userPoint, centerOnFirstLocation);
         <div class="map-tools" aria-label="地图控制">
           <button v-sketch class="sketch" aria-label="放大地图" @click="scene?.zoom(.8)">＋</button>
           <button v-sketch class="sketch" aria-label="缩小地图" @click="scene?.zoom(1.25)">−</button>
-          <button v-sketch class="sketch locate-button" :data-pencil="located ? 'blue' : undefined" aria-label="查看当前位置或重试定位" @click="locate">◎</button>
+          <button v-sketch class="sketch locate-button" :data-pencil="deviceLocation ? 'blue' : undefined" aria-label="查看当前位置或重试定位" @click="locate">◎</button>
         </div>
       </div>
     </div>
     <ActivityDrawer ref="drawer" @measure="mapFocusInset = $event" @layout="onDrawerLayout">
+      <details v-if="!selected && !detail" class="query-filters">
+        <summary>筛选 · {{ radius }} 米 · {{ today ? '仅今天' : '今天至后天' }}</summary>
+        <label>范围 <select v-model.number="radius" aria-label="搜索半径"><option :value="100">100 米</option><option :value="300">300 米</option><option :value="500">500 米</option><option :value="1000">1 千米</option></select></label>
+        <input v-model="keyword" aria-label="活动关键词" placeholder="活动关键词" maxlength="500">
+        <label><input v-model="today" type="checkbox">仅今天（北京时间）</label>
+        <button type="button" @click="refreshActivities">重新定位与刷新</button>
+      </details>
       <template v-if="liveDetail">
         <section class="activity-intro" :aria-label="liveDetail.title || '活动详情'">
-          <div class="intro-head"><button class="intro-back" type="button" aria-label="返回建筑" @click="liveDetail = null"><AppIcon name="back" /></button><span class="live-label">已查询活动</span></div>
+          <div class="intro-head"><button class="intro-back" type="button" aria-label="返回建筑" @click="liveDetail = null"><AppIcon name="back" /></button><span class="live-label">{{ liveDetail.platform === "demo" ? "合成演示活动" : (liveDetail.source_name || "已查询活动") }}</span></div>
           <h2 class="live-title">{{ liveDetail.title || '未命名活动' }}</h2>
           <p class="intro-fact"><AppIcon name="clock" /><strong>{{ liveTimeRange(liveDetail) }}</strong></p>
           <p class="intro-fact"><AppIcon name="pin" /><strong>{{ liveDetail.location }}</strong></p>
-          <p class="intro-copy">{{ liveDetail.summary }}</p>
+          <p class="intro-fact">{{ liveDetail.location_resolution?.room ? `教室 ${liveDetail.location_resolution.room}` : "场地详情见原文" }} · {{ liveDetail.location_resolution?.floor || "楼层未确认" }}</p><p class="intro-copy">{{ liveDetail.summary }}</p>
           <a v-if="liveDetail.source_url" class="intro-more live-source" :href="liveDetail.source_url" target="_blank" rel="noopener noreferrer">查看原文 <AppIcon name="chevron" /></a>
           <p v-else class="live-source-note">此信息没有公开原文链接；来源平台：{{ liveDetail.platform }}。</p>
         </section>
@@ -320,6 +414,7 @@ watch(userPoint, centerOnFirstLocation);
             <strong>{{ activity.title || '未命名活动' }}</strong><span>{{ liveTimeRange(activity) }} · {{ activity.location }}</span>
           </button>
           <p v-if="activityState === 'loading'" class="live-status">正在查询活动…</p>
+          <p v-else-if="activityState === 'waiting'" class="live-status">{{ activityMessage }}</p>
           <p v-else-if="activityState === 'error'" class="live-status">{{ activityMessage }}</p>
           <p v-else-if="!currentLiveActivities.length" class="live-status">暂无可确认属于这栋建筑的活动。</p>
         </section>
@@ -346,7 +441,8 @@ watch(userPoint, centerOnFirstLocation);
           <div class="block-head">
             <div class="block-title"><AppIcon class="title-spark" name="spark" /><h2>附近建筑</h2><AppIcon class="title-spark is-right" name="spark" /></div>
           </div>
-          <p v-if="locationState !== 'ready'" class="nearby-status" role="status">{{ locationMessage }} <button v-if="locationState !== 'loading'" type="button" @click="startLocation">重试定位</button></p>
+          <p v-if="activityState === 'waiting'" class="nearby-status" role="status">{{ activityMessage }} <button  type="button" @click="refreshActivities">重试定位</button></p>
+          <p v-if="activityState === 'ready' && !venueCards.length" class="nearby-status">当前范围暂无已登记建筑。</p><p v-if="activityState === 'error'" class="nearby-status">{{ activityMessage }}</p>
           <div class="snap-row" aria-label="附近建筑" @scroll.passive="syncPage($event, 'venue')">
             <button v-for="venue in venueCards" :key="venue.id" v-sketch class="place-card sketch sketch-white sketch-cast" :data-cast="venue.pencil" @click="select(venue.id)">
               <span v-sketch class="place-badge sketch pencil-fill sketch-cast" :data-pencil="venue.pencil" :data-cast="venue.pencil"><AppIcon name="pin" /></span>
@@ -360,14 +456,14 @@ watch(userPoint, centerOnFirstLocation);
           <div class="block-head">
             <div class="block-title"><AppIcon class="title-spark" name="spark" /><h2>附近活动</h2><AppIcon class="title-spark is-right" name="spark" /></div>
           </div>
-          <p v-if="locationState !== 'ready'" class="nearby-status">取得校内位置后显示相应活动。</p>
+          <p v-if="activityState === 'waiting'" class="nearby-status">{{ activityMessage }}</p>
           <p v-else-if="activityState === 'loading'" class="nearby-status" role="status">{{ activityMessage }}</p>
           <p v-else-if="activityState === 'error'" class="nearby-status" role="alert">{{ activityMessage }} <button type="button" @click="refreshActivities">重试查询</button></p>
           <p v-else-if="!nearbyActivities.length" class="nearby-status">暂无可确认的附近活动。</p>
           <div class="snap-row" aria-label="附近活动" @scroll.passive="syncPage($event, 'activity')">
             <button v-for="activity in nearbyActivities" :key="activity.id" v-sketch class="event-card sketch sketch-white sketch-cast" data-cast="blue" @click="openLiveActivity(activity)">
               <span v-sketch class="place-badge sketch pencil-fill sketch-cast" data-pencil="blue" data-cast="blue"><AppIcon name="pin" /></span>
-              <span class="event-copy"><small>{{ activity.location }}</small><strong>{{ activity.title || '未命名活动' }}</strong><span><AppIcon name="clock" />{{ liveTimeRange(activity) }} · 直线约 {{ Math.round(activity.distance) }} 米</span></span>
+              <span class="event-copy"><small>{{ activity.platform === "demo" ? "合成演示 · " : "" }}{{ activity.location }}</small><strong>{{ activity.title || '未命名活动' }}</strong><span><AppIcon name="clock" />{{ liveTimeRange(activity) }} · 直线约 {{ Math.round(activity.distance) }} 米</span></span>
               <AppIcon class="card-forward" name="chevron" />
             </button>
           </div>
@@ -375,7 +471,7 @@ watch(userPoint, centerOnFirstLocation);
         </section>
         <section class="nearby-block">
           <div class="block-head">
-            <div class="block-title"><AppIcon class="title-spark" name="spark" /><h2>猜你喜欢</h2><AppIcon class="title-spark is-right" name="spark" /></div>
+            <div class="block-title"><AppIcon class="title-spark" name="spark" /><h2>猜你喜欢</h2><span class="demo-stamp">演示推荐</span><AppIcon class="title-spark is-right" name="spark" /></div>
             <button class="see-all" type="button" @click="showAll('liked')">查看全部 <AppIcon name="chevron" /></button>
           </div>
           <div class="snap-row" aria-label="猜你喜欢" @scroll.passive="syncPage($event, 'liked')">
@@ -402,6 +498,11 @@ watch(userPoint, centerOnFirstLocation);
 </template>
 
 <style scoped>
+.location-note { position: absolute; top: 55px; left: 15px; z-index: 5; font-size: 11px; background: #fffdf5; padding: 4px; }
+.query-filters { margin: 0 0 14px; font-size: 12px; }
+.query-filters label, .query-filters input, .query-filters button { margin: 6px 4px; }
+.query-filters input:not([type=checkbox]) { width: 130px; }
+.query-filters input, .query-filters select, .query-filters button { font: inherit; }
 .map-page { position: relative; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; outline: none; }
 .map-rule { height: 1.5px; flex: 0 0 auto; background: #20304b; }
 /* 右下角跟随当前抽屉遮挡高度 --drawer-occlusion，避开搜索框与控件；全展开时隐藏署名。 */

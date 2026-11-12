@@ -1,0 +1,1325 @@
+[
+  {
+    "id": "pku:yanyuan:library",
+    "name": "北京大学图书馆",
+    "building_id": "r3249649",
+    "longitude": 116.30396493111205,
+    "latitude": 39.99051615871253,
+    "aliases": [
+      "图书馆",
+      "北大图书馆"
+    ]
+  },
+  {
+    "id": "pku:yanyuan:osm:r3249764",
+    "name": "理科五号楼",
+    "building_id": "r3249764",
+    "longitude": 116.3085842444724,
+    "latitude": 39.98836728949575,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:r11823277",
+    "name": "综合科研1号楼（逸夫楼）",
+    "building_id": "r11823277",
+    "longitude": 116.30083112891688,
+    "latitude": 39.988937005928854,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:r11823278",
+    "name": "58号楼",
+    "building_id": "r11823278",
+    "longitude": 116.30340828979526,
+    "latitude": 39.98787711103126,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:r11975583",
+    "name": "微纳电子大厦",
+    "building_id": "r11975583",
+    "longitude": 116.30806804429874,
+    "latitude": 39.993219367588935,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:r11975584",
+    "name": "环境科学与工程学院（刘水楼）",
+    "building_id": "r11975584",
+    "longitude": 116.30867389566369,
+    "latitude": 39.99322825614161,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:r11975585",
+    "name": "理科三号楼（曙东楼）",
+    "building_id": "r11975585",
+    "longitude": 116.30854981809954,
+    "latitude": 39.99033633768516,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:r12815350",
+    "name": "21楼",
+    "building_id": "r12815350",
+    "longitude": 116.30495255200701,
+    "latitude": 39.986339741286386,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:r12815351",
+    "name": "19楼",
+    "building_id": "r12815351",
+    "longitude": 116.30492652215158,
+    "latitude": 39.98686974487963,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:r12815352",
+    "name": "22楼",
+    "building_id": "r12815352",
+    "longitude": 116.30502360647725,
+    "latitude": 39.98591340280273,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:r12815353",
+    "name": "24楼",
+    "building_id": "r12815353",
+    "longitude": 116.30505502990633,
+    "latitude": 39.985422026590015,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:r12815354",
+    "name": "20楼",
+    "building_id": "r12815354",
+    "longitude": 116.30466974114525,
+    "latitude": 39.98659216672656,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:r12815355",
+    "name": "23楼",
+    "building_id": "r12815355",
+    "longitude": 116.30471523476646,
+    "latitude": 39.98565738411786,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:r13059307",
+    "name": "理科一号楼",
+    "building_id": "r13059307",
+    "longitude": 116.30699917253236,
+    "latitude": 39.98946125914859,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:r13059308",
+    "name": "生命科学学院大楼",
+    "building_id": "r13059308",
+    "longitude": 116.30848319871764,
+    "latitude": 39.99114722036857,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:r13059309",
+    "name": "北京大学校医院",
+    "building_id": "r13059309",
+    "longitude": 116.30798918371433,
+    "latitude": 39.995416623112185,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:r13068022",
+    "name": "光华管理学院1号楼",
+    "building_id": "r13068022",
+    "longitude": 116.30572330540656,
+    "latitude": 39.98953861240867,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:r13259482",
+    "name": "吕志和楼",
+    "building_id": "r13259482",
+    "longitude": 116.30698621789189,
+    "latitude": 39.99119643992371,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:r13259483",
+    "name": "顾颉刚故居",
+    "building_id": "r13259483",
+    "longitude": 116.30837641600952,
+    "latitude": 39.9942587136184,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:r13281267",
+    "name": "全斋",
+    "building_id": "r13281267",
+    "longitude": 116.30361394910352,
+    "latitude": 39.99486439992814,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:r14320161",
+    "name": "教育基金会",
+    "building_id": "r14320161",
+    "longitude": 116.30430309538873,
+    "latitude": 39.99562190082645,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:r14962081",
+    "name": "理科二号楼（逸夫苑）",
+    "building_id": "r14962081",
+    "longitude": 116.30857205375447,
+    "latitude": 39.98947647481558,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:33457546",
+    "name": "邱德拔体育馆",
+    "building_id": "33457546",
+    "longitude": 116.30899120523775,
+    "latitude": 39.98741358246497,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:104345641",
+    "name": "遥感楼",
+    "building_id": "104345641",
+    "longitude": 116.30651988347125,
+    "latitude": 39.99193321056414,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:163926083",
+    "name": "政府管理学院（廖凯原楼）",
+    "building_id": "163926083",
+    "longitude": 116.30846365120071,
+    "latitude": 39.99441232482932,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:hall",
+    "name": "百周年纪念讲堂",
+    "building_id": "188711087",
+    "longitude": 116.30451996575393,
+    "latitude": 39.98856839603085,
+    "aliases": [
+      "讲堂",
+      "百讲",
+      "百周年纪念讲堂"
+    ]
+  },
+  {
+    "id": "pku:yanyuan:osm:188712163",
+    "name": "艺园餐厅",
+    "building_id": "188712163",
+    "longitude": 116.3007932989906,
+    "latitude": 39.98713360881543,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:teaching-1",
+    "name": "第一教学楼",
+    "building_id": "226702307",
+    "longitude": 116.30439767834693,
+    "latitude": 39.991535333572884,
+    "aliases": [
+      "一教",
+      "第一教学楼",
+      "教学楼"
+    ]
+  },
+  {
+    "id": "pku:yanyuan:osm:226703041",
+    "name": "第二体育馆",
+    "building_id": "226703041",
+    "longitude": 116.30210755915891,
+    "latitude": 39.989476778656126,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:226703926",
+    "name": "北大西门",
+    "building_id": "226703926",
+    "longitude": 116.29859895156173,
+    "latitude": 39.993287976104924,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:226704221",
+    "name": "化学北楼",
+    "building_id": "226704221",
+    "longitude": 116.2998363956464,
+    "latitude": 39.9928865432986,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:226704234",
+    "name": "化学南楼",
+    "building_id": "226704234",
+    "longitude": 116.29984518951647,
+    "latitude": 39.99232195472512,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:226704254",
+    "name": "校史馆",
+    "building_id": "226704254",
+    "longitude": 116.30007558891256,
+    "latitude": 39.991986884656846,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:226704412",
+    "name": "档案馆",
+    "building_id": "226704412",
+    "longitude": 116.30040975597558,
+    "latitude": 39.99259661336687,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240825539",
+    "name": "38、39楼",
+    "building_id": "240825539",
+    "longitude": 116.3021773971438,
+    "latitude": 39.98562459575997,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240825542",
+    "name": "40、41、42楼",
+    "building_id": "240825542",
+    "longitude": 116.30102172558196,
+    "latitude": 39.985588502900264,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240825543",
+    "name": "36、37楼",
+    "building_id": "240825543",
+    "longitude": 116.30283028499989,
+    "latitude": 39.98562020401645,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240825544",
+    "name": "34A、34B楼",
+    "building_id": "240825544",
+    "longitude": 116.30399113284767,
+    "latitude": 39.985734807312255,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240825545",
+    "name": "35楼",
+    "building_id": "240825545",
+    "longitude": 116.30291659520621,
+    "latitude": 39.98640248333134,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240825546",
+    "name": "32楼",
+    "building_id": "240825546",
+    "longitude": 116.30386998100238,
+    "latitude": 39.986427037170124,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240825551",
+    "name": "44楼",
+    "building_id": "240825551",
+    "longitude": 116.30079785877508,
+    "latitude": 39.9867048149479,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240825554",
+    "name": "王克桢楼",
+    "building_id": "240825554",
+    "longitude": 116.30895534578976,
+    "latitude": 39.98599975296443,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:teaching-4",
+    "name": "第四教学楼",
+    "building_id": "240825555",
+    "longitude": 116.30806933406636,
+    "latitude": 39.988016888250094,
+    "aliases": [
+      "四教",
+      "第四教学楼",
+      "教学楼"
+    ]
+  },
+  {
+    "id": "pku:yanyuan:teaching-3",
+    "name": "第三教学楼（刘卿楼）",
+    "building_id": "240825556",
+    "longitude": 116.307811012039,
+    "latitude": 39.98775712232432,
+    "aliases": [
+      "三教",
+      "第三教学楼",
+      "刘卿楼",
+      "教学楼"
+    ]
+  },
+  {
+    "id": "pku:yanyuan:teaching-2",
+    "name": "第二教学楼（李兆基楼）",
+    "building_id": "240825557",
+    "longitude": 116.30731949941834,
+    "latitude": 39.98832569496619,
+    "aliases": [
+      "二教",
+      "第二教学楼",
+      "李兆基楼",
+      "教学楼"
+    ]
+  },
+  {
+    "id": "pku:yanyuan:osm:240825562",
+    "name": "博雅塔",
+    "building_id": "240825562",
+    "longitude": 116.30578530219063,
+    "latitude": 39.99264265181459,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240825566",
+    "name": "法学院（陈明楼）",
+    "building_id": "240825566",
+    "longitude": 116.30782474722655,
+    "latitude": 39.99411354653252,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240825567",
+    "name": "光华管理学院",
+    "building_id": "240825567",
+    "longitude": 116.30717397641325,
+    "latitude": 39.994321819978445,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240825568",
+    "name": "光华管理学院2号楼",
+    "building_id": "240825568",
+    "longitude": 116.30769877503765,
+    "latitude": 39.99476294690981,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240825569",
+    "name": "法学院（凯原楼）",
+    "building_id": "240825569",
+    "longitude": 116.30749116642153,
+    "latitude": 39.99319309198707,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832215",
+    "name": "外文楼",
+    "building_id": "240832215",
+    "longitude": 116.29983287809837,
+    "latitude": 39.993743083003956,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832216",
+    "name": "办公楼（贝公楼）",
+    "building_id": "240832216",
+    "longitude": 116.30041669336197,
+    "latitude": 39.9933187806923,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832217",
+    "name": "赛克勒考古与艺术博物馆",
+    "building_id": "240832217",
+    "longitude": 116.29980561710111,
+    "latitude": 39.99440513833992,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832218",
+    "name": "民主楼",
+    "building_id": "240832218",
+    "longitude": 116.30039656517046,
+    "latitude": 39.99404446640317,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832219",
+    "name": "德斋",
+    "building_id": "240832219",
+    "longitude": 116.30096435604858,
+    "latitude": 39.994122349982035,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832220",
+    "name": "才斋",
+    "building_id": "240832220",
+    "longitude": 116.30159259012706,
+    "latitude": 39.99413115343155,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832221",
+    "name": "审计室",
+    "building_id": "240832221",
+    "longitude": 116.30127741782341,
+    "latitude": 39.994319349622714,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832222",
+    "name": "均斋",
+    "building_id": "240832222",
+    "longitude": 116.30224544704176,
+    "latitude": 39.99416636722961,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832223",
+    "name": "备斋",
+    "building_id": "240832223",
+    "longitude": 116.30287626065545,
+    "latitude": 39.99417283507007,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832224",
+    "name": "人事部",
+    "building_id": "240832224",
+    "longitude": 116.302560736597,
+    "latitude": 39.9943495927656,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832226",
+    "name": "第一体育馆",
+    "building_id": "240832226",
+    "longitude": 116.30545333359512,
+    "latitude": 39.993992364355016,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832229",
+    "name": "勺园4号楼",
+    "building_id": "240832229",
+    "longitude": 116.2993832182083,
+    "latitude": 39.98990531800216,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832231",
+    "name": "勺园5号楼",
+    "building_id": "240832231",
+    "longitude": 116.29928472686342,
+    "latitude": 39.99085680919871,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832232",
+    "name": "北京大学国际关系学院",
+    "building_id": "240832232",
+    "longitude": 116.3006180729868,
+    "latitude": 39.990466742524056,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832236",
+    "name": "勺园6号楼",
+    "building_id": "240832236",
+    "longitude": 116.29988616243708,
+    "latitude": 39.989618038088395,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832237",
+    "name": "勺园7号楼",
+    "building_id": "240832237",
+    "longitude": 116.3000046825496,
+    "latitude": 39.989142311401935,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832238",
+    "name": "勺园8号楼",
+    "building_id": "240832238",
+    "longitude": 116.29944884461914,
+    "latitude": 39.98932936315022,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832239",
+    "name": "勺园9号楼",
+    "building_id": "240832239",
+    "longitude": 116.29931110847366,
+    "latitude": 39.988829994610136,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832243",
+    "name": "学五食堂",
+    "building_id": "240832243",
+    "longitude": 116.30082101596629,
+    "latitude": 39.98764085519224,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832244",
+    "name": "31楼",
+    "building_id": "240832244",
+    "longitude": 116.3025815262078,
+    "latitude": 39.987065037729074,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832245",
+    "name": "29楼",
+    "building_id": "240832245",
+    "longitude": 116.30328523423995,
+    "latitude": 39.98733021918793,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832246",
+    "name": "30楼",
+    "building_id": "240832246",
+    "longitude": 116.30331501614661,
+    "latitude": 39.986837585339565,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832247",
+    "name": "28楼",
+    "building_id": "240832247",
+    "longitude": 116.304076935089,
+    "latitude": 39.98710933138008,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832248",
+    "name": "农园餐厅",
+    "building_id": "240832248",
+    "longitude": 116.30613593333263,
+    "latitude": 39.98745535393461,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832249",
+    "name": "教育学院",
+    "building_id": "240832249",
+    "longitude": 116.30559198361338,
+    "latitude": 39.987667355371904,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832250",
+    "name": "对外汉语教育学院及信息管理系（方李邦琴楼）",
+    "building_id": "240832250",
+    "longitude": 116.30568887402295,
+    "latitude": 39.98667088642583,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832251",
+    "name": "新闻与传播学院（蒙民伟楼）",
+    "building_id": "240832251",
+    "longitude": 116.3057620209833,
+    "latitude": 39.98577050222505,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832252",
+    "name": "资源楼",
+    "building_id": "240832252",
+    "longitude": 116.3069894468206,
+    "latitude": 39.985472451790635,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:240832253",
+    "name": "五四体育中心",
+    "building_id": "240832253",
+    "longitude": 116.30622126644228,
+    "latitude": 39.9861656286182,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:272303337",
+    "name": "45甲楼",
+    "building_id": "272303337",
+    "longitude": 116.29964081997583,
+    "latitude": 39.988179931728354,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:272303338",
+    "name": "45乙楼",
+    "building_id": "272303338",
+    "longitude": 116.29974574550234,
+    "latitude": 39.988536527578155,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:272303341",
+    "name": "45楼",
+    "building_id": "272303341",
+    "longitude": 116.29968528764553,
+    "latitude": 39.987820742005034,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:272349096",
+    "name": "岛厅",
+    "building_id": "272349096",
+    "longitude": 116.3035239584997,
+    "latitude": 39.993395773445926,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:272353673",
+    "name": "北阁",
+    "building_id": "272353673",
+    "longitude": 116.30143658687184,
+    "latitude": 39.99177847646425,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:272353674",
+    "name": "南阁",
+    "building_id": "272353674",
+    "longitude": 116.30144977767696,
+    "latitude": 39.99144655048509,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:272353675",
+    "name": "临湖轩",
+    "building_id": "272353675",
+    "longitude": 116.30304064740014,
+    "latitude": 39.992254581386995,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:272361848",
+    "name": "俄文楼",
+    "building_id": "272361848",
+    "longitude": 116.30261760362352,
+    "latitude": 39.991610492274525,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:272362583",
+    "name": "哲学楼",
+    "building_id": "272362583",
+    "longitude": 116.3041506292235,
+    "latitude": 39.989644328662116,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:272364819",
+    "name": "一院",
+    "building_id": "272364819",
+    "longitude": 116.3014208165315,
+    "latitude": 39.99085923463888,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:272364820",
+    "name": "二院",
+    "building_id": "272364820",
+    "longitude": 116.30144586929026,
+    "latitude": 39.99036982472951,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:272364821",
+    "name": "三院",
+    "building_id": "272364821",
+    "longitude": 116.30144919141897,
+    "latitude": 39.98988438735178,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:272364822",
+    "name": "四院",
+    "building_id": "272364822",
+    "longitude": 116.30273029544009,
+    "latitude": 39.98991507965026,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:272364823",
+    "name": "五院",
+    "building_id": "272364823",
+    "longitude": 116.30271896111866,
+    "latitude": 39.99038749151595,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:272364824",
+    "name": "六院",
+    "building_id": "272364824",
+    "longitude": 116.30270736623811,
+    "latitude": 39.99086539306105,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:372944573",
+    "name": "文史楼",
+    "building_id": "372944573",
+    "longitude": 116.3057277023416,
+    "latitude": 39.990894238831,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:372945805",
+    "name": "学一食堂",
+    "building_id": "372945805",
+    "longitude": 116.30177124248321,
+    "latitude": 39.98624637681159,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:444894328",
+    "name": "松林餐厅",
+    "building_id": "444894328",
+    "longitude": 116.30203228363104,
+    "latitude": 39.98647987782968,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:444894329",
+    "name": "餐饮综合楼（家园食堂）",
+    "building_id": "444894329",
+    "longitude": 116.30183384181022,
+    "latitude": 39.98699656645507,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:444894330",
+    "name": "43楼",
+    "building_id": "444894330",
+    "longitude": 116.30075183752167,
+    "latitude": 39.98620355731226,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:science-teaching",
+    "name": "理科教学楼（黄廷方楼）",
+    "building_id": "444991872",
+    "longitude": 116.30713130746358,
+    "latitude": 39.990270898945276,
+    "aliases": [
+      "理教",
+      "理科教学楼",
+      "黄廷方楼",
+      "教学楼"
+    ]
+  },
+  {
+    "id": "pku:yanyuan:osm:444991873",
+    "name": "英杰交流中心",
+    "building_id": "444991873",
+    "longitude": 116.30772889404268,
+    "latitude": 39.98940236854713,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:445012603",
+    "name": "地学楼",
+    "building_id": "445012603",
+    "longitude": 116.3057415771144,
+    "latitude": 39.99043610013175,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:445012604",
+    "name": "老化学楼",
+    "building_id": "445012604",
+    "longitude": 116.30576424575727,
+    "latitude": 39.990051922385916,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:445012606",
+    "name": "电化教学楼（智华楼）",
+    "building_id": "445012606",
+    "longitude": 116.30584171556511,
+    "latitude": 39.98856025529148,
+    "aliases": [
+      "智华楼",
+      "四元厅"
+    ]
+  },
+  {
+    "id": "pku:yanyuan:osm:445012607",
+    "name": "老生物楼",
+    "building_id": "445012607",
+    "longitude": 116.30567643733603,
+    "latitude": 39.99122890964986,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:445014559",
+    "name": "体斋",
+    "building_id": "445014559",
+    "longitude": 116.30320825856386,
+    "latitude": 39.99433282429034,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:445016203",
+    "name": "勺园食堂",
+    "building_id": "445016203",
+    "longitude": 116.29952978270963,
+    "latitude": 39.9903988501617,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:445016204",
+    "name": "佟园餐厅（清真）",
+    "building_id": "445016204",
+    "longitude": 116.30072604216943,
+    "latitude": 39.989754805964786,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:445016205",
+    "name": "勺园1号楼",
+    "building_id": "445016205",
+    "longitude": 116.29989502144693,
+    "latitude": 39.990096239070546,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:445016206",
+    "name": "勺园3号楼",
+    "building_id": "445016206",
+    "longitude": 116.29985671925725,
+    "latitude": 39.990736585219786,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:445016207",
+    "name": "勺园2号楼",
+    "building_id": "445016207",
+    "longitude": 116.2998025392466,
+    "latitude": 39.99041439094503,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:445016209",
+    "name": "新太阳学生中心（16楼-18楼）",
+    "building_id": "445016209",
+    "longitude": 116.30479842169184,
+    "latitude": 39.987593953893,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:446944417",
+    "name": "燕南食堂",
+    "building_id": "446944417",
+    "longitude": 116.3041403110826,
+    "latitude": 39.98924449035813,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:568727714",
+    "name": "伟利楼",
+    "building_id": "568727714",
+    "longitude": 116.30437051505935,
+    "latitude": 39.99225008983112,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:568832327",
+    "name": "健斋",
+    "building_id": "568832327",
+    "longitude": 116.30338120467542,
+    "latitude": 39.994511139058574,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:ancient-library",
+    "name": "阿卜杜勒·阿齐兹国王公共图书馆北京大学分馆（古籍图书馆）",
+    "building_id": "628032101",
+    "longitude": 116.30337739399837,
+    "latitude": 39.99150215594682,
+    "aliases": [
+      "古籍图书馆"
+    ]
+  },
+  {
+    "id": "pku:yanyuan:osm:628032103",
+    "name": "生物标本馆",
+    "building_id": "628032103",
+    "longitude": 116.30553716848989,
+    "latitude": 39.99159192717691,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:656386276",
+    "name": "方楼",
+    "building_id": "656386276",
+    "longitude": 116.30632627176502,
+    "latitude": 39.99229770032339,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:679485570",
+    "name": "保护生物学楼",
+    "building_id": "679485570",
+    "longitude": 116.29985603528958,
+    "latitude": 39.995758444125045,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:679485572",
+    "name": "保护生物学新楼",
+    "building_id": "679485572",
+    "longitude": 116.29985075896752,
+    "latitude": 39.995560366510965,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:679485574",
+    "name": "生物技术楼",
+    "building_id": "679485574",
+    "longitude": 116.29976252713773,
+    "latitude": 39.99524901185771,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:680594294",
+    "name": "燕园大厦",
+    "building_id": "680594294",
+    "longitude": 116.30898417014168,
+    "latitude": 39.98654162175111,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:783033431",
+    "name": "经济学院（孝义金晖楼）",
+    "building_id": "783033431",
+    "longitude": 116.30675870468907,
+    "latitude": 39.99554326404821,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:866277585",
+    "name": "综合科研2号楼",
+    "building_id": "866277585",
+    "longitude": 116.30114341599364,
+    "latitude": 39.98815231507623,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:866277589",
+    "name": "核磁中心",
+    "building_id": "866277589",
+    "longitude": 116.30155735602094,
+    "latitude": 39.98846056413942,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:866277593",
+    "name": "51号楼",
+    "building_id": "866277593",
+    "longitude": 116.30263255320266,
+    "latitude": 39.98902111031261,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:866277594",
+    "name": "52号楼",
+    "building_id": "866277594",
+    "longitude": 116.30299061027938,
+    "latitude": 39.98901325008983,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:866277595",
+    "name": "60号楼",
+    "building_id": "866277595",
+    "longitude": 116.30305993528852,
+    "latitude": 39.98849065756378,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:866277597",
+    "name": "59号楼",
+    "building_id": "866277597",
+    "longitude": 116.30307170232419,
+    "latitude": 39.98815533083518,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:866277598",
+    "name": "53号楼",
+    "building_id": "866277598",
+    "longitude": 116.30360193081441,
+    "latitude": 39.98905895167086,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:866277599",
+    "name": "54号楼",
+    "building_id": "866277599",
+    "longitude": 116.30345513180988,
+    "latitude": 39.98872305066475,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:866277600",
+    "name": "56号楼",
+    "building_id": "866277600",
+    "longitude": 116.30345399837773,
+    "latitude": 39.98831668463289,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:866277604",
+    "name": "62号楼",
+    "building_id": "866277604",
+    "longitude": 116.3025921014003,
+    "latitude": 39.98805228171039,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:866277605",
+    "name": "61号楼",
+    "building_id": "866277605",
+    "longitude": 116.30223038021101,
+    "latitude": 39.98807260600072,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:866277607",
+    "name": "50号楼",
+    "building_id": "866277607",
+    "longitude": 116.30182123074913,
+    "latitude": 39.988952928494435,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:873446760",
+    "name": "朗润园12号楼",
+    "building_id": "873446760",
+    "longitude": 116.30557996532427,
+    "latitude": 39.99809921846928,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:873446761",
+    "name": "朗润园11号楼",
+    "building_id": "873446761",
+    "longitude": 116.30561983086864,
+    "latitude": 39.99774348724398,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:873446762",
+    "name": "朗润园10号楼",
+    "building_id": "873446762",
+    "longitude": 116.30567435286312,
+    "latitude": 39.997445697089475,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:873446763",
+    "name": "朗润园9号楼",
+    "building_id": "873446763",
+    "longitude": 116.30573180614765,
+    "latitude": 39.99712836866691,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:873446764",
+    "name": "朗润园8号楼",
+    "building_id": "873446764",
+    "longitude": 116.30578368998111,
+    "latitude": 39.99682204455624,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:873446769",
+    "name": "朗润园13号楼",
+    "building_id": "873446769",
+    "longitude": 116.30362655365063,
+    "latitude": 39.99765253323751,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:876428136",
+    "name": "科维理天文与天体物理研究所",
+    "building_id": "876428136",
+    "longitude": 116.3047968711937,
+    "latitude": 39.997910348544735,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:939378517",
+    "name": "哲学系（宗教学系）",
+    "building_id": "939378517",
+    "longitude": 116.30609598962053,
+    "latitude": 39.995227632051744,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:939378519",
+    "name": "中国语言文学系",
+    "building_id": "939378519",
+    "longitude": 116.30591753268372,
+    "latitude": 39.99615882141574,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:986745062",
+    "name": "历史学系",
+    "building_id": "986745062",
+    "longitude": 116.30518830589287,
+    "latitude": 39.99613474667625,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:986745064",
+    "name": "李兆基人文学苑",
+    "building_id": "986745064",
+    "longitude": 116.30550768808733,
+    "latitude": 39.99576640059546,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:986745065",
+    "name": "李兆基人文学苑",
+    "building_id": "986745065",
+    "longitude": 116.30546401651878,
+    "latitude": 39.9955788817024,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:986745066",
+    "name": "李兆基人文学苑",
+    "building_id": "986745066",
+    "longitude": 116.30556399841507,
+    "latitude": 39.99536659550633,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:986745069",
+    "name": "46楼",
+    "building_id": "986745069",
+    "longitude": 116.2997138677233,
+    "latitude": 39.98744906575638,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:986745070",
+    "name": "47楼",
+    "building_id": "986745070",
+    "longitude": 116.29979682323105,
+    "latitude": 39.987018999281354,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:986745071",
+    "name": "48楼",
+    "building_id": "986745071",
+    "longitude": 116.2998264292603,
+    "latitude": 39.98664878278836,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:1009051995",
+    "name": "中水站",
+    "building_id": "1009051995",
+    "longitude": 116.29863586953111,
+    "latitude": 39.99511909609934,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:1009051998",
+    "name": "考古文博学院",
+    "building_id": "1009051998",
+    "longitude": 116.30036238632874,
+    "latitude": 39.99545041322314,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:1009052001",
+    "name": "实验动物中心B座",
+    "building_id": "1009052001",
+    "longitude": 116.30047307184014,
+    "latitude": 39.99598208277529,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:1009052052",
+    "name": "外国语学院",
+    "building_id": "1009052052",
+    "longitude": 116.30654406661398,
+    "latitude": 39.996786224398136,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:1056350630",
+    "name": "校景亭",
+    "building_id": "1056350630",
+    "longitude": 116.30052993886666,
+    "latitude": 39.99497601509163,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:1063568534",
+    "name": "实验动物中心A座",
+    "building_id": "1063568534",
+    "longitude": 116.29975699956225,
+    "latitude": 39.99595921667266,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:1075644751",
+    "name": "李兆基人文学苑",
+    "building_id": "1075644751",
+    "longitude": 116.30539107299496,
+    "latitude": 39.995148939992816,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:1075644759",
+    "name": "北大-港理工中国社会工作研究中心（恩善苑）",
+    "building_id": "1075644759",
+    "longitude": 116.30147909057723,
+    "latitude": 39.99629886812792,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:1086578219",
+    "name": "章桂堂",
+    "building_id": "1086578219",
+    "longitude": 116.30464077999979,
+    "latitude": 39.992299047790155,
+    "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:osm:1086578221",
+    "name": "亨利楼",
+    "building_id": "1086578221",
+    "longitude": 116.30502477899326,
+    "latitude": 39.99225952209846,
+    "aliases": []
+  }
+]

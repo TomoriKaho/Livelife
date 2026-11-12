@@ -6,6 +6,7 @@ import AppHeader from './components/AppHeader.vue';
 import PageHeading from './components/PageHeading.vue';
 import PageFooter from './components/PageFooter.vue';
 import BottomNav from './components/BottomNav.vue';
+import { startLocationTracking, stopLocationTracking } from './platform/location-tracker';
 
 const route = useRoute();
 const router = useRouter();
@@ -33,8 +34,14 @@ watch(() => route.fullPath, async () => {
   if (heading.value) heading.value.focusTitle();
   else document.getElementById('page-title')?.focus({ preventScroll: true });
 });
-onMounted(updateTitle);
-onBeforeUnmount(() => clearTimeout(toastTimer));
+onMounted(() => {
+  updateTitle();
+  void startLocationTracking();
+});
+onBeforeUnmount(() => {
+  clearTimeout(toastTimer);
+  void stopLocationTracking();
+});
 </script>
 
 <template>

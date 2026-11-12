@@ -37,7 +37,7 @@ Android Studio 内置 JDK 不一定被 java_home 识别，可直接指定其真�
 VITE_API_BASE_URL=https://192.144.253.40/api/staging/
 ```
 
-该地址是共享测试后端，会随 main 更新。APP 内 localhost 指手机自身，不是开发电脑。本地工程未开启 HTTP 网络例外；使用项目 HTTPS 入口。业务登录、定位和推送尚未实现，页面大部分是明确标注的样例。
+该地址是共享测试后端，会随 main 更新。APP 内 localhost 指手机自身，不是开发电脑。本地工程未开启 HTTP 网络例外；使用项目 HTTPS 入口。业务登录和推送尚未实现；应用已在前台持续监听位置，地图会显示蓝点、精度圈和朝向标。位置能力仍不提供后台定位，日历、推荐和 Agent 尚未接入位置消费，页面大部分是明确标注的样例。
 
 ```bash
 cd frontend
@@ -59,6 +59,14 @@ adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 真机：在手机“关于手机”连续点击版本号开启开发者选项，打开 USB 调试，用数据线连接并在手机确认电脑的调试授权。`adb devices` 应显示设备为 device；unauthorized 需要在手机确认。模拟器在 Device Manager 点击启动后会出现在设备列表中。
 
 本地 debug 包名为 io.github.tomorikaho.livelife.dev.local，名称“Livelife 本地调试”；团队分发包名为 io.github.tomorikaho.livelife.dev，名称“Livelife 测试”。两者可以共存，签名和数据独立。本地 debug 由 Android 工具自动签名，分发包由腾讯云专用测试密钥签名；开发者不需要索取服务器私钥。
+
+### 地图定位坐标
+
+Android 原生定位和包内 OSM 离线地图统一使用 **WGS-84**。在 Emulator Extended controls 或 `adb emu geo fix` 中手工测试时也输入 WGS-84，不能把高德、腾讯等常见 GCJ-02 坐标直接写入。博雅塔可作为固定检查点：WGS-84 为纬度 `39.992637`、经度 `116.305783`；其常见 GCJ-02 值 `39.993923, 116.311832` 直接输入会向东北偏移约 500 米。
+
+```powershell
+adb -s emulator-5554 emu geo fix 116.305783 39.992637 # 顺序为经度、纬度
+```
 
 查看原生日志：Android Studio 的 Logcat 选择设备和应用；也可执行 `adb logcat`。在电脑 Chrome 的 chrome://inspect/#devices 调试本地 debug WebView。团队 release 测试包不开放远程 WebView 调试，问题用版本、现象及日志记录。
 
@@ -118,4 +126,4 @@ Actions 附件只保存日志和版本/校验记录 7 天；APK 从下载页分�
 
 ## 真机验收
 
-安装后按[真机验收记录](../../docs/testing.md#真机验收记录)核对版本、页面、地图、返回键和真实 hello。手绘或缓存改动另按[手绘模块](../src/plugins/README.md#android-手绘渲染回归)和[旧装饰缓存处理](../src/assets/sketch/README.md#旧版本缓存处理)回归。网页构建与原生同步、签名后分发的流程参考 [Capacitor 文档](https://capacitorjs.com/docs/basics/workflow)。
+安装后按[真机验收记录](../../docs/testing.md#真机验收记录)核对版本、页面、地图、返回键和真实 hello。地图定位改动还要授予位置权限后在 2D、3D 中缓慢旋转设备，确认方向标连续更新；旋转屏幕、后台再回前台、离开再回到地图后重复确认。手绘或缓存改动另按[手绘模块](../src/plugins/README.md#android-手绘渲染回归)和[旧装饰缓存处理](../src/assets/sketch/README.md#旧版本缓存处理)回归。网页构建与原生同步、签名后分发的流程参考 [Capacitor 文档](https://capacitorjs.com/docs/basics/workflow)。

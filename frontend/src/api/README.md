@@ -2,9 +2,11 @@
 
 本目录维护请求和客户端失败处理。服务端契约从[共享 API 入口](../../../docs/api.md)及对应模块说明读取；页面交互由页面模块维护。当前真实业务请求包括 hello、账户、个人资料、Agent 对话与地图活动查询。
 
-## 地图活动查询
+## 地图与日历活动查询
 
-[`map-activities.ts`](map-activities.ts) 每次进入地图页从 [`GET /locations/activities`](../../../backend/app/api/locations/API.md) 分页读取北京时间今天至后天尚未结束的活动，翻页沿用首个响应的 `as_of`。查询超过 10 秒、数据库不可用、响应格式不符或网络失败时向地图页返回可显示错误，不用演示活动补位。请求前核对 Android 安装包状态；测试预览配置启用时核对响应后端 SHA。离开地图时中止请求。设备坐标只用于客户端计算附近建筑，不发送到此接口；地点原文和建筑名称的匹配规则在[地图说明](../pages/map/README.md)维护。
+[`map-activities.ts`](map-activities.ts) 共用分页、响应校验、Android 状态及预览后端 SHA 检查，读取标准 [`GET /locations/activities`](../../../backend/app/api/locations/API.md)。地图传设备坐标、半径和新鲜时间戳，由信息系统完成筛选；日历不传坐标，传入当前月历或周历的北京时间边界，响应距离为 null。二者使用同一活动 ID 和地点库，不在前端解析地点。
+
+加载、十秒超时、取消旧请求和迟到响应处理分别位于地图 hook 和 [`useCalendarActivities.ts`](../pages/calendar/useCalendarActivities.ts)。日历切换窗口时清除旧条目，失败显示重试，空库不回退样例。真实活动卡片打开来源原文；现有样例详情/收藏不接收真实活动 UUID。日历信源按钮对已完整分页取得的当前窗口数据做显示筛选。
 
 ## hello 调用与失败处理
 
@@ -43,3 +45,8 @@
 登录和注册表单均要求校园邮箱、密码；本地可选测试入口只供接口调试，且没有 Agent 权限，见[账户契约](../../../backend/app/api/accounts/API.md#post-authlogin)。
 
 在独立本地 Vite 测试标签页执行 `await (await import('/scripts/agent-auth.browser.mjs')).verifyAgentAuth()`，验证账户/对话凭证分离、切换账号时拒绝迟到历史、清除缓存、中止 SSE、401 不匿名重试及跨标签变更。使用虚构令牌和响应，不访问真实模型。
+
+
+## 地图附近活动
+
+[`map-activities.ts`](map-activities.ts) 复用平台地址、Android 状态与后端 SHA 校验，调用标准 `GET /locations/activities`。传递设备经纬度、时间戳、半径、关键词与时间窗口；翻页固定服务端返回的时间边界，校验结构化地点、距离、活动及分页字段，按 ID 去重。十秒超时、旧请求取消、迟到响应与定位失效处理在 [`useNearbyActivities.ts`](../pages/map/useNearbyActivities.ts) 中维护。正式字段见[地图接口](../../../backend/app/api/locations/API.md)，启动步骤见[地图联调](../pages/map/README.md#本地信息系统联调)。

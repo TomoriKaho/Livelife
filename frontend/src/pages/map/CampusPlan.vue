@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import campus from '../../assets/maps/campus.json';
 import { demoLocation, venues } from './demo.js';
 import { center, constrainToBoundary } from './geometry.mjs';
+import { accuracyRadius } from './device-location.mjs';
 import { profileFor } from './model-profiles.mjs';
 import { treeLayout } from './landscape.mjs';
 import { mapPalette } from './map-palette.mjs';
@@ -10,16 +11,16 @@ import { createPlanPatterns, pencilPlanPath } from './plan-pencil.mjs';
 import { initialPlanScale, planAnchor, worldToPlan, planToWorld, zoomPlan, panPlan, pinchPlan,
   planBounds, intersectsPlan, pickPlanBuilding, planScaleBar } from './plan-view.mjs';
 
-const props = defineProps({ selected: String, focusPoint: Array, userPosition: Array, activities: Array,
+const props = defineProps({ selected: String, focusPoint: Array, deviceLocation: Object, activities: Array,
   focusInset: { type: Number, default: 0 }, startingView: Object });
-const emit = defineEmits(['select', 'ready']);
+const emit = defineEmits(['select']);
 const host = ref(null), canvas = ref(null), labels = ref([]), ready = ref(false);
 const displayView = ref({ center: [...demoLocation], scale: .54 });
 const scaleBar = computed(() => planScaleBar(displayView.value.scale));
 const panTarget = computed(() => displayView.value.center.map(value => value.toFixed(1)).join(','));
 let ctx, patterns, observer, frame, motion, reducedMotion, width = 0, height = 0, dpr = 1;
 let view = { center: [...demoLocation], scale: .54 }, surfaces = [], buildings = [], roads = [], trees = [];
-let gesture, velocity = [0, 0], lastMoveTime = 0;
+let gesture, velocity = [0, 0], lastMoveTime = 0, centeredOnDevice = false;
 const pointers = new Map();
 const anchor = () => planAnchor(width, height, props.focusInset);
 const pointInView = event => { const rect = canvas.value.getBoundingClientRect(); return [event.clientX - rect.left, event.clientY - rect.top]; };
@@ -43,7 +44,7 @@ function focusPlace() { if (props.focusPoint) fly({ center: [...props.focusPoint
 function zoom(ratio, point = anchor()) {
   stop(); view = zoomPlan(view, view.scale / ratio, point, anchor(), campus.boundary); schedule();
 }
-function locate() { if (props.userPosition) fly({ center: [...props.userPosition], scale: initialPlanScale(width) }); }
+function locate(point = props.deviceLocation?.point || demoLocation) { fly({ center: [...point], scale: initialPlanScale(width) }); }
 defineExpose({ zoom, locate, getView: () => ({ center: [...view.center], scale: view.scale }) });
 
 function surface(item, color, type) {
@@ -181,9 +182,20 @@ function draw(time) {
     ctx.fillStyle = patterns[tree.color]; ctx.fill(tree.path);
     ctx.strokeStyle = '#526743'; ctx.globalAlpha = .38; ctx.lineWidth = .6 / view.scale; ctx.stroke(tree.path); ctx.globalAlpha = 1;
   }
-  if (props.userPosition) {
-    ctx.beginPath(); ctx.arc(...props.userPosition, 10 / view.scale, 0, Math.PI * 2); ctx.fillStyle = '#84bdf866'; ctx.fill();
-    ctx.beginPath(); ctx.arc(...props.userPosition, 4.5 / view.scale, 0, Math.PI * 2); ctx.fillStyle = '#428bd1'; ctx.fill(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.8 / view.scale; ctx.stroke();
+  if (props.deviceLocation) {
+    const { point, accuracy, heading } = props.deviceLocation;
+    ctx.beginPath(); ctx.arc(...point, accuracyRadius(accuracy), 0, Math.PI * 2); ctx.fillStyle = '#84bdf85c'; ctx.fill(); ctx.strokeStyle = '#428bd188'; ctx.lineWidth = 1 / view.scale; ctx.stroke();
+    if (Number.isFinite(heading)) {
+      const radius = 42 / view.scale, halfAngle = Math.PI / 5, chevron = 14 / view.scale;
+      ctx.save(); ctx.translate(...point); ctx.rotate(heading * Math.PI / 180);
+      // 类似地图应用的定位 beam：从蓝点出发的圆弧扇区，而非菱形箭头。
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, radius, -Math.PI / 2 - halfAngle, -Math.PI / 2 + halfAngle); ctx.closePath();
+      ctx.fillStyle = '#428bd133'; ctx.fill();
+      // 收紧的 chevron 在光束顶端给出明确的前进方向，蓝点仍是位置锚点。
+      ctx.beginPath(); ctx.moveTo(0, -chevron); ctx.lineTo(chevron * .45, -chevron * .36); ctx.lineTo(chevron * .19, -chevron * .43); ctx.lineTo(chevron * .19, -chevron * .08); ctx.lineTo(-chevron * .19, -chevron * .08); ctx.lineTo(-chevron * .19, -chevron * .43); ctx.lineTo(-chevron * .45, -chevron * .36); ctx.closePath();
+      ctx.fillStyle = '#2f7fbc'; ctx.fill(); ctx.restore();
+    }
+    ctx.beginPath(); ctx.arc(...point, 4.5 / view.scale, 0, Math.PI * 2); ctx.fillStyle = '#428bd1'; ctx.fill(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.8 / view.scale; ctx.stroke();
   }
   displayView.value = { center: [...view.center], scale: view.scale }; updateLabels();
   if (motion) schedule();
@@ -191,7 +203,7 @@ function draw(time) {
 function resize() {
   const first = !width; width = host.value.clientWidth; height = host.value.clientHeight;
   dpr = Math.min(window.devicePixelRatio || 1, 2); canvas.value.width = Math.round(width * dpr); canvas.value.height = Math.round(height * dpr);
-  if (first) view = props.startingView ? { center: [...props.startingView.center], scale: props.startingView.scale } : { center: [...(props.userPosition || demoLocation)], scale: initialPlanScale(width) };
+  if (first) view = props.startingView ? { center: [...props.startingView.center], scale: props.startingView.scale } : { center: [...(props.deviceLocation?.point || demoLocation)], scale: initialPlanScale(width) };
   schedule();
 }
 function pointerDown(event) {
@@ -234,14 +246,18 @@ function keyboard(event) {
 }
 watch(() => props.selected, focusBuilding);
 watch(() => props.focusPoint, focusPlace);
+watch(() => props.deviceLocation, (location, previous) => {
+  const pointChanged = !previous || location?.point?.some((value, index) => value !== previous.point?.[index]);
+  if (location && width && pointChanged && !centeredOnDevice) { centeredOnDevice = true; locate(location.point); }
+  else schedule();
+});
 watch(() => props.activities, schedule);
-watch(() => props.userPosition, schedule);
 watch(() => props.focusInset, schedule);
 onMounted(() => {
   reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)'); ctx = canvas.value.getContext('2d');
   prepare(); resize(); observer = new ResizeObserver(resize); observer.observe(host.value); ready.value = true;
+  centeredOnDevice = Boolean(props.deviceLocation);
   if (props.selected) focusBuilding(); else if (props.focusPoint) focusPlace();
-  emit('ready');
 });
 onBeforeUnmount(() => { cancelAnimationFrame(frame); observer?.disconnect(); pointers.clear(); patterns = null; });
 </script>

@@ -5,7 +5,7 @@ import { previewState } from './runtime-config';
  * Web 平台适配
  *
  * 封装浏览器环境与 Capacitor 原生环境的差异。
- * 首阶段仅实现 Web 分支；后续按需扩展 Android/iOS 路径。
+ * Web 与 Android 的能力分别在各平台适配模块中实现；iOS 后续按需接入。
  */
 
 /** 是否为 Capacitor 原生环境 */
