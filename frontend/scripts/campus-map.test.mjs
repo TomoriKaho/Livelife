@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { contains, clipRoad, project, origin, constrainToBoundary } from '../src/pages/map/geometry.mjs';
+import { accuracyRadius, buildingsAtDeviceLocation, normalizeHeading, orientationHeading, orientationSensorHeading, preserveHeading, toDeviceMapLocation } from '../src/pages/map/device-location.mjs';
 import { activities, venues, demoLocation } from '../src/pages/map/demo.js';
 import { initialView } from '../src/pages/map/view.mjs';
 import { joinRings, insideFootprint } from '../src/pages/map/rings.mjs';
@@ -128,7 +129,7 @@ test('拖动中心按凹形校界约束，边界及校内位置保持稳定', ()
   assert.deepEqual(constrainToBoundary([12, 12], u), [10, 10]);
   assert.deepEqual(constrainToBoundary([7, 6], u), [7, 6]);
 });
-test('初始相机使用校内示例位置，视角低于原校园全景', () => {
+test('未取得设备位置时初始相机使用校内示例位置，视角低于原校园全景', () => {
   assert.deepEqual(initialView.target, [demoLocation[0], 0, demoLocation[1]]);
   assert.ok(contains(demoLocation, campus.boundary));
   assert.ok(initialView.offset[1] < 480);
@@ -154,6 +155,49 @@ test('北京坐标投影保持原点、米制方向与精度', () => {
   assert.deepEqual(project({ lon: origin[0], lat: origin[1] }), [0, -0]);
   const [x, z] = project({ lon: origin[0] + .001, lat: origin[1] + .001 });
   assert.ok(x > 85 && x < 86 && z < -111 && z > -112);
+});
+test('设备 WGS-84 位置投影到地图米制坐标并保留精度范围', () => {
+  const location = toDeviceMapLocation({ latitude: 39.993201, longitude: 116.303663, accuracy: 18, heading: 450 });
+  assert.ok(location);
+  assert.ok(Math.abs(location.point[0] + 28.8) < .2);
+  assert.ok(Math.abs(location.point[1] + 189.3) < .2);
+  assert.ok(contains(location.point, campus.boundary));
+  assert.equal(location.accuracy, 18);
+  assert.equal(location.heading, 90);
+  assert.equal(accuracyRadius(location.accuracy), 18);
+  assert.equal(accuracyRadius(0), 1);
+  assert.equal(normalizeHeading(-90), 270);
+  assert.equal(orientationHeading({ absolute: true, alpha: 270 }), 90);
+  assert.equal(orientationHeading({ alpha: 270 }), 90);
+  assert.equal(orientationHeading({ alpha: 60 }), 300);
+  assert.equal(orientationHeading({ alpha: 270 }, 90), 180);
+  assert.equal(orientationHeading({ webkitCompassHeading: 350 }, 20), 10);
+  assert.equal(orientationHeading({ alpha: null }), null);
+  assert.equal(orientationSensorHeading([0, 0, 0, 1]), 0);
+  assert.equal(orientationSensorHeading([0, 0, -Math.SQRT1_2, Math.SQRT1_2]), 90);
+  assert.equal(orientationSensorHeading([0, 0, Math.SQRT1_2, Math.SQRT1_2]), 270);
+  assert.equal(orientationSensorHeading([0, 0, Number.NaN, 1]), null);
+  assert.deepEqual(preserveHeading({ point: [1, 2], accuracy: 3 }), { point: [1, 2], accuracy: 3, heading: 0 });
+  assert.deepEqual(preserveHeading({ point: [1, 2], accuracy: 3 }, 270), { point: [1, 2], accuracy: 3, heading: 270 });
+  assert.deepEqual(preserveHeading({ point: [1, 2], accuracy: 3, heading: 10 }, 270), { point: [1, 2], accuracy: 3, heading: 10 });
+  assert.equal(toDeviceMapLocation({ latitude: Number.NaN, longitude: 116.3, accuracy: 3 }), null);
+});
+test('博雅塔定位使用 WGS-84，不能将 GCJ-02 坐标直接投影到 OSM 离线地图', () => {
+  const boyaWgs84 = toDeviceMapLocation({ latitude: 39.9926368, longitude: 116.3057830, accuracy: 5 });
+  const boyaGcj02 = toDeviceMapLocation({ latitude: 39.993923, longitude: 116.311832, accuracy: 5 });
+  assert.ok(boyaWgs84 && boyaGcj02);
+  assert.equal(contains(boyaWgs84.point, campus.boundary), true);
+  assert.equal(contains(boyaGcj02.point, campus.boundary), false);
+});
+test('定位精度圈与建筑相交时识别全部楼体并正确处理中庭', () => {
+  const building = { id: 'test-building', points: [[0, 0], [10, 0], [10, 10], [0, 10]], holes: [[[3, 3], [7, 3], [7, 7], [3, 7]]] };
+  const neighbour = { id: 'neighbour', points: [[14, 0], [24, 0], [24, 10], [14, 10]] };
+  assert.deepEqual(buildingsAtDeviceLocation([2, 2], 0, [building]), [building]);
+  assert.deepEqual(buildingsAtDeviceLocation([5, 5], 1, [building]), []);
+  assert.deepEqual(buildingsAtDeviceLocation([5, 5], 2, [building]), [building]);
+  assert.deepEqual(buildingsAtDeviceLocation([12, 5], 2, [building, neighbour]), [building, neighbour]);
+  assert.deepEqual(buildingsAtDeviceLocation([Number.NaN, 2], 2, [building]), []);
+  assert.deepEqual(buildingsAtDeviceLocation([2, 2], 2), []);
 });
 test('本地校区资源完整，演示活动映射到实际 OSM 建筑且楼层合法', () => {
   assert.ok(campus.buildings.length > 200);

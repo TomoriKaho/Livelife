@@ -1,5 +1,5 @@
 from collections.abc import Iterator
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock
 from uuid import uuid4
@@ -13,7 +13,7 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.db.models import InformationRecord
+from app.db.models import InformationRecord, MapPlaceRecord
 from app.repositories.sql.information import InformationRepository
 from app.schemas.information import InformationInput, InformationQuery
 from app.services.content import InformationAggregator, InformationProvider
@@ -178,10 +178,10 @@ def test_database_failure_rolls_back_the_entire_batch(sessions, monkeypatch):
         service = InformationAggregator(session)
         original = service.repository.upsert
 
-        def fail_second(record, processed_at):
+        def fail_second(record, processed_at, resolution=None):
             if record.source_id == "second":
                 raise RuntimeError("simulated storage failure")
-            original(record, processed_at)
+            original(record, processed_at, resolution)
 
         monkeypatch.setattr(service.repository, "upsert", fail_second)
         with pytest.raises(RuntimeError, match="storage failure"):
@@ -298,6 +298,43 @@ def test_calendar_query_preserves_local_date_boundaries(sessions):
     assert [record.source_id for record in records] == ["inside"]
 
 
+def test_event_search_combines_literal_keyword_time_and_circle_before_paging(sessions):
+    with sessions.begin() as session:
+        session.add_all(
+            [
+                MapPlaceRecord(id="near", name="近处", longitude=116.304, latitude=39.9915),
+                MapPlaceRecord(id="corner", name="角落", longitude=116.305, latitude=39.9922),
+            ]
+        )
+    ingest(
+        sessions,
+        item("match", title="AI_讲座", activity_start_at=NOW, place_id="near"),
+        item("outside", title="AI_讲座", activity_start_at=NOW, place_id="corner"),
+        item("unmapped", title="AI_讲座", activity_start_at=NOW),
+        item("wildcard", title="AIX讲座", activity_start_at=NOW, place_id="near"),
+        item("later", title="AI_讲座", activity_start_at=NOW + timedelta(days=1), place_id="near"),
+        item("date-only", title="AI_讲座", activity_date="2026-10-11", place_id="near"),
+    )
+    query = InformationQuery(
+        keyword="ai_",
+        longitude=116.304,
+        latitude=39.9915,
+        radius_m=100,
+        activity_after=NOW,
+        activity_before=NOW + timedelta(hours=1),
+        events_only=True,
+        limit=1,
+    )
+    (match,) = lookup(sessions, query)
+    assert match.source_id == "match"
+    assert match.place is not None and match.place.longitude == 116.304
+    assert lookup(sessions, query.model_copy(update={"offset": 1})) == ()
+    articles = {record.source_id: record for record in lookup(sessions)}
+    assert articles["date-only"].activity_date == date(2026, 10, 11)
+    assert articles["date-only"].activity_start_at is None
+    assert articles["unmapped"].place is None
+
+
 def test_pagination_has_deterministic_tie_breaking(sessions):
     ingest(sessions, *(item(str(index)) for index in range(5)))
     all_records = lookup(sessions)
@@ -318,6 +355,8 @@ def test_pagination_has_deterministic_tie_breaking(sessions):
         {"fetched_after": NOW, "fetched_before": NOW},
         {"activity_after": NOW, "activity_before": NOW - timedelta(hours=1)},
         {"activity_after": datetime(2026, 10, 11)},
+        {"longitude": 116.304, "latitude": 39.9915},
+        {"longitude": 116.304, "latitude": 39.9915, "radius_m": 0},
     ],
 )
 def test_invalid_queries_are_rejected(query):

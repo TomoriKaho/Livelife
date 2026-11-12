@@ -18,30 +18,24 @@ export const pageMeta = {
 
 <script setup>
 import { computed, ref } from 'vue';
-import { RouterLink } from 'vue-router';
+import { useCalendarActivities } from './calendar/useCalendarActivities';
 import AppIcon from '../components/AppIcon.vue';
 import CalendarIcon from './calendar/CalendarIcon.vue';
-import { saved, toggleSave } from '../data/favorites.js';
 import PencilSwatch from './calendar/PencilSwatch.vue';
 import {
-  TODAY,
   HOURS,
-  filters,
   addDays,
-  categoryOf,
-  chipAt,
   daysFrom,
-  eventsOn,
   formatDay,
   formatMonth,
   formatRange,
-  marksOn,
   monthCells,
   parseKey,
   toKey,
   weekdayLabel,
 } from './calendar/events.js';
 
+const TODAY = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai' }).format(new Date());
 const views = [
   { id: 'month', label: '月' },
   { id: 'week', label: '周' },
@@ -53,6 +47,12 @@ const selectedKey = ref(TODAY);
 const monthCursor = ref(parseKey(TODAY));
 const weekStart = ref(parseKey(TODAY));
 
+const windowStart = computed(() => view.value === 'month' ? monthCells(monthCursor.value.getFullYear(), monthCursor.value.getMonth())[0].key : toKey(weekStart.value));
+const windowEnd = computed(() => {
+  const start = parseKey(windowStart.value);
+  return toKey(addDays(start, view.value === 'month' ? monthCells(monthCursor.value.getFullYear(), monthCursor.value.getMonth()).length : 7));
+});
+const { events, loading, error, reload, filters, categoryOf, eventsOn, marksOn, chipAt } = useCalendarActivities(windowStart, windowEnd);
 const selectedDate = computed(() => parseKey(selectedKey.value));
 const selectedEvents = computed(() => eventsOn(selectedKey.value, category.value));
 const isTodaySelected = computed(() => selectedKey.value === TODAY);
@@ -62,7 +62,7 @@ const weekSlots = computed(() => HOURS.map((hour) => ({
   hour,
   cells: weekKeys.value.map((key) => {
     const event = chipAt(key, hour, category.value);
-    return event ? { key, event, category: categoryOf(event) } : { key, event: null };
+    return { key, events: event };
   }),
 })));
 const monthGrid = computed(() => monthCells(monthCursor.value.getFullYear(), monthCursor.value.getMonth()));
@@ -132,6 +132,8 @@ function dayPencil(key) {
       </div>
     </div>
 
+    <p class="lede" role="status">{{ loading ? '正在读取活动…' : error || `当前日期范围 ${events.length} 场真实活动 · 北京时间` }}</p>
+    <button v-if="error" type="button" @click="reload">重新加载活动</button>
     <article v-sketch class="board sketch sketch-white">
       <div class="board-nav">
         <button class="nudge" type="button" :aria-label="view === 'month' ? '上个月' : '上一周'" @click="shift(-1)">
@@ -206,21 +208,22 @@ function dayPencil(key) {
             <span class="time-gutter">{{ String(row.hour).padStart(2, '0') }}:00</span>
             <div v-for="cell in row.cells" :key="`${cell.key}-${row.hour}`" class="week-cell">
               <button
-                v-if="cell.event"
+                v-for="event in cell.events"
+                :key="event.id"
                 v-sketch
                 class="chip sketch pencil-fill sketch-fill-only sketch-cast"
                 type="button"
-                :data-pencil="cell.category.pencil"
-                :data-cast="cell.category.pencil"
-                :aria-label="cell.event.title"
+                :data-pencil="categoryOf(event).pencil"
+                :data-cast="categoryOf(event).pencil"
+                :aria-label="event.title"
                 @click="selectDay(cell.key)"
-              >{{ cell.event.chip }}</button>
+              >{{ event.chip }}</button>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="filters" role="tablist" aria-label="活动分类">
+      <div class="filters" role="tablist" aria-label="活动信源">
         <button
           v-for="item in filters"
           :key="`${item.id}-${category === item.id}`"
@@ -247,7 +250,7 @@ function dayPencil(key) {
     <div v-if="selectedEvents.length" class="agenda">
       <article v-for="item in selectedEvents" :key="item.id" v-sketch class="event-card sketch sketch-white sketch-cast" :data-cast="categoryOf(item).pencil">
         <span class="accent" :data-accent="categoryOf(item).pencil" aria-hidden="true"></span>
-        <RouterLink class="event-link" :to="{ path: '/detail', query: { id: item.id } }">
+        <a class="event-link" :href="item.source_url" target="_blank" rel="noopener noreferrer" :data-event-id="item.id">
           <span v-sketch class="badge sketch pencil-fill sketch-cast" :data-pencil="categoryOf(item).pencil" :data-cast="categoryOf(item).pencil">
             <CalendarIcon :name="categoryOf(item).icon" />
           </span>
@@ -257,30 +260,15 @@ function dayPencil(key) {
               <h3>{{ item.title }}</h3>
             </div>
             <p class="event-meta">
-              <span><CalendarIcon name="clock" />{{ item.start }}–{{ item.end }}</span>
+              <span><CalendarIcon name="clock" />{{ item.start }}{{ item.end ? `–${item.end}` : '（结束时间未提供）' }}</span>
               <span><AppIcon class="pin" name="pin" />{{ item.place }}</span>
             </p>
           </div>
-        </RouterLink>
-        <button
-          class="save"
-          type="button"
-          :aria-pressed="saved.has(item.id)"
-          :aria-label="saved.has(item.id) ? '取消收藏' : '收藏活动'"
-          @click="toggleSave(item.id)"
-        >
-          <span
-            v-if="saved.has(item.id)"
-            v-sketch
-            class="save-wash sketch pencil-fill sketch-fill-only"
-            data-pencil="yellow"
-            aria-hidden="true"
-          ></span>
-          <CalendarIcon class="save-icon" :class="{ 'is-on': saved.has(item.id) }" name="bookmark" />
-        </button>
+        </a>
+
       </article>
     </div>
-    <p v-else class="empty">{{ category === 'all' ? '这一天还没有安排活动' : '这一天没有这类活动' }}</p>
+    <p v-else-if="!loading && !error" class="empty">{{ category === 'all' ? '这一天还没有安排活动' : '这一天没有这类活动' }}</p>
   </section>
 </template>
 
@@ -315,10 +303,10 @@ function dayPencil(key) {
 .week-body { margin-top: 2px; }
 .week-row { min-height: 24px; align-items: stretch; border-top: 1px solid rgb(32 48 75 / 10%); }
 .time-gutter { display: grid; place-items: center start; padding-left: 1px; color: var(--muted); font-size: 10px; letter-spacing: 0; }
-.week-cell { min-width: 0; padding: 1px; display: flex; align-items: center; }
+.week-cell { min-width: 0; padding: 1px; display: flex; flex-direction: column; gap: 2px; align-items: center; }
 .chip { width: 100%; min-height: 22px; padding: 2px 2px; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 10px; line-height: 1.15; letter-spacing: 0; overflow: hidden; }
 .filters { display: flex; gap: 6px; margin: 10px 2px 0; }
-.filter-tab { flex: 1; min-width: 0; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; padding: 6px 6px; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 13px; line-height: 1.2; white-space: nowrap; }
+.filter-tab { flex: 1; min-width: 0; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; padding: 6px 6px; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 13px; line-height: 1.2; white-space: normal; overflow-wrap: anywhere; }
 .agenda-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 14px 0 10px; }
 .day-pill { margin: 0; padding: 6px 12px; background: transparent; font-size: 15px; font-weight: 400; line-height: 1.2; }
 .agenda-head p { margin: 0; color: var(--muted); font-size: 14px; display: inline-flex; align-items: center; gap: 2px; }

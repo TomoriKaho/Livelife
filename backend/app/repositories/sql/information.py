@@ -1,13 +1,16 @@
 from datetime import datetime
+from math import cos, degrees, radians, sin
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, contains_eager
 
-from app.db.models import InformationRecord
-from app.schemas.information import InformationInput, InformationQuery
+from app.db.models import InformationRecord, MapPlaceRecord
+from app.schemas.information import InformationInput, InformationQuery, LocationResolution
+
+EARTH_RADIUS_M = 6_371_008.8
 
 
 class InformationRepository:
@@ -16,7 +19,12 @@ class InformationRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def upsert(self, item: InformationInput, processed_at: datetime) -> None:
+    def upsert(
+        self,
+        item: InformationInput,
+        processed_at: datetime,
+        resolution: LocationResolution | None = None,
+    ) -> None:
         dialect = self.session.get_bind().dialect.name
         if dialect == "postgresql":
             insert = pg_insert
@@ -34,7 +42,10 @@ class InformationRepository:
             raw_payload=item.raw_payload,
             first_fetched_at=item.fetched_at,
             processed_at=processed_at,
+            location_resolution=resolution.model_dump(mode="json") if resolution else None,
         )
+        if resolution is not None:
+            values["place_id"] = resolution.place_id
         statement = insert(InformationRecord).values(**values)
         statement = statement.on_conflict_do_update(
             index_elements=["platform", "source_id"],
@@ -57,8 +68,47 @@ class InformationRepository:
         )
         return self.session.scalars(statement.execution_options(populate_existing=True)).one()
 
-    def list(self, query: InformationQuery) -> list[InformationRecord]:
+    def statement(self, query: InformationQuery):
         statement = select(InformationRecord)
+        if query.events_only:
+            statement = statement.where(
+                InformationRecord.activity_start_at.is_not(None),
+                InformationRecord.place_id.is_not(None),
+            )
+        if query.keyword is not None:
+            statement = statement.where(
+                or_(
+                    InformationRecord.title.icontains(query.keyword, autoescape=True),
+                    InformationRecord.content.icontains(query.keyword, autoescape=True),
+                    InformationRecord.source_name.icontains(query.keyword, autoescape=True),
+                    InformationRecord.activity_location.icontains(query.keyword, autoescape=True),
+                )
+            )
+        if (
+            query.longitude is not None
+            and query.latitude is not None
+            and query.radius_m is not None
+        ):
+            angular_radius = query.radius_m / EARTH_RADIUS_M
+            delta_latitude = degrees(angular_radius)
+            lat_term = func.sin(func.radians(MapPlaceRecord.latitude - query.latitude) / 2)
+            lon_term = func.sin(func.radians(MapPlaceRecord.longitude - query.longitude) / 2)
+            haversine = lat_term * lat_term + (
+                cos(radians(query.latitude))
+                * func.cos(func.radians(MapPlaceRecord.latitude))
+                * lon_term
+                * lon_term
+            )
+            statement = (
+                statement.join(InformationRecord.place)
+                .options(contains_eager(InformationRecord.place))
+                .where(
+                    MapPlaceRecord.latitude.between(
+                        query.latitude - delta_latitude, query.latitude + delta_latitude
+                    ),
+                    haversine <= sin(angular_radius / 2) ** 2,
+                )
+            )
         if query.platform is not None:
             statement = statement.where(InformationRecord.platform == query.platform)
         if query.fetched_after is not None:
@@ -85,9 +135,15 @@ class InformationRepository:
                     ),
                 )
             )
+        return statement
+
+    def list(self, query: InformationQuery) -> list[InformationRecord]:
+        ordering = (
+            (InformationRecord.activity_start_at.asc(), InformationRecord.id.asc())
+            if query.order_by == "activity"
+            else (InformationRecord.fetched_at.desc(), InformationRecord.id.desc())
+        )
         statement = (
-            statement.order_by(InformationRecord.fetched_at.desc(), InformationRecord.id.desc())
-            .limit(query.limit)
-            .offset(query.offset)
+            self.statement(query).order_by(*ordering).limit(query.limit).offset(query.offset)
         )
         return list(self.session.scalars(statement.execution_options(populate_existing=True)))

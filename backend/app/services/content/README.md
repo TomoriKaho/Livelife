@@ -1,6 +1,127 @@
 # 通用信息系统
 
-为活动列表、日历、地图、推荐和 Agent 等后端模块提供共同的信息来源。当前包含可接入的采集接口、SQL 持久化与统一查询服务，使用 Python 内部调用；本模块自身没有 HTTP 路由。[地图活动查询 API](../../api/locations/API.md)经此服务读取公开活动，地图附近区不再用前端样例活动。对应需求为 [#60](https://github.com/TomoriKaho/Livelife/issues/60)，真实公众号渠道在 [#63](https://github.com/TomoriKaho/Livelife/issues/63) 接入，附近筛选由 [#61](https://github.com/TomoriKaho/Livelife/issues/61) 消费本模块数据。
+为活动列表、日历、地图、推荐和 Agent 等后端模块提供共同的信息来源。[#60](https://github.com/TomoriKaho/Livelife/issues/60) 的 Python 服务负责采集契约、SQL 持久化和统一查询。[#63](https://github.com/TomoriKaho/Livelife/issues/63) 本地 Demo 用独立 HTTP 入口验证公众号原文导入、[#61](https://github.com/TomoriKaho/Livelife/issues/61) 所需的附近活动筛选，以及 Agent 可读取的检索文本。
+
+## 地点目录导入与旧数据回填
+
+标准地图接口见[地图活动查询 API](../../api/locations/API.md)。`content.map_query` 负责时间、关键词、半径与建筑排序；`InformationAggregator` 在写入时调用 `LocationResolver`。前端只展示结构化地点，不重复匹配原文。`InformationQuery.order_by` 默认仍为采集时间倒序，地图显式选择 `activity`，按开始时间和 UUID 升序。
+
+在已设置开发用 `DATABASE_URL` 的 backend 终端执行：
+
+```bash
+uv run --locked alembic upgrade head
+uv run --locked python -m app.services.content.catalog
+uv run --locked uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+导入工具只添加缺失地点和别名，不覆盖已维护坐标；随后重新解析尚无 `place_id` 的旧记录，保留来源与采集时间。重复运行不会重复插入；歧义保留候选，不自动选一个地点。正式数据库操作仍需负责人授权，API 启动和 GET 查询均不会自动运行该工具。空目录返回空地图结果，不能靠前端匹配绕过目录初始化。
+
+`places.json` 的具名建筑来自仓库 [campus.json](../../../../frontend/src/assets/maps/campus.json)，坐标是建筑轮廓顶点均值经原投影逆变换的 WGS84 建筑级参考点，不是门口或室内测绘。已有八个地点的稳定 ID 保留，其他地点采用带 OSM 建筑 ID 的目录 ID；后续地图替换需维护 `building_id` 映射。来源与 ODbL 许可见[地图许可](../../../../frontend/src/assets/maps/LICENSE.md)，公开分发须保留署名与许可。地点目录不包含活动或个人位置；Demo 和标准服务共用这份目录。
+
+## 三个官网信源接入标准后端
+
+[`official_events.py`](../ingestion/official_events.py) 是显式运行的采集命令：直接请求图书馆、百周年纪念讲堂、数学科学学院官网，按各站页面字段提取标题、活动时间和地点，再通过 `InformationAggregator` 写入同一信息表。地图和日历都读取标准 `GET /locations/activities`，不依赖 `content_demo`，不在请求或服务启动时联网采集。
+
+先按[后端开发入口](../../../README.md#本地数据库自动准备)启动持久本地 PostgreSQL。以下命令在 backend 执行；写库前将开发入口打印的本地连接串设置为当前终端的 `DATABASE_URL`：
+
+```bash
+# 仅采集，先核对 records.json 和 failures.json
+uv run --locked python -m app.services.ingestion.official_events
+# 明确导入同一批经过核对的记录；可重复执行，不增加重复活动
+uv run --locked python -m app.services.ingestion.official_events \
+  --import-records .local/official-events/records.json --write
+```
+
+[`official_events.json`](../ingestion/official_events.json) 保存人工选定的 11 个原文链接，来自三个直接信源，活动日期为 2026-11-07 至 2026-11-18。这是可重复采集的首批 URL 清单，不是账号历史发现或持续自动更新服务。可通过 `--manifest` 传入同格式清单，每批最多 20 篇；每页最多重试三次，有超时、失败报告和请求间隔。失败时保留本地快照并停止本批入库，不用示例填补。别名无法唯一匹配时停止导入，需核对地点；不能由模型猜坐标。
+
+原始 HTML 按 SHA-256 保存到被忽略的 `.local/official-events/`，结构化记录保留 URL、采集时间、解析器版本、时间/地点证据和 HTML 摘要。可重放相同记录；数据库保留稳定 UUID，原始快照留在开发磁盘。搜索正文为事实摘录，完整网页不直接渲染到前端。当前每篇选定文章只有一个活动，来源 ID 为 `文章标识:event:1`；通用多活动拆分、取消活动识别、历史版本数据库和增量调度尚未实现。
+
+活动时间按北京时间解析，发布时刻不从不可靠的 CMS 元数据猜测，缺失结束时间保留 null。已结束活动仍可按历史窗口查看；地图默认只显示今天至后天尚未结束的活动。地点关联沿用统一目录，新增的“智华楼”“四元厅”别名依据[数学学院原文](https://math.pku.edu.cn/kxyj/xsbg/tlb/dynamicsystems/26997626f8f14730bae48d04c3630ac4.htm)中“智华楼四元厅-224,225室”的明确对应关系，保持建筑级精度。
+
+## 运行本地 Demo
+
+在 `backend` 目录执行以下命令，打开 [交互式接口](http://127.0.0.1:18763/docs)。进程监听本机，允许 `http://127.0.0.1:8775` 与 `http://localhost:8775` 的 GET/POST 联调请求，并使用退出时清理的 SQLite 数据库，默认导入[北大图书馆讲座](https://lib.pku.edu.cn/hdrl/0a32a64919294d338dd72b58de36d348.htm)和[百周年纪念讲堂公告](https://hall.pku.edu.cn/hdgp/zxyc/l/e1020fa7bc6f463facebacabd50c5340.htm)的两条活动样本，以及三条标为 `platform=demo` 的合成地点解析样本。
+
+```bash
+uv run --locked python -m app.content_demo
+```
+
+| 本地接口 | 用途 |
+| --- | --- |
+| `GET /places` | 地点 ID、名称、校区、地图建筑 ID 和 WGS84 经纬度 |
+| `GET /places/resolve?text=理教106` | 地点原文解析结果与匹配地点的坐标 |
+| `GET /places/{place_id}/aliases` | 查看地点别名，地点不存在时返回 `404` |
+| `POST /information` | 导入单条信息并自动解析 `activity_location`，未知的显式地点 ID 返回 `422` |
+| `POST /events/nearby` | 直接接收 #82 的设备位置对象及半径，返回筛选后的活动 |
+| `GET /information` | 统一查询所有条目，支持组合筛选 |
+| `GET /events` | 同样的筛选参数，结果须有开始时刻和已关联地图地点 |
+| `GET /information/{id}/chunks` | 供 Agent 读取的条目、来源及分块。条目不存在时返回 `404` |
+
+地图调用时只需传查询中心经纬度和半径。以下请求查询纪念讲堂附近 120 米内的活动。字段校验失败时返回 `422`。
+
+```bash
+curl 'http://127.0.0.1:18763/events?longitude=116.30452&latitude=39.98857&radius_m=120'
+```
+
+### 统一地点库与文本解析
+
+`information_places` 维护独立的地点 ID、名称、校区、WGS84 经纬度，以及可选的地图 `building_id`。`information_place_aliases` 保存地点别名，同一个别名可以对应多个地点。目录包含地图中的 161 个具名建筑，其中图书馆、纪念讲堂、理教、一至四教和古籍图书馆保留人工补充的别名。地点坐标取自[校园地图](../../../../frontend/src/assets/maps/campus.json)建筑轮廓的顶点均值，授权见[地图数据说明](../../../../frontend/src/assets/maps/LICENSE.md)。
+
+采集器先把有来源依据的地点文字写入 `activity_location`。汇总服务在同一入库事务中执行 [`LocationResolver`](locations.py)，兼容全角字符、空白及英文字母大小写，通过名称和别名定位建筑，再提取紧随其后的教室号和显式楼层。匹配优先采用完整名称，多个地点候选保留歧义。调用方显式指定已登记的 `place_id` 时以该关联为准，解析方法标为 `explicit`。
+
+| 输入 | 结果 |
+| --- | --- |
+| `理教 １０６` | `pku:yanyuan:science-teaching`，教室 `106`，对应地图建筑 `444991872` |
+| `理科教学楼二层B106教室` | 理科教学楼，教室 `B106`，原文楼层 `二层` |
+| `图书馆培训教室208+在线` | 图书馆，教室 `208`，原文保留线上部分 |
+| `教学楼106` | `ambiguous`，返回多个地点 ID 候选，坐标为空 |
+| `报告厅` 或 `清华图书馆` | `unmatched`，坐标为空 |
+
+结果保存在 `Information.location_resolution`，包含 `status`、`place_id`、`room`、`floor`、`precision`、`method`、`matched_alias`、`evidence`、`candidates` 和解析器版本。精度当前为 `building`，楼层只从原文明示信息提取。多房间列表保留在原文，单值 `room` 留空。未知或歧义地点的条目可通过通用查询读取，附近活动查询要求已有地图关联。更新原文后重新解析，地点消失时清除此前的关联，旧快照重放遵循原有时间戳规则。
+
+地点库当前覆盖上述燕园建筑，解析规则处理已提取的地点字段。任意文章的自动地点抽取、跨校区消歧、室内坐标和别名维护界面待后续接入。
+
+### 对齐 #82 的设备位置接口
+
+[`DeviceLocation`](../../schemas/location.py) 对齐 [#82 的 `CurrentLocation`](https://github.com/TomoriKaho/Livelife/blob/f397902b9ccfcc1ae087c363172c04de422714c5/frontend/src/platform/location.ts)。坐标为 WGS-84，沿用 `latitude`、`longitude`、米制 `accuracy`、Unix 毫秒 `timestamp` 和可选 `heading`。设备位置仅用于本次查询，存储的是活动所关联的地点。
+
+`POST /events/nearby` 接收 `{location, radius_m, filters}`。`filters` 支持统一查询的关键词、来源、时间窗和分页，坐标及半径只在外层提供。Demo 接受两分钟内的位置并容许最多十秒的未来时钟偏差，过期或非法参数返回 `422`。`accuracy` 用于描述设备误差，搜索范围始终由 `radius_m` 决定。#82 临时定位失败后可能保留旧位置，因此调用方应在过期时刷新。
+
+以下片段在前端确认 #82 的 `locationTrackingState.value` 为 `located` 且已获得 `currentLocation.value` 后使用，实际接口地址按同源代理或联调配置提供。
+
+```javascript
+const response = await fetch('/events/nearby', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    location: currentLocation.value,
+    radius_m: 300,
+    filters: { keyword: '讲座', limit: 20 },
+  }),
+});
+```
+
+这一步会将查询中心发送给信息系统，地图调用方按位置变化节流，取消旧请求，并丢弃迟到响应。地图绘制继续使用自身米制投影，活动结果通过 `place.building_id` 找到建筑。地图页面的本地接入与浏览器验证见[地图说明](../../../../frontend/src/pages/map/README.md#本地信息系统联调)，物理设备定位仍须真机验收。
+
+### 自采公众号原文
+
+用可见浏览器打开 `https://mp.weixin.qq.com/s/<article-id>` 格式的公开原文，确认正文可见。从 `backend` 目录在已打开该文章标签页的 Playwright CLI 会话中运行以下命令。脚本读取文章文本、标题、发布账号和可解析的发布时间，并记录实际抓取时间。遇到验证页或正文缺失会停止导出。图片及图片中的文字需另行处理。
+
+```bash
+umask 077
+playwright-cli run-code "$(cat app/services/ingestion/wechat_capture.js)" --raw > /tmp/wechat-article.json
+uv run --locked python -m app.content_demo --wechat-json /tmp/wechat-article.json
+```
+
+实测可直读[北京大学人工智能研究院的公众号原文](https://mp.weixin.qq.com/s/l6Yiqi5KvcUJ-M1jetRloQ)。样本经[北大新闻网](https://news.pku.edu.cn/info/3001/3306131.htm)核对后，在本地 JSON 补录 `activity_date`、`activity_location`、`place_id` 和 `raw_payload.event_evidence_url`，开场时刻留空。普通 HTTP 请求两条原文均收到验证页。浏览器方式已验证已知链接的单篇获取，账号历史和增量采集待验证。开源参考 [WeRead Omni](https://github.com/teng-lin/weread-omni) 使用个人微信读书登录读取公众号列表，正文可用性需要独立实测。
+
+[北大知道](https://pkuknow.cn/)的公开面板按公众号和北大官网列出信源、收录数，并提供按来源查看和活动日历。实测面板列出 203 个公众号，站内采集流程无法从公开页面核实。本 Demo 的入库数据均直接来自北大官网或公众号原文。
+
+### 课程与教室信源
+
+登录北大门户后，院系课表 `retrCourseScheduleList.do` 返回课程号、班号、周次和含教室的上课时间，数学科学学院样本同时验证了本科、研究生课表。同一请求匿名访问返回 `401`。本人课表也含节次、周次和地点。空闲教室 `retrClassRoomFree.do` 无需登录即可取得房间、容量和分节次状态。选课系统的选课计划和结果页本次显示系统提示，未取得选课快照。[北大门户](https://portal.pku.edu.cn/) · [选课系统](https://elective.pku.edu.cn/)
+
+后续课程适配建议保留学年学期、课程号、班号、周次、星期、节次和教室原文，按校历和作息表展开到具体日期，再关联统一地点 ID。个人课表留在用户授权范围内，公共课表才作为共享信源。选课快照无法从官方渠道取得时，可单独评估拼好课。
 
 ## 三部分职责
 
@@ -14,31 +135,35 @@
     → Information → 各业务模块自己的服务 / API
 ```
 
-- 获取：[`InformationSource`](../ingestion/source.py) 定义适配协议。公众号、树洞、知乎、小红书等适配器实现 `platform` 和 `fetch()`，产生统一输入；平台标识是可扩展字符串，不限于上述渠道。本次没有提供这些平台的客户端、账号接入或爬虫。
-- 汇总：[`InformationAggregator`](aggregation.py) 保存记录并保留来源、原始正文和渠道原始字段；当前处理仅包括字段校验、UTC 时间规范化和正文首尾空白清理。不自动从文章推断活动时间、地点，不调用模型。
+- 获取。[`InformationSource`](../ingestion/source.py) 定义 `platform` 和 `fetch()`。公众号样本由 [`WeChatSnapshotSource`](../ingestion/wechat.py) 读取本地 JSON，经现有采集协议导入。新增平台可使用自己的适配器提供相同格式。
+- 汇总：[`InformationAggregator`](aggregation.py) 保存记录并保留来源、原始正文和渠道原始字段；处理包括字段校验、UTC 时间规范化、正文首尾空白清理及地点库规则解析，活动时间仍由采集器提供。
 - 提供：[`InformationProvider`](provider.py) 返回独立于 ORM Session 的只读 Pydantic 对象，供其他后端服务组合使用。调用方按自己的业务要求组织列表、日历和地图接口。
 
 数据库操作在 [`InformationRepository`](../../repositories/sql/information.py)，表结构在 [`InformationRecord`](../../db/models/information.py)。汇总服务负责事务；repository 不提交或回滚事务，查询服务不写入数据。
 
 ## 统一格式与缺失值
 
-字段类型、约束及 JSON Schema 的主要来源是 [`schemas/information.py`](../../schemas/information.py)。`InformationInput.model_json_schema()` 和 `Information.model_json_schema()` 可用于内部契约检查；这些模型不注册到 FastAPI OpenAPI。
+字段类型、约束及 JSON Schema 见 [`schemas/information.py`](../../schemas/information.py)。`InformationInput.model_json_schema()` 和 `Information.model_json_schema()` 可用于内部契约检查。Demo 的 `/openapi.json` 描述本地查询接口。
 
 | 字段 | 输入规则与含义 |
 | --- | --- |
 | `platform` | 必填，小写字母开头，由小写字母、数字及下划线组成，最多 64 字符；例如 `wechat`、`pku_hole`、`zhihu`、`xiaohongshu` |
-| `source_id` | 必填，平台内稳定且唯一，最多 255 字符；同一平台有多个账号时，适配器需包含账号命名空间，例如 `account-a:article-123` |
+| `source_id` | 必填，平台内稳定且唯一，最多 255 字符。来源 ID 仅在账号内唯一时，加账号命名空间，例如 `account-a:article-123` |
 | `source_url` | 可选 HTTP/HTTPS 原文地址；无公开链接时保留 `None`，来源仍由平台和来源 ID 标识，不编造链接 |
+| `source_name` | 可选的发布账号或单位名称，用于显示和关键词检索 |
 | `title` | 可选标题，去除首尾空白后长度 1–500 |
 | `content` | 必填且不能只有空白；输入正文原样另存 `raw_content`，统一输出去除首尾空白 |
 | `fetched_at` | 必填，本次实际获取时间，不得用文章发布时间或入库时间代替 |
 | `published_at` | 可选，来源平台提供的发布时间 |
-| `activity_location` | 可选，最多 500 字符，已知的活动地点原文，例如“理科教学楼 101”；不是地图坐标或实时定位 |
+| `activity_location` | 可选，最多 500 字符，活动地点原文，例如“理科教学楼 101” |
+| `place_id` / `place` | 可选的 `information_places` 外键。查询响应展开地点 ID、名称、校区、地图 `building_id` 和 WGS84 经纬度 |
+| `location_resolution` | 输出专用，提供地点匹配状态、教室、显式楼层、精度、原文依据、候选与解析版本 |
+| `activity_date` | 只确认活动日期时，保存来源当地的日历日期，例如 `2026-10-18` |
 | `activity_start_at` / `activity_end_at` | 可选，活动开始/结束时间；同时存在时结束必须晚于开始 |
 | `registration_deadline_at` | 可选，报名截止时间 |
 | `raw_payload` | 输入专用，可选 JSON 对象，保存适配器需要追溯的原始字段，默认为 `{}`；提供服务不返回它 |
 
-所有时间必须带时区，例如 `2026-10-11T12:00:00+08:00`；保存和输出统一为 UTC，同一时刻序列化为 `2026-10-11T04:00:00Z`。不接受无时区时间。活动字段均可缺失，普通文章也可入库；未知值保持 `None`，不要填当前时间、默认地点或从示意地图推断。可选文本未知时传 `None`，不传空字符串。
+所有时间戳必须带时区，例如 `2026-10-11T12:00:00+08:00`，保存和输出统一为 UTC。`activity_date` 保留原日历日期。普通文章也可入库，未知的活动时刻、地点和可选文本用 `None` 表示。
 
 输出 `Information` 在公共字段之外增加：
 
@@ -46,7 +171,7 @@
 - `first_fetched_at`：首次成功入库那份快照的获取时间，后续更新保持不变；不是历史最早发布时间。
 - `processed_at`：当前保存快照的处理时间，重放被忽略时不改变。
 
-当前一条记录表示一个平台来源信息，附带最多一组已知活动时间和地点。多活动文章的拆分、跨平台同一活动的合并、坐标解析、分类、摘要、全文检索和访问控制需要后续明确契约；当前不自动执行。正文作为不可信内容传递，消费方显示 HTML 时须按自身渲染规则处理。
+当前一条记录表示一个平台来源信息，附带最多一组活动时间和地点。多活动文章拆分、跨平台活动合并、跨校区地点消歧、分类、摘要、全文检索和访问控制待后续明确契约。正文作为不可信的来源资料传递，消费方显示 HTML 时按自身规则渲染。
 
 ## 幂等、更新与失败
 
@@ -73,10 +198,19 @@
 | `platform` | 精确匹配一个平台 |
 | `fetched_after` / `fetched_before` | 获取时间范围 `[after, before)`，可只设一端 |
 | `activity_after` / `activity_before` | 查询与该时间窗口相交的活动，窗口为 `[after, before)`，可只设一端 |
-| `activity_location` | 地点文本包含匹配，`%`、`_` 等按普通字符匹配；不执行距离计算或坐标转换 |
+| `activity_location` | 地点原文包含匹配，`%`、`_` 等按普通字符匹配 |
+| `keyword` | 标题、正文、发布账号、地点原文中任一字段包含关键词，英文字母忽略大小写，通配符按普通字符匹配 |
+| `longitude` / `latitude` / `radius_m` | 一起传入 WGS84 经纬度和米制半径，半径大于 0 且最多 50,000 米。按球面距离匹配已关联地图地点的条目 |
+| `events_only` | 仅返回有活动开始时刻且已关联地图地点的条目。`/events` 始终采用此条件 |
 | `limit` / `offset` | 数量及偏移，非负偏移，数量 1–100 |
 
-活动有开始和结束时按区间相交查询，因此跨午夜活动也能被日历查到。只有开始时间时作为一个时间点匹配，不假设活动仍在持续。只有结束时间或完全未知时间的记录仍保留在通用列表中，但不进入活动时间查询。北京时间某一天应以 `+08:00` 的当天零点和次日零点传入，不用 UTC 零点代替本地日期边界。
+不同筛选条件取交集，过滤完成后分页。有开始和结束时按区间相交，只有开始时间时作为时间点匹配。仅确认日期或仅有结束时间的条目仍保留在通用列表中。查询北京时间的某一天时，传入带 `+08:00` 的当天零点和次日零点。
+
+## Agent 读取与向量检索
+
+[`retrieval_document()`](retrieval.py) 输出统一条目和按序号排列的正文块。`chars-v1` 每块正文最多 480 字符，相邻块重叠 60 字符，块前附标题，`text_sha256` 对实际用于检索的文本取哈希。Agent 可以先用结构化条件缩小候选范围，再取分块并引用 `source_url`。
+
+后续可独立存储 `information_id`、`chunking_version`、`ordinal`、`model_version`、`text_sha256` 与 `embedding`。前四项组合标识向量记录，文章更新后用内容哈希复用未变更的块，清理过期块。向量存储和相似度排序待接入，可复用同一地点与时间查询契约。[pgvector](https://github.com/pgvector/pgvector)
 
 ## 本地准备与调用
 
@@ -156,7 +290,7 @@ with database.session_factory() as session:
 
 ## 迁移、验证与回滚
 
-首个迁移 `0001_information` 创建信息表、来源唯一约束、活动区间约束及查询索引。升级不会修改已有 hello API，不会自动启动采集。部署前核对目标数据库和备份，按实际环境手动迁移；当前测试环境没有在本任务中配置数据库或运行远程迁移。
+`0001_information` 创建信息表及来源唯一约束，`0002_information_places` 添加地图地点表、地点外键、发布方及活动日期字段。`0003_place_resolution` 增加地点别名、校区、地图建筑关联和解析结果。升级保留既有地点 ID，并把旧 Demo 地点 ID 写入 `building_id`。已有条目的解析结果为空，下一次较新快照入库时生成。回退 `0003` 会删除别名、地图关联及解析结果，保留原地点和信息记录。本联调分支将地点迁移接在 `0005_agent_account_auth` 之后，使用新的临时数据库验证完整迁移链。原内容和来源 ID 继续可用。正式环境迁移遵循[部署入口](../../../../docs/deployment.md)。
 
 仅在可丢弃的开发数据库中，`uv run alembic downgrade base` 可回退首个迁移，**会删除信息表和全部信息数据**；需要保留数据时先导出并验证备份。再次 `upgrade head` 只重建表，不恢复已删除的数据。
 
