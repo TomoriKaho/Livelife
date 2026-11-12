@@ -28,3 +28,11 @@ test('released, expired, mismatched and unreachable packages disable requests in
     await assert.rejects(checkAndroidStatus()); assert.equal(previewState.config,null);
   } finally { globalThis.fetch = old; androidState.config = null; }
 });
+
+test('branch-scoped versions retain SHA checks and reject malformed suffixes', () => {
+  const api_base_url = `${origin}/api/versions/be-${sha}-${'b'.repeat(32)}/`;
+  assert.equal(validateAndroidConfig({ ...config, api_base_url }, origin).backend_sha, sha);
+  for (const invalid of [api_base_url.replace(sha, 'c'.repeat(40)), api_base_url.replace('-' + 'b'.repeat(32), '-bad')]) {
+    assert.throws(() => validateAndroidConfig({ ...config, api_base_url: invalid }, origin));
+  }
+});

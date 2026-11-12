@@ -15,11 +15,15 @@
 | lookup | owner，如 frontend:41/main | 返回版本和 API 地址 |
 | bind | frontend owner、target、generation、frontend_sha | 解析并保留固定引用；staging 显式跟随 main |
 | release | owner、generation | 幂等释放，禁止 main |
-| snapshot | 无 | 返回实例与引用 |
+| snapshot | 无 | 返回实例、引用与 branch_databases |
 | collect / recover | 无 | 延迟清理 / 恢复进程、检查健康 |
-| deploy | owner、sha、generation；上传时另含 bundle、digest | 无包请求先复用已登记版本；不存在返回 upload_required，不占端口或更新 generation；上传校验完整包，不公开 HTTP 管理入口 |
+| deploy | owner、sha、generation、可选 database；上传时另含 bundle、digest | 无包请求先复用已登记版本；不存在返回 upload_required，不占端口或更新 generation；上传校验完整包，不公开 HTTP 管理入口 |
 
-后端 `deploy` / `deploy_built` / `recover` 对明确选择 `postgres-v1` 的 release 使用受信启动器准备按 SHA 隔离的 PostgreSQL、执行迁移、校验实际业务表，并要求数据库探针成功才发布。旧 metadata 无模式时保持 legacy；新产物通过 `backend/preview-runtime.json` 显式选择模式。失败沿用原有候选清理及旧引用保留语义。RPC 不接收任意数据库连接、凭证或模式修改字段。生命周期和升级见[预览数据库说明](README.md#预览数据库与启动门禁)。
+后端 `deploy` / `deploy_built` / `recover` 对明确选择 `postgres-v1` 的 release 使用受信启动器准备按分支持久的 PostgreSQL（无 database 字段的历史请求保留按 SHA 隔离）、执行迁移、校验实际业务表，并要求数据库探针成功才发布。旧 metadata 无模式时保持 legacy；新产物通过 `backend/preview-runtime.json` 显式选择模式。失败沿用原有候选清理及旧引用保留语义。RPC 不接收任意数据库连接、凭证或模式修改字段。生命周期和升级见[预览数据库说明](README.md#预览数据库与启动门禁)。
+
+`deploy` / `deploy_built` 可带 `database: {"branch":"feature", "source_branch":"main"}`，新自动控制器始终发送；PR base 来自可信 GitHub metadata，未开 PR 默认 main。可选 `source_owner` 是来源分支尚未升级时的旧预览引用（如 `pr:82`）。公网仅首次登记来源，后续请求沿用既有记录；`snapshot` 额外返回 `branch_databases`。课程机接收由公网解析的 `database: {id, branch, source, source_branch, copy_mode}`，source 只能是受校验的分支库或旧实例 ID，不接受任意路径、连接或凭证。release metadata 固化配置，recover 不需要重传；回收不删除分支数据。 `copy_mode` 由公网依据原有同分支引用选择：同分支旧预览升级为 `full`（所有业务数据及原 Agent 密钥），新分支为 `public`（仅公开数据、独立密钥）；公网部署请求不接受调用方指定此字段。旧记录缺少该字段时仍按 `public` 处理，已初始化库不重新导入；模式在来源记录和 release metadata 中固定。
+
+新实例 ID 为 `be-<40位代码SHA>-<32位分支摘要>`，旧 `be-SHA` 仍有效；lookup 返回的 `backend_sha` 和响应版本头仍为代码 SHA。所有客户端应使用返回的 `api_base_url`；网页及 APK 校验允许可选 32 位后缀，同时仍强制 SHA、origin、路径匹配。历史固定版本 URL 不变，固定代码不意味着数据库也冻结。来源、迁移失败与升级限制见[生命周期](README.md#预览数据库与启动门禁)。
 
 课程机内部只读请求 `{"op":"health_policy","port":18000}` 按已安装 release metadata 返回 `runtime_mode` 和 `require_database`；没有唯一匹配或模式非法时失败。课程机 ensure 同时返回这两个字段。公网 ensure 使用返回模式，独立 bind 健康检查重新读取课程机策略，不依赖进程缓存、不把 readiness 失败降级成 hello 成功。该操作不通过公网 dispatch 暴露。
 
@@ -60,7 +64,7 @@ generation 使用原构建 run_id * 1000 + attempt；关闭和手动操作使用
 | --- | --- | --- |
 | build_submit | component=frontend/backend、sha、branch、run_id、attempt | job id、queued/running/终态；不等待构建结束 |
 | build_status | job、offset=0 | 状态、最多 32 KiB 日志、新 offset、检查结果 manifest |
-| deploy_built | owner、sha、generation、job | 仅接受该 SHA 已通过的后端任务，复用测试 venv |
+| deploy_built | owner、sha、generation、job、可选 database | 仅接受该 SHA 已通过的后端任务，复用测试 venv |
 | web_publish_built | 原 web_publish 环境/配对字段、source_sha、job | 公网机从课程机取已通过的网页包，再按原契约发布 |
 
 build_artifact 是公网机 → 课程机的内部操作，验证 frontend/sha 后返回包和 manifest；不提供浏览器下载接口。部署失败在 Preview environments 查看日志；检查失败查看 commit 状态和 course-build-logs；请求已成功但无实际状态时先确认新控制工作流已合入 main、enabled 至少一个开启，再查看控制运行与 build-worker 日志。

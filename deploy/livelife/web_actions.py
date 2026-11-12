@@ -45,8 +45,19 @@ class WebActions:
         base = self.tree(comparison['merge_base_commit']['sha'])
         current = self.tree(commit)
         return {'environment': web_environment(branch), 'branch': branch, 'pr': number, 'source_sha': commit,
+                'source_branch': opened[0].get('base', {}).get('ref', 'main') if opened else 'main',
                 'frontend_changed': current.get('frontend') != base.get('frontend'),
                 'backend_changed': current.get('backend') != base.get('backend'), 'backend_tree': current.get('backend')}
+
+    def database_request(self, branch, base):
+        request = {'branch': branch, 'source_branch': base}
+        if base != 'main' and branch != 'main':
+            query = urllib.parse.urlencode({'head': self.repo.split('/')[0] + ':' + base, 'state': 'open', 'per_page': 100})
+            candidates = self.github.call(f'/repos/{self.repo}/pulls?{query}')
+            matching = [p for p in candidates if p['head']['repo']['full_name'] == self.repo]
+            if len(matching) == 1:
+                request['source_owner'] = 'pr:' + str(matching[0]['number'])
+        return request
 
     def resolve_web_backend(self, context):
         if context['environment'] == 'main' or not context['backend_changed']:

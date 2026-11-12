@@ -45,3 +45,11 @@ test('an old HTML build cannot silently load a new deployment configuration', as
     assert.ok(previewState.config);
   } finally { globalThis.fetch = original; }
 });
+
+test('branch-scoped versions retain SHA checks and reject malformed suffixes', () => {
+  const api_base_url = `${origin}/api/versions/be-${sha}-${'b'.repeat(32)}/`;
+  assert.equal(validateRuntimeConfig({ ...config, backend_mode: "fixed", api_base_url }, origin).backend_sha, sha);
+  for (const invalid of [api_base_url.replace(sha, 'c'.repeat(40)), api_base_url.replace('-' + 'b'.repeat(32), '-bad')]) {
+    assert.throws(() => validateRuntimeConfig({ ...config, backend_mode: "fixed", api_base_url: invalid }, origin));
+  }
+});

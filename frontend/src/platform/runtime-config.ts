@@ -23,8 +23,8 @@ export function validateRuntimeConfig(value: unknown, origin: string): RuntimeCo
   }
   const api = new URL(config.api_base_url, origin);
   if (api.origin !== origin || api.username || api.password || api.search || api.hash
-    || !/^\/api\/(staging|versions\/be-[0-9a-f]{40})\/$/.test(api.pathname)
-    || (config.backend_mode !== 'staging' && api.pathname !== `/api/versions/be-${config.backend_sha}/`)
+    || !/^\/api\/(staging|versions\/be-[0-9a-f]{40}(?:-[0-9a-f]{32})?)\/$/.test(api.pathname)
+    || (config.backend_mode !== 'staging' && !new RegExp(`^/api/versions/be-${config.backend_sha}(?:-[0-9a-f]{32})?/$`).test(api.pathname))
     || (config.backend_mode === 'staging' && api.pathname !== '/api/staging/')) {
     throw new Error('测试后端地址与版本不匹配。');
   }

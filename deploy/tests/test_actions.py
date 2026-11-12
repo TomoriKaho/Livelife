@@ -78,6 +78,7 @@ class ActionsTests(unittest.TestCase):
         self.controller.build_completed(self.run)
         self.assertEqual(self.requests[0]["owner"], "pr:40")
         self.assertEqual(self.requests[0]["generation"], 10001)
+        self.assertEqual(self.requests[0]["database"], {"branch": "40-backend", "source_branch": "main"})
         self.assertNotIn('bundle', self.requests[0])
 
     def test_missing_version_uploads_only_after_server_requests_bundle(self):

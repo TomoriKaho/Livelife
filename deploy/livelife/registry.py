@@ -6,6 +6,9 @@ the previous references/routes intact and are returned to the workflow.
 """
 from contextlib import contextmanager
 import fcntl
+import json
+
+from .branch_database import branch_id, release_id, validate_request
 from pathlib import Path
 import sqlite3
 import time
@@ -37,6 +40,8 @@ class Registry:
                     target TEXT NOT NULL, frontend_sha TEXT, expires REAL);
                 CREATE TABLE IF NOT EXISTS generations (
                     owner TEXT PRIMARY KEY, generation INTEGER NOT NULL);
+                CREATE TABLE IF NOT EXISTS branch_databases (
+                    branch TEXT PRIMARY KEY, specification TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS retirements (
                     id TEXT PRIMARY KEY, port INTEGER UNIQUE);
             """)
@@ -100,12 +105,17 @@ class Registry:
         db.execute("""UPDATE instances SET unreferenced=? WHERE unreferenced IS NULL
             AND id NOT IN (SELECT instance FROM refs WHERE instance IS NOT NULL)""", (now,))
 
-    def deploy(self, key, commit, generation, bundle, build_job=None):
+    def deploy(self, key, commit, generation, bundle, build_job=None, database=None):
         owner(key)
         if key.startswith(("frontend:", "web:", "apk:")):
             raise ValueError("frontend owners use bind")
         sha(commit)
         ident = f"be-{commit}"
+        if database is not None:
+            validate_request(database)
+            if (key == "main") != (database["branch"] == "main"):
+                raise ValueError("main database requires the main deployment owner")
+            ident = release_id(commit, database["branch"])
         with self.locked() as db:
             if not self.current(db, key, generation):
                 return {"status": "superseded"}
@@ -117,6 +127,35 @@ class Registry:
             if created and bundle is None and build_job is None:
                 # A cheap reuse probe must not reserve a port or stamp ordering.
                 return {"status": "upload_required", "backend_sha": commit}
+            specification = None
+            if database is not None:
+                branch = database["branch"]
+                saved = db.execute("SELECT specification FROM branch_databases WHERE branch=?", (branch,)).fetchone()
+                if saved:
+                    specification = json.loads(saved[0])
+                else:
+                    # Upgrade an existing preview before considering its base. This
+                    # preserves all existing data when adopting that same preview.
+                    old = db.execute("SELECT instance FROM refs WHERE owner=?", (key,)).fetchone()
+                    if old is None and branch != "main":
+                        old = db.execute("SELECT instance FROM refs WHERE owner=?", ("branch:" + branch_id(branch)[7:],)).fetchone()
+                    source = old[0] if old else None
+                    if source is None and branch != "main":
+                        base = database["source_branch"]
+                        inherited = db.execute("SELECT specification FROM branch_databases WHERE branch=?", (base,)).fetchone()
+                        if inherited:
+                            source = json.loads(inherited[0])["id"]
+                        else:
+                            base_owner = database.get("source_owner", "main" if base == "main" else "branch:" + branch_id(base)[7:])
+                            inherited = db.execute("SELECT instance FROM refs WHERE owner=?", (base_owner,)).fetchone()
+                            if inherited:
+                                source = inherited[0]
+                        if source is None:
+                            raise ValueError("source branch database is not deployed; select an existing source")
+                    specification = {"id": branch_id(branch), "branch": branch,
+                                     "source": source, "source_branch": branch if old else database.get("source_branch"),
+                                     "copy_mode": "full" if old else "public"}
+                    db.execute("INSERT INTO branch_databases VALUES (?, ?)", (branch, json.dumps(specification)))
             if created:
                 used = {r[0] for r in db.execute("SELECT port FROM instances UNION SELECT port FROM retirements")}
                 port = next((p for p in range(self.port_start, self.port_start + self.slots)
@@ -133,9 +172,9 @@ class Registry:
             try:
                 # Existing versions are recovered and health checked, not replaced.
                 if created and build_job is not None:
-                    self.runtime.ensure_built(ident, commit, port, build_job)
+                    self.runtime.ensure_built(ident, commit, port, build_job, **({"database": specification} if specification else {}))
                 else:
-                    self.runtime.ensure(ident, commit, port, bundle if created else None)
+                    self.runtime.ensure(ident, commit, port, bundle if created else None, **({"database": specification} if specification else {}))
                 if created:
                     db.execute("INSERT INTO instances VALUES (?, ?, ?, ?, NULL)",
                                (ident, commit, port, self.clock()))
@@ -257,7 +296,7 @@ class Registry:
 
     def snapshot(self):
         with self.locked() as db:
-            return {**self.web.snapshot(db), **self.apks.snapshot(db), "instances": [dict(r) for r in db.execute("SELECT * FROM instances")],
+            return {"branch_databases": [json.loads(r[0]) for r in db.execute("SELECT specification FROM branch_databases")], **self.web.snapshot(db), **self.apks.snapshot(db), "instances": [dict(r) for r in db.execute("SELECT * FROM instances")],
                     "refs": [dict(r) for r in db.execute("SELECT * FROM refs")],
                     "retirements": [dict(r) for r in db.execute("SELECT * FROM retirements")]}
 

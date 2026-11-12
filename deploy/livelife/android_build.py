@@ -41,8 +41,12 @@ def validate_config(c, commit=None, base_url="https://192.144.253.40"):
     path = (
         "/api/staging/"
         if c["backend_mode"] == "staging"
-        else f"/api/versions/be-{c['backend_sha']}/"
+        else urlparse(c["api_base_url"]).path
     )
+    if c["backend_mode"] != "staging" and not re.fullmatch(
+        rf"/api/versions/be-{c['backend_sha']}(?:-[0-9a-f]{{32}})?/", path
+    ):
+        raise ValueError("invalid Android backend instance")
     if (
         c["api_base_url"] != base_url + path
         or c["status_url"]

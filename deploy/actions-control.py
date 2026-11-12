@@ -188,7 +188,8 @@ class Controller(AndroidActions, RemoteActions, WebActions):
         # Use the BUILD's ordering, not the later workflow_run callback's ID.
         # A close event that happened during the build wins over its completion.
         generation = int(run["id"]) * 1000 + int(run.get("run_attempt", 1))
-        request = {"op": "deploy", "owner": key, "sha": commit, "generation": generation}
+        request = {"op": "deploy", "owner": key, "sha": commit, "generation": generation,
+                   "database": self.database_request(branch, opened[0].get("base", {}).get("ref", "main") if opened else "main")}
         try:
             result = self.rpc(request)
             if result['status'] == 'upload_required':

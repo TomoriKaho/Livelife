@@ -29,17 +29,24 @@
 
 ## 预览数据库与启动门禁
 
-`livelife/backend_runtime.py` 是课程机的受信启动器，由项目 Supervisor 管理。每个 `be-完整SHA` 使用独立 PostgreSQL 集群，路径为 `/home/group5/livelife/databases/be-完整SHA/postgres/`，使用该集群内的 `postgres` 数据库。同 SHA 的 PR、网页与 APK 引用共享这份测试数据；不同 SHA 不共享表、账号或迁移，即使来自同一分支。新提交从空库开始，不自动复制上一版数据；这不是正式用户数据库的跨版本升级方案。
+采用 `postgres-v1` 的新自动部署使用**每分支持久数据库**。课程机目录为 `databases/branch-<分支名SHA256前32位>/postgres/`，公网注册表的 `branch_databases` 保存分支与来源。API 实例仍按代码版本保留，ID 为 `be-<40位提交SHA>-<32位分支摘要>`；不同分支即使提交相同也有独立实例、端口与数据库。网页、APK 和 PR 别名指向返回的实例地址，不能自行用提交 SHA 拼地址。旧 `be-SHA` 地址与无 database 字段的历史部署继续按原规则恢复。
 
-启动器使用控制虚拟环境固定的 `pgembed==0.2.0` 中的 PostgreSQL 程序，无需 Docker、sudo 或系统数据库服务。Linux 数据库只监听本地 Unix socket，数据父目录权限 0700；目录必须位于支持 Unix 权限的 Linux 文件系统，不能使用 WSL 的 Windows 挂载盘。这是同一课程机账号下的测试隔离，不是抵御恶意分支代码的安全沙箱，不用于正式数据或正式凭证。业务依赖及已测试 venv 的复用方式不变，不把 PostgreSQL 程序塞进后端产物。
+首次部署的来源规则：优先复制该 PR／分支已经部署的旧版本（同分支升级，全量保留业务数据）；没有旧预览时，复制 PR 的 base 分支当前数据库。未开 PR 的分支默认来源 main；Git 本身没有可靠的“从哪个分支创建”记录，需要其他来源时应在首次部署前设置 PR base，或通过受信部署请求传 `database.source_branch`。已有分支的来源不随改 base、创建/关闭 PR 或新 commit 改变。来源没有数据库时失败，只有首次 main 允许空库初始化。
 
-启动顺序为：准备或复用集群 → 为该 API 子进程设置 `DATABASE_URL` → 用该版本的已测试 Python 执行 `alembic upgrade head` → 比较数据库 revision 与源码 heads 并实际查询所有 ORM 表的列 → 启动 Uvicorn。迁移、表结构验证或连接失败均拒绝候选发布；API 启动后，课程机和公网隧道探针同时要求 hello 与 `/health/ready` 成功，不能只凭 hello 报告可用。准备阶段最长等待 180 秒，具体失败查看该实例 Supervisor 日志。
+快照取于**首次部署执行复制时**，不是 Git 建分支时。启动器在来源迁移锁内用 pgembed 同发行版的 `pg_dump` 获取一致性逻辑快照，再用 `pg_restore --single-transaction` 恢复到私有临时集群；不直接复制运行中的 PostgreSQL 文件。公网控制器根据现有同分支引用确定并固化 `copy_mode`，请求方不能自行选择全量复制：
 
-停止、回收后端实例时先关闭 API、再关闭本次持有的数据库，保留整个 `databases/be-SHA/` 目录；同 SHA 重建和恢复时重新迁移校验并复用数据。Supervisor 给该启动器 30 秒正常退出窗口。强制终止后的数据库由下次启动复用并恢复。数据库目录不跟随 releases、构建任务或 venv 删除，也不在自动回收中删除；维护者需监测磁盘，只有确认该 SHA 无引用、进程停止且完成备份后才手动归档或删除。
+- 同分支旧预览升级使用 `full`：复制数据库完整 schema、Alembic revision、所有表的行和大对象，包括账号及密码哈希、验证码、登录会话、聊天、个人资料与未知业务表；同时继承旧库目录的 Agent 会话密钥。原密钥文件缺失或损坏时拒绝发布，不能静默生成新密钥导致会话失效。复制的是数据库业务内容，不复制集群角色或 ACL；原数据库与密钥文件不修改、不删除。
+- 新建分支使用 `public`：仅保留公开数据白名单 `information_items`、`information_places`、`information_place_aliases` 与迁移记录；私人表、未知表数据和大对象不复制，并生成独立的 Agent 会话密钥。新分支重新注册测试账号。新增公开数据表时须评审后加入白名单。
 
-同一目录内 `runtime.json` 保存自动生成的测试 Agent 会话密钥（权限 0600），重启后复用。启动器仅向业务子进程传入必要运行环境和本版本测试连接，不继承部署凭证、SMTP 或模型密钥；公开实例固定设置 `AUTH_TEST_LOGIN_ENABLED=false`，不继承控制进程的开启值。邮件可按下节显式配置团队测试邮箱；模型凭证需按下节明确启用固定版本。正式环境不要使用该启动器。
+已有分支库再次部署不重新复制、不重新清理账号或聊天。没有 `copy_mode` 的旧登记记录沿用之前的 `public` 语义，不根据来源名称自动升级权限。若曾使用旧版 #90 初始化过脱敏库，更新代码不会补回已排除的数据；应保留两边数据与备份，由维护者单独制定恢复或迁移方案，不能覆盖已使用的新库。
 
-更新空白登录策略须在课程机替换受信 `control/livelife/backend_runtime.py` 并逐个重启引用中的 API 实例；仅推 PR 不会更新常驻启动器。先备份模块、确认实例名称与端口；重启后核对进程环境为 false、空白登录返回 403、普通账号可登录、hello/ready 成功。升级前已签发的测试账号令牌还需新版账户校验才能拒绝；旧版本实例及固定 APK 不应注入模型凭证。账户与 Agent 的迁移兼容说明见[契约](../backend/app/api/agent/API.md#登录失效与迁移)。
+首次复制、迁移和 ORM 列检查全部成功后才保留分支集群并写 `initialized.json`（来源与时间）；失败不发布候选，临时集群可重试。极端中断若留下有 postgres 而无 marker 的目标目录，会拒绝覆盖，需要维护者检查备份和日志后恢复，不能直接删库重试。首次复制成功后，后续 commit 仅复用本分支集群、串行执行 `alembic upgrade head`、检查 revision/ORM 列，再启动 API。并发迁移使用跨进程文件锁；来源迁移与复制也互斥。数据库与启动器由固定 `pgembed==0.2.0` 管理，Linux 只监听 Unix socket，无需 Docker/root。业务 venv 仍来自经过测试的 release。
+
+新分支启动探针最多等待 600 秒，旧模式保持 180 秒；课程机和公网同时要求 hello 与 `/health/ready` 成功。失败保留旧路由，但**迁移已经提交的结构变更不会因后续发布失败而自动撤销**。同一分支的新旧固定代码版本共享该分支数据库，必须采用向后兼容的扩展式迁移。旧代码不认识已有 revision 时恢复会失败；不能把固定代码 URL 当成数据库时间快照。破坏性迁移须单独协调旧引用、备份和恢复，不自动 downgrade。
+
+合并分支只合并代码：目标分支升级自己的数据库，源分支测试数据不自动合并。停止 API 时释放本进程的 pgembed handle；其他版本仍使用该分支库时数据库继续运行。回收 release、关闭 PR、分支引用到期都不删除数据库及来源记录；重开同名分支会复用原数据。维护者需监测磁盘，确认全部引用和进程停止、备份完成后才能手动归档或删除。
+
+数据目录权限 0700，`runtime.json` 中 Agent 会话密钥权限 0600，同分支首次升级继承原密钥、跨 commit 复用，新分支重新生成。API 仅接收必要环境、该分支连接和显式配置的测试 SMTP/模型凭证；`LIVELIFE_BACKEND_SHA` 始终是真实提交 SHA，不含分支摘要。`AUTH_TEST_LOGIN_ENABLED=false` 保持既有行为。此方案是同一课程机账号内的测试隔离，不是抵御恶意代码的安全沙箱，也不用于正式数据或正式凭证。
 
 ### 自动部署的测试邮箱配置
 
@@ -107,13 +114,24 @@ task_instance=be-替换为目标的完整40位SHA
 
 ### 首次启用与现有服务器升级
 
-新增安装由下节 `bootstrap-course.sh` 安装 Supervisor 与固定 pgembed。已有服务器需要维护者从**已评审版本**更新课程机 `/home/group5/livelife/control/livelife/` 下的 `backend_runtime.py`、`course.py`、`supervisor.py`，以及公网机 `/opt/livelife/control/livelife/` 下的 `course.py`、`runtime.py`。课程机另执行：
+新增安装由下节 `bootstrap-course.sh` 安装 Supervisor 与固定 pgembed。已有服务器需要维护者从**已评审版本**更新课程机 `/home/group5/livelife/control/livelife/` 下的 `backend_runtime.py`、`branch_database.py`、`common.py`、`course.py`、`supervisor.py`，以及公网机 `/opt/livelife/control/livelife/` 下的 `branch_database.py`、`common.py`、`registry.py`、`manager.py`、`course.py`、`runtime.py`、`web.py`、`android_build.py`。课程机另执行：
 
 ```bash
 /home/group5/livelife/control-venv/bin/python -m pip install 'pgembed==0.2.0'
 ```
 
-更新前备份上述控制文件，保留既有 config、注册表、凭证和其他服务。不要将未评审分支中的控制程序直接装入服务器。工作流控制代码仍从 main 执行，所以只 push 业务分支或重跑构建不会更新这些已安装的控制文件。
+更新前备份上述控制文件、注册表和数据库，保留既有 config、凭证和其他服务；逐项比对服务器已有的测试账号初始化、模型配置扩展，不能整包覆盖丢失这些配置。按下述升级窗口操作：先暂停自动部署和回收，再合并客户端地址校验和 Actions 控制代码，让要切换的业务分支同步这一版本，安装两机受信控制程序后再手动部署。旧前端无法识别新分支后缀，因此不能只升级服务器后让旧客户端使用新 URL。不要将未评审分支中的控制程序直接装入服务器。工作流控制代码仍从 main 执行，所以只 push 业务分支或重跑构建不会更新这些已安装的控制文件。
+
+#### 保留现有账号和聊天的升级窗口
+
+1. **先暂停控制任务，再合并。** 维护者暂停 GitHub 的 `Preview environments` 工作流，核对并暂停项目的 `livelife-recover.timer` 和其他 collect/recover 调度；确认已启动的控制任务结束、没有在途发布。记录暂停前状态，勿停止其他项目。构建请求即使成功也不代表发布已执行，恢复后需重新触发目标构建。
+2. **盘点并备份。** 根据注册表记录 main、各 PR、固定网页/APK 的实例、SHA、端口、旧数据库目录、Agent runtime.json 和行数基线。公网 SQLite 使用 SQLite backup API 或 `.backup` 获取一致副本，不直接复制活跃数据库文件。课程机对每个目标库用同发行版 `pg_dump --format=custom` 做完整逻辑备份（不得带私人表排除参数），同时私有备份 runtime.json、控制代码、配置及必要 release/Supervisor metadata；核对 dump 可读并在临时库试恢复。备份目录 0700、文件 0600，账号、聊天和密钥不得进入 Git、Actions artifact 或公开日志。
+3. **安装配套模块。** 合并后从已评审提交准备受信代码，先更新课程机，再更新公网机；完整模块清单见本节开头，公网必须更新 `web.py`，否则新实例的网页配置 SHA 会错误。核对服务器额外的测试账号初始化与模型配置逻辑，按差异保留，不能整目录覆盖；初始化账号只能补缺，不能重置已复制账号。同步业务分支的客户端地址校验。保持自动控制暂停，并避免在控制请求运行时逐文件替换模块。
+4. **暂停目标旧库的全部写入，再复制和切换。** 对同分支旧库，停止所有连接该库的目标 API/采集 worker/定时写入，或在经验证的网关维护规则下禁止写入；确认没有其他写入客户端后补做最终备份。迁移文件锁只约束迁移和复制，不能阻止业务请求写库，`pg_dump` 也只包含快照时已提交的数据。因此必须从最终快照前一直保持停写，直到新入口核验完毕。不要仅暂停 Actions 就认为旧库已经停写。可停止旧 API 而保留数据目录，复制器会按需启动 PostgreSQL。
+5. **部署并核验一个环境。** 在其他自动调度仍受控的窗口，通过受信控制器手动执行目标部署；也可在确认没有并发控制任务后恢复控制工作流并单独触发目标构建。核对返回的数据库来源与 `copy_mode=full`，比较账号、聊天、会话、活动等行数与业务内容，验证原账号密码、未过期登录令牌、原 Agent 会话恢复、地图/日历和 hello/ready；不得在日志打印密码、令牌或聊天正文。`full` 保留原始数据和密钥，但不会绕过令牌有效期或应用正常的会话过期/清理规则。新分支单独验证 `copy_mode=public`、无旧账号/聊天且密钥独立。
+6. **确认切换后恢复调度。** 再次部署同分支新 commit 验证复用，然后按记录恢复控制工作流、回收/恢复定时任务和使用新库的业务写入。仍指向旧独立库的 API 不得恢复写流量，避免出现两份互相分离的数据；先更新固定网页/APK 配对（旧 APK 必要时撤销并重发），解除旧实例的全部引用，等待宽限期后执行 collect，确认注册表中旧实例已移除，再恢复 recover；未完成时继续保持恢复调度暂停和旧入口维护状态，避免 recover 重新启动旧库写入口。旧库、旧密钥及备份保留，不自动删除。各环境逐一迁移，不操作 `/opt/sounichi-navi`。
+
+切换失败时：新库尚未接受业务写入，可以恢复旧控制代码、原实例和路由，保留新库供排查；若新库已有新增账号或聊天，不能直接切回旧库丢弃新增记录，应再次停写、备份两库并制定数据迁移方案。若初始化 marker 已写入但候选发布失败，重试会复用该快照，不能一边恢复旧库写入一边继续自动重试；恢复旧库写入后须重新评估两库差异，不能假定快照会自动刷新。已提交的 Alembic 迁移不自动回滚。上述为维护步骤，仓库测试通过不代表服务器已执行。
 
 运行模式按 release 固定。新安装只在产物包含 `backend/preview-runtime.json` 且内容为 `{"runtime_mode":"postgres-v1"}` 时启用数据库，并把模式写入 `release.json`；无标记的历史 SHA 重装和 smoke fixture 仍使用 `legacy`。未知模式或损坏标记拒绝启动。已有 `release.json` 缺少 `runtime_mode` 时始终视为 legacy，不因源码有迁移或标记而自动升级；recover 保留其既有 Supervisor 配置，只尝试启动原进程，不创建数据库或密钥。缺失配置时重建原 Uvicorn 启动方式。legacy 只检查 hello，postgres-v1 同时检查数据库 readiness。
 
@@ -121,7 +139,7 @@ task_instance=be-替换为目标的完整40位SHA
 
 目标升级失败的回退：停止该目标数据库启动器，恢复备份的 release metadata 和 Supervisor 配置，执行项目 Supervisor 的 reread/update 并启动原目标，验证原 hello 和路由。不能只删除 metadata 模式字段而保留数据库启动命令。保留数据库目录及备份，不自动删除或降级数据库；回退只恢复原运行方式，并不会给旧 API 增加数据库能力。
 
-验证当前入口的 hello、`/health/ready`（应为 `database: connected`），再用空白登录验证 `/auth/me`、退出及同 SHA 重启恢复。仓库提供启动器不代表线上已启用，证据见[当前实施状态](../docs/deployment.md#当前实施状态)。回退控制代码时保留仍被运行实例使用的启动器模块和 pgembed；不自动降级或删除数据库。
+验证当前入口的 hello、`/health/ready`（应为 `database: connected`），再用正常测试账号验证 `/auth/me`、退出、同分支升级及新提交保留账号/聊天、旧会话恢复、新分支公开数据复制以及私人数据未复制。仓库提供启动器不代表线上已启用，证据见[当前实施状态](../docs/deployment.md#当前实施状态)。回退控制代码时保留仍被运行实例使用的启动器模块和 pgembed；不自动降级或删除数据库。
 
 ## 维护者初始化教程
 
@@ -292,7 +310,7 @@ uv 参数参考：[锁文件与导出教程](https://docs.astral.sh/uv/concepts/
 - 网关失败：`journalctl -u livelife-gateway.service` 与 gateway/logs；更新先 nginx -t，失败恢复原路由。
 - 清理失败：数据库保留待清理占用，网络恢复后 collect；不直接删数据库或按端口杀未知进程。
 - 证书失败：`journalctl -u livelife-renew-ip.service`，修复 443/ACME 条件后手动 renew。
-- 业务回滚：重新部署确认的旧 SHA；预览复用仍保留的该 SHA 独立数据库，不对其他版本降级或复制数据。正式数据库的回滚策略需另行确认，细节见[预览数据恢复限制](#预览数据库与启动门禁)。
+- 业务回滚：重新部署确认的旧 SHA；新分支模式继续使用该分支数据库，不自动降级。须先确认旧代码与当前 schema 兼容；历史无分支配置的 release 仍使用原 SHA 数据库。正式数据库的回滚策略需另行确认，细节见[预览数据恢复限制](#预览数据库与启动门禁)。
 
 ### PR 评论返回 403 时如何处理
 

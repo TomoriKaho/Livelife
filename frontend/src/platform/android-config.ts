@@ -22,9 +22,10 @@ export function validateAndroidConfig(value: unknown, publicOrigin = origin): An
     throw new Error('安装包配置无效。');
   }
   const api = new URL(c.api_base_url);
-  const expected = c.backend_mode === 'staging' ? '/api/staging/' : `/api/versions/be-${c.backend_sha}/`;
+  const matches = c.backend_mode === 'staging' ? api.pathname === '/api/staging/'
+    : new RegExp(`^/api/versions/be-${c.backend_sha}(?:-[0-9a-f]{32})?/$`).test(api.pathname);
   const status = new URL(c.status_url);
-  if (api.origin !== publicOrigin || api.pathname !== expected || api.search || api.hash || api.username || api.password
+  if (api.origin !== publicOrigin || !matches || api.search || api.hash || api.username || api.password
     || status.href !== `${publicOrigin}/downloads/android/build-${c.apk_id}/status.json`) {
     throw new Error('安装包后端地址与版本不匹配。');
   }

@@ -46,9 +46,11 @@ class Runtime:
                 return False
         return self.rpc({"op": "port_available", "port": port})["available"]
 
-    def ensure(self, ident, commit, port, bundle):
+    def ensure(self, ident, commit, port, bundle, database=None):
         instance(ident)
         request = {"op": "ensure", "instance": ident, "sha": commit, "port": port}
+        if database is not None:
+            request["database"] = database
         if bundle is not None:
             request.update(bundle=base64.b64encode(bundle).decode(), digest=hashlib.sha256(bundle).hexdigest())
         policy = self.rpc(request)
@@ -57,8 +59,8 @@ class Runtime:
         self.supervisor.configure(ident, shlex.join(command), self.root)
         self.health(port, policy=policy)
 
-    def ensure_built(self, ident, commit, port, job):
-        self.rpc({'op': 'ensure', 'instance': instance(ident), 'sha': commit, 'port': port, 'job': job})
+    def ensure_built(self, ident, commit, port, job, database=None):
+        self.rpc({'op': 'ensure', 'instance': instance(ident), 'sha': commit, 'port': port, 'job': job, **({'database': database} if database else {})})
         # Standard ensure now recovers the already installed tested release.
         self.ensure(ident, commit, port, None)
 

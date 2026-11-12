@@ -86,6 +86,15 @@ class RemoteActionsTests(unittest.TestCase):
         self.assertEqual(self.published[0]["job"], "c" * 32)
         self.assertNotIn("bundle", self.published[0])
 
+    def test_backend_publication_passes_branch_and_base_database(self):
+        self.run.update(name='Backend build request', path='.github/workflows/backend-checks.yml')
+        self.c.wait_build = lambda request: {'id': 'c' * 32, 'status': 'success', 'result': {'sha': A, 'available': True}}
+        self.c.rpc = lambda request: self.requests.append(request) or {'status': 'superseded'}
+        self.c.backend_web_completed = lambda *args, **kwargs: None
+        self.c.remote_completed({'id': 10})
+        deployed = next(r for r in self.requests if r['op'] == 'deploy_built')
+        self.assertEqual(deployed['database'], {'branch': '27-preview', 'source_branch': 'main'})
+
     def test_failed_build_marks_commit_failure_and_never_publishes_candidate(self):
         self.c.wait_build = lambda request: {
             "status": "failure",
