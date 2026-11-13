@@ -62,6 +62,8 @@ adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 
 ### 地图定位坐标
 
+Android 位置通过项目内的 `DeviceLocationPlugin` 订阅系统 GPS 和网络提供器，不依赖 Google 融合定位调用返回。插件注册、超时、前后台释放和真机排查见[平台定位说明](../src/platform/README.md#android-首次定位超时排查)。修改原生插件后必须重新构建并覆盖安装 APK；仅同步网页资源不能更新手机中的原生代码。
+
 Android 原生定位和包内 OSM 离线地图统一使用 **WGS-84**。在 Emulator Extended controls 或 `adb emu geo fix` 中手工测试时也输入 WGS-84，不能把高德、腾讯等常见 GCJ-02 坐标直接写入。博雅塔可作为固定检查点：WGS-84 为纬度 `39.992637`、经度 `116.305783`；其常见 GCJ-02 值 `39.993923, 116.311832` 直接输入会向东北偏移约 500 米。
 
 ```powershell

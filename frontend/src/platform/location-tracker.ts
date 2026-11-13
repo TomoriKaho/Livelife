@@ -30,6 +30,7 @@ let generation = 0;
 export function applyLocationResult(
   current: CurrentLocation | null,
   result: LocationResult,
+  { source = 'watch', state = 'located' }: { source?: 'watch' | 'request'; state?: LocationTrackingState } = {},
 ): { location: CurrentLocation | null; state: LocationTrackingState } {
   if (result.status === 'success') {
     if (current && result.location.timestamp <= current.timestamp) {
@@ -42,14 +43,14 @@ export function applyLocationResult(
   // temporarily unavailable provider after a valid fix is not a loss of the
   // already known foreground position.  Surface errors that require user
   // action (permission) or mean the capability is absent instead.
-  if (current && (result.error === 'timeout' || result.error === 'unavailable')) {
-    return { location: current, state: 'located' };
+  if (source === 'watch' && current && (result.error === 'timeout' || result.error === 'unavailable')) {
+    return { location: current, state };
   }
   return { location: current, state: result.error };
 }
 
-function publishLocationResult(result: LocationResult) {
-  const next = applyLocationResult(currentLocation.value, result);
+function publishLocationResult(result: LocationResult, source: 'watch' | 'request' = 'watch') {
+  const next = applyLocationResult(currentLocation.value, result, { source, state: locationTrackingState.value });
   if (next.location !== currentLocation.value) currentLocation.value = next.location;
   locationTrackingState.value = next.state;
 }
@@ -100,6 +101,6 @@ export async function restartLocationTracking() {
 export async function refreshCurrentLocation() {
   if (!currentLocation.value) locationTrackingState.value = 'locating';
   const result = await getCurrentLocation();
-  publishLocationResult(result);
+  publishLocationResult(result, 'request');
   return result;
 }
