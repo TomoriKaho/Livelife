@@ -88,11 +88,11 @@ function roomLabel(activity) { return /^\d/.test(activity.room) ? `${currentBuil
 function startTime(time) { return time.split('–')[0]; }
 function liveTime(value) { return new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value)); }
 function liveTimeRange(item) { return `${liveTime(item.start_at)}${item.end_at ? `–${liveTime(item.end_at)}` : ' 开始'}`; }
-const locationState = computed(() => outsideCampus.value ? 'outside-campus' : locationTrackingState.value);
+const locationState = computed(() => locationTrackingState.value === 'located' && outsideCampus.value ? 'outside-campus' : locationTrackingState.value);
 const locationHint = computed(() => ({
   locating: '正在获取当前位置…',
   'permission-denied': '未获得位置权限；点击定位按钮可再次尝试。',
-  unavailable: '暂时无法获取位置；请检查定位服务后重试。',
+  unavailable: '系统定位未开启或暂不可用；请检查系统定位开关后重试。',
   timeout: '定位超时；请确认系统定位已开启，在信号较好处点击定位按钮重试。',
   unsupported: '此设备暂不支持定位。',
   'outside-campus': '当前位置不在燕园离线地图范围内。',
@@ -281,7 +281,6 @@ async function locate({ requestHeading = false } = {}) {
     // callback arrives even if we could immediately show the previous fix.
     centerAfterNextLocation = true;
     await restartLocationTracking();
-    return;
   }
   // A location button must not deliberately re-center on an old watcher value.
   // The shared watch continues in the background; this one-shot request is only

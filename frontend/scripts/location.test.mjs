@@ -203,3 +203,20 @@ test('Android system bridge reports permission revocation without converting it 
   const stop=await watchCurrentLocation(r=>updates.push(r),{},createAndroidLocationProvider(bridge));
   callback({error:'permission-denied'});assert.deepEqual(updates,[{status:'error',error:'permission-denied'}]);await stop();
 });
+
+test('explicit acquisition surfaces provider failure even after a successful fix', () => {
+  for (const error of ['unavailable','timeout']) {
+    assert.deepEqual(applyLocationResult({ ...position.coords, timestamp:position.timestamp },
+      {status:'error',error},{source:'request'}),
+      {location:{...position.coords,timestamp:position.timestamp},state:error});
+  }
+});
+
+test('passive provider loss keeps the last state, without erasing explicit errors', () => {
+  const current={...position.coords,timestamp:position.timestamp};
+  assert.deepEqual(applyLocationResult(current,{status:'error',error:'unavailable'},{state:'located'}),{location:current,state:'located'});
+  assert.deepEqual(applyLocationResult(current,{status:'error',error:'unavailable'},{state:'unavailable'}),{location:current,state:'unavailable'});
+  assert.deepEqual(applyLocationResult(null,{status:'error',error:'unavailable'}),{location:null,state:'unavailable'});
+  const newer={...current,timestamp:current.timestamp+1000};
+  assert.deepEqual(applyLocationResult(current,{status:'success',location:newer},{state:'unavailable'}),{location:newer,state:'located'});
+});
