@@ -4,5 +4,11 @@ const config: CapacitorConfig = {
   appName: 'Livelife 测试',
   webDir: 'dist',
   server: { hostname: 'localhost', androidScheme: 'https', cleartext: false },
+  plugins: {
+    SystemBars: {
+      style: 'LIGHT',
+      initialViewportFitValueHint: 'cover',
+    },
+  },
 };
 export default config;
