@@ -123,19 +123,24 @@ async function send(retryMessage = null) {
   });
   messages.value.push(assistant);
   sending.value = true;
+  await nextTick(); conversation.value?.scrollToBottom();
   const controller = new AbortController();
   activeRequestController = controller;
   try {
     await sendAgentMessage(session.value.session_token, text, assistant.requestId, {
       message_start: data => { assistant.id = data.message_id; },
       citation: data => assistant.citations.push(data),
-      delta: data => { assistant.text += data.text; },
+      delta: data => {
+        const follow = conversation.value?.isAtBottom() ?? false;
+        assistant.text += data.text;
+        if (follow) nextTick(() => conversation.value?.scrollToBottom(0));
+      },
       usage: () => {},
       done: () => { assistant.status = 'completed'; },
       error: data => { assistant.status = 'failed'; throw new Error(data.code); },
     }, controller.signal);
     assistant.status = 'completed';
-    conversation.value?.scrollToBottom();
+    if (conversation.value?.isAtBottom()) { await nextTick(); conversation.value?.scrollToBottom(); }
   } catch (error) {
     assistant.status = 'failed';
     if (!controller.signal.aborted) {

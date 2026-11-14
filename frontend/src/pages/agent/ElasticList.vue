@@ -39,10 +39,14 @@ function stop() {
   scroll?.stop();
   scroll?.resetPosition(motion?.matches ? 0 : 800);
 }
-function scrollToBottom() {
+function scrollToBottom(duration) {
   if (!scroll) return;
   scroll.refresh();
-  scroll.scrollTo(0, scroll.maxScrollY, motion?.matches ? 0 : 240);
+  scroll.scrollTo(0, scroll.maxScrollY, duration ?? (motion?.matches ? 0 : 240));
+}
+// Read before the DOM grows: streaming replies only follow while the reader sits at the bottom.
+function isAtBottom(threshold = 40) {
+  return !scroll || scroll.y <= scroll.maxScrollY + threshold;
 }
 function keyboard(event) {
   if (event.target !== viewport.value || !scroll || event.ctrlKey || event.metaKey || event.altKey) return;
@@ -85,7 +89,7 @@ onBeforeUnmount(() => {
   motion?.removeEventListener('change', createScroll);
   scroll?.destroy();
 });
-defineExpose({ stop, refresh, scrollToBottom });
+defineExpose({ stop, refresh, scrollToBottom, isAtBottom });
 </script>
 
 <template>
