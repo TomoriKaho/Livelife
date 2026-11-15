@@ -12,7 +12,7 @@ import { authState } from '../api/auth';
 import { registerBackHandler } from '../platform/android-navigation';
 import { sessionShuffle } from '../data/session-style';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { loadAgentSession, rateAgentMessage, sendAgentMessage } from '../api/agent';
+import { loadAgentSession, rateAgentMessage, sendAgentMessage, listAgentSessions, createAgentSession, closeAgentSession, loadAgentMessages, selectAgentSession } from '../api/agent';
 import AgentIcon from './agent/AgentIcon.vue';
 import LiLiAvatar from './agent/LiLiAvatar.vue';
 import UserPlaneAvatar from './agent/UserPlaneAvatar.vue';
@@ -23,14 +23,12 @@ import { composerPlacement } from './agent/composer-layout.mjs';
 const router = useRouter();
 const colors = sessionShuffle('agent-demo-colors', ['mint', 'blue', 'pink', 'lavender', 'yellow']);
 const messages = ref([]), session = ref(null), loading = ref(true), sending = ref(false);
-const history = computed(() => messages.value.length ? [{
-  label: '当前会话',
-  title: messages.value.find(message => message.role === 'user')?.text.slice(0, 22) || '新的对话',
-  summary: '会话将在 24 小时后过期', current: true,
-}] : []);
+const history = ref([]), historyQuery = ref(''), historyOffset = ref(null), historyLoading = ref(false), historyError = ref('');
+const nextBefore = ref(null), conversationError = ref(''), wantedSessionId = ref(null);
+let selectionGeneration = 0, historyGeneration = 0;
 const historyOpen = ref(false), drawer = ref(null), historyTrigger = ref(null), mounted = ref(false);
 const composer = ref(null), draft = ref(''), notice = ref('');
-const ready = computed(() => Boolean(draft.value.trim()) && !sending.value && !loading.value);
+const ready = computed(() => Boolean(session.value) && Boolean(draft.value.trim()) && !sending.value && !loading.value);
 const conversation = ref(null);
 const composerPanel = ref(null), expanded = ref(false), longDraft = ref(false);
 const panelBottom = ref(86), panelTop = ref(0), panelInset = ref(17), reservedHeight = ref(140);
@@ -79,21 +77,27 @@ function viewMessage(message, index) {
     requestId: message.request_id || message.client_request_id,
   };
 }
-async function loadConversation() {
+async function loadConversation(id) {
+  wantedSessionId.value = id || null; conversationError.value = '';
+  const generation = ++selectionGeneration;
+  activeRequestController?.abort(); sending.value = false;
+  messages.value = []; session.value = null; nextBefore.value = null; draft.value = '';
   const revision = authState.revision;
   loading.value = true;
   try {
-    const result = await loadAgentSession();
-    if (!mounted.value || revision !== authState.revision) return;
+    const result = await loadAgentSession(id);
+    if (!mounted.value || revision !== authState.revision || generation !== selectionGeneration) return;
+    selectAgentSession(result.session);
     session.value = result.session;
     messages.value = result.messages.map(viewMessage);
-    for (const message of messages.value) if (message.status === 'pending') message.status = 'failed';
+    nextBefore.value = result.next_before;
     await nextTick(); conversation.value?.scrollToBottom();
   } catch (error) {
+    if (revision !== authState.revision || generation !== selectionGeneration) return;
     if (error.message === 'authentication_required') { router.replace('/onboarding'); return; }
-    if (revision !== authState.revision) return;
-    notify('无法连接智能助手，请检查后端和数据库配置。');
-  } finally { loading.value = false; }
+    conversationError.value = '对话加载失败，请检查连接后重试。';
+    notify(conversationError.value);
+  } finally { if (generation === selectionGeneration) loading.value = false; }
 }
 async function copy(message) {
   const text = message.text.replace(/\*\*/g, '');
@@ -123,11 +127,12 @@ async function send(retryMessage = null) {
   });
   messages.value.push(assistant);
   sending.value = true;
+  const generation = selectionGeneration;
   const controller = new AbortController();
   activeRequestController = controller;
   try {
-    await sendAgentMessage(session.value.session_token, text, assistant.requestId, {
-      message_start: data => { assistant.id = data.message_id; },
+    await sendAgentMessage(session.value.session_id, text, assistant.requestId, {
+      message_start: data => { assistant.id = data.message_id; assistant.requestId = data.request_id || assistant.requestId; },
       citation: data => assistant.citations.push(data),
       delta: data => { assistant.text += data.text; },
       usage: () => {},
@@ -138,12 +143,12 @@ async function send(retryMessage = null) {
     conversation.value?.scrollToBottom();
   } catch (error) {
     assistant.status = 'failed';
-    if (!controller.signal.aborted) {
+    if (generation === selectionGeneration && !controller.signal.aborted) {
       notify(error.message === 'token_quota_exceeded' ? '你的账号今日的使用额度已用完。' : '回答失败，请点击重试。');
     }
   } finally {
     if (activeRequestController === controller) activeRequestController = null;
-    if (mounted.value) {
+    if (mounted.value && generation === selectionGeneration) {
       sending.value = false;
       await nextTick(); conversation.value?.refresh();
     }
@@ -158,11 +163,54 @@ async function rate(message, value) {
   if (!session.value || message.status !== 'completed') return;
   const next = message.rating === value ? null : value;
   try {
-    await rateAgentMessage(session.value.session_token, message.id, next);
+    await rateAgentMessage(session.value.session_id, message.id, next);
     message.rating = next;
   } catch { notify('暂时无法保存反馈，请稍后再试。'); }
 }
-function chooseHistory() { historyOpen.value = false; conversation.value?.scrollToBottom(); }
+async function refreshHistory(append = false) {
+  const generation = ++historyGeneration, revision = authState.revision;
+  historyLoading.value = true; historyError.value = '';
+  try {
+    const result = await listAgentSessions(historyQuery.value, append ? historyOffset.value || 0 : 0);
+    if (generation !== historyGeneration || revision !== authState.revision || !mounted.value) return;
+    history.value = append ? [...history.value, ...result.items] : result.items;
+    historyOffset.value = result.next_offset;
+  } catch { if (generation === historyGeneration) historyError.value = '历史加载失败，请重试。'; }
+  finally { if (generation === historyGeneration) historyLoading.value = false; }
+}
+async function chooseHistory(item) { historyOpen.value = false; await loadConversation(item.session_id); }
+async function newConversation() {
+  const generation = ++selectionGeneration, revision = authState.revision;
+  activeRequestController?.abort(); sending.value = false; loading.value = true;
+  session.value = null; messages.value = []; draft.value = ''; nextBefore.value = null;
+  try {
+    const created = await createAgentSession();
+    if (revision !== authState.revision || generation !== selectionGeneration || !mounted.value) return;
+    await loadConversation(created.session_id); historyOpen.value = false;
+  } catch { if (generation === selectionGeneration && revision === authState.revision) notify('创建失败，请重试。'); }
+  finally { if (generation === selectionGeneration) loading.value = false; }
+}
+async function deleteConversation(item) {
+  if (!window.confirm('永久删除这段对话及其消息？')) return;
+  const revision = authState.revision;
+  try {
+    await closeAgentSession(item.session_id);
+    if (revision !== authState.revision || !mounted.value) return;
+    if (session.value?.session_id === item.session_id) await loadConversation();
+    await refreshHistory();
+  } catch { notify('删除失败；生成中的对话请等待结束后再删除。'); }
+}
+async function olderMessages() {
+  if (!session.value || !nextBefore.value || loading.value) return;
+  const id = session.value.session_id, generation = selectionGeneration;
+  loading.value = true;
+  try {
+    const page = await loadAgentMessages(id, nextBefore.value);
+    if (generation !== selectionGeneration || !mounted.value) return;
+    messages.value = [...page.messages.map(viewMessage), ...messages.value]; nextBefore.value = page.next_before;
+  } catch { notify('较早消息加载失败，请重试。'); }
+  finally { if (generation === selectionGeneration) loading.value = false; }
+}
 function keydown(event) {
   if (event.isComposing) return;
   if (event.key === 'Escape') { if (!historyOpen.value && expanded.value) toggleExpanded(); historyOpen.value = false; }
@@ -175,6 +223,7 @@ function keydown(event) {
 function releaseDrawer() { for (const [node, value] of inerted) node.inert = value; inerted = []; }
 watch(historyOpen, async open => {
   if (open) {
+    void refreshHistory();
     conversation.value?.stop(); previousFocus = document.activeElement; await nextTick();
     if (!mounted.value || !historyOpen.value || !drawer.value) return;
     inerted = [...document.querySelector('.phone-shell').children].filter(node => !node.classList.contains('history-overlay')).map(node => [node, node.inert]);
@@ -184,6 +233,7 @@ watch(historyOpen, async open => {
 });
 watch(() => authState.revision, () => {
   activeRequestController?.abort();
+  selectionGeneration++; historyGeneration++; history.value = []; historyQuery.value = ''; historyOffset.value = null; nextBefore.value = null; conversationError.value = ''; wantedSessionId.value = null;
   messages.value = []; session.value = null; draft.value = '';
   historyOpen.value = false; sending.value = false; notice.value = '';
   if (mounted.value) router.replace('/onboarding');
@@ -200,7 +250,7 @@ onMounted(async () => {
   updateLayout();
 });
 onBeforeUnmount(() => {
-  mounted.value = false; clearTimeout(noticeTimer); cancelAnimationFrame(layoutFrame); layoutObserver?.disconnect(); releaseDrawer();
+  selectionGeneration++; historyGeneration++; mounted.value = false; clearTimeout(noticeTimer); cancelAnimationFrame(layoutFrame); layoutObserver?.disconnect(); releaseDrawer();
   activeRequestController?.abort(); activeRequestController = null;
   document.removeEventListener('keydown', keydown);
   window.removeEventListener('resize', queueLayout); window.removeEventListener('scroll', queueLayout);
@@ -225,7 +275,7 @@ onBeforeUnmount(removeNativeBack);
       <div class="heading-title"><h1>LiLi<span>智能助手</span></h1></div>
     </header>
 
-    <ElasticList ref="conversation" class="conversation" role="region" aria-label="当前对话">
+    <ElasticList ref="conversation" class="conversation" role="region" aria-label="当前对话"><p v-if="conversationError" role="alert">{{ conversationError }}<button @click="loadConversation(wantedSessionId)">重新加载对话</button></p><button v-if="nextBefore" :disabled="loading" @click="olderMessages">加载较早消息</button><button v-if="messages.some(m => m.status === 'pending') && !sending" @click="loadConversation(session?.session_id)">刷新对话状态</button>
       <p v-if="loading" class="conversation-date">正在连接 LiLi…</p>
       <p v-else-if="!messages.length" class="conversation-date">校园里的事情，可以问问 LiLi</p>
       <article v-for="message in messages" :key="message.id" class="message" :class="`message-${message.role}`" :aria-label="message.role === 'user' ? '你的消息' : 'LiLi 的消息'">
@@ -265,7 +315,7 @@ onBeforeUnmount(removeNativeBack);
 
     <Transition name="chat-toast"><p v-if="notice" v-sketch class="sketch chat-notice" data-pencil="yellow" role="status">{{ notice }}</p></Transition>
 
-    <Teleport v-if="mounted" to=".phone-shell"><Transition name="history-slide"><div v-if="historyOpen" class="history-overlay" @click.self="historyOpen = false"><aside id="lili-history" ref="drawer" v-sketch class="sketch history-drawer" data-pencil="mint" role="dialog" aria-modal="true" aria-labelledby="lili-history-title"><header><div><p>和 LiLi 的</p><h2 id="lili-history-title">小小对话簿</h2></div><button type="button" class="drawer-close" aria-label="关闭历史对话" @click="historyOpen = false"><AgentIcon name="close" /></button></header><ElasticList class="history-list" role="region" aria-label="历史对话列表"><p v-if="!history.length" class="history-empty">这里还没有对话</p><template v-for="(item, index) in history" :key="index"><h3>{{ item.label }}</h3><button v-sketch class="sketch history-item" data-pencil="yellow" type="button" aria-current="true" @click="chooseHistory"><AgentIcon name="chat" /><span><strong>{{ item.title }}</strong><small>{{ item.summary }}</small></span></button></template></ElasticList><footer><div class="drawer-avatar"><LiLiAvatar /></div><p>校园生活，慢慢聊。</p></footer></aside></div></Transition></Teleport>
+    <Teleport v-if="mounted" to=".phone-shell"><Transition name="history-slide"><div v-if="historyOpen" class="history-overlay" @click.self="historyOpen = false"><aside id="lili-history" ref="drawer" v-sketch class="sketch history-drawer" data-pencil="mint" role="dialog" aria-modal="true" aria-labelledby="lili-history-title"><header><div><p>和 LiLi 的</p><h2 id="lili-history-title">小小对话簿</h2></div><button type="button" class="drawer-close" aria-label="关闭历史对话" @click="historyOpen = false"><AgentIcon name="close" /></button></header><form class="history-search" @submit.prevent="refreshHistory()"><input v-model="historyQuery" aria-label="查找历史对话" placeholder="查找对话…" /><button type="submit" :disabled="historyLoading">查找</button></form><button class="history-new" :disabled="loading" @click="newConversation">新建对话</button><ElasticList class="history-list" role="region" aria-label="历史对话列表"><p v-if="historyError" role="alert">{{ historyError }}<button @click="refreshHistory()">重试</button></p><p v-if="historyLoading">正在加载历史…</p><p v-else-if="!history.length && !historyError" class="history-empty">这里还没有对话</p><div v-for="item in history" :key="item.session_id" class="history-entry"><button v-sketch class="sketch history-item" :data-pencil="session?.session_id === item.session_id ? 'yellow' : undefined" :aria-current="session?.session_id === item.session_id ? 'true' : undefined" @click="chooseHistory(item)"><AgentIcon name="chat" /><span><strong>{{ item.title }}</strong><small>{{ new Date(item.updated_at).toLocaleString() }}</small></span></button><button class="history-delete" :aria-label="`删除对话：${item.title}`" @click="deleteConversation(item)">删除</button></div><button v-if="historyOffset !== null" :disabled="historyLoading" @click="refreshHistory(true)">更多对话</button></ElasticList><footer><div class="drawer-avatar"><LiLiAvatar /></div><p>校园生活，慢慢聊。</p></footer></aside></div></Transition></Teleport>
   </section>
 </template>
 
@@ -313,4 +363,14 @@ onBeforeUnmount(removeNativeBack);
 @keyframes lili-think { to { transform: rotate(360deg); } }@keyframes lili-dot { 0%,70%,100% { opacity: .3; transform: translateY(0); }35% { opacity: 1; transform: translateY(-2px); } }
 @media(max-width:359px) { .agent-page { padding: 0 10px; }.chat-heading { gap: 8px; }.heading-title h1 { font-size: 25px; }.message-avatar { width: 36px; height: 40px; }.message-user .message-avatar { width: 36px; height: 40px; }.message-content,.message-user .message-content { max-width: calc(100% - 41px); }.message-bubble { padding: 12px 13px; }.message-text { font-size: 13px; }.message-actions button { padding-left: 5px; padding-right: 5px; }.message-actions .rating-action { min-width: 29px; }.composer-box { padding-left: 12px; gap: 3px; }.composer-tools { gap: 0; }.history-drawer { padding-left: 10px; padding-right: 10px; }.history-drawer h2 { font-size: 19px; }.history-item { padding-left: 8px; padding-right: 8px; }.history-item strong { font-size: 12px; } }
 @media(prefers-reduced-motion:reduce) { .history-slide-enter-active,.history-slide-leave-active,.history-slide-enter-active .history-drawer,.history-slide-leave-active .history-drawer,.attachment-pop-enter-active,.attachment-pop-leave-active,.chat-toast-enter-active,.chat-toast-leave-active { transition: none; } }
+</style>
+
+<style scoped>
+.history-search { display:flex; gap:6px; margin-bottom:12px; } .history-search input { min-width:0; width:100%; font:inherit; border:1px solid #20304b44; border-radius:8px; padding:8px; background:#fff8; }
+.history-search button,.history-new,.history-delete { font:inherit; background:transparent; border:0; color:var(--ink); min-height:40px; } .history-new { margin-bottom:8px; } .history-entry { position:relative; padding-bottom:30px; } .history-delete { position:absolute; right:5px; bottom:0; font-size:12px; }
+</style>
+
+<style scoped>
+.history-search button { flex: none; min-width: 48px; white-space: nowrap; }
+.history-item strong { overflow-wrap: anywhere; }
 </style>

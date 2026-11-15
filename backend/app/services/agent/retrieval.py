@@ -66,7 +66,7 @@ def _terms(question: str) -> tuple[str, ...]:
 
 
 def search_information(
-    session: Session, question: str, *, limit: int = 8
+    session: Session, question: str, *, limit: int = 8, pinned_ids: tuple = ()
 ) -> tuple[RetrievedInformation, ...]:
     terms = _terms(question)
     if not terms:
@@ -77,6 +77,15 @@ def search_information(
         .order_by(InformationRecord.fetched_at.desc(), InformationRecord.id.desc())
         .limit(500)
     ).all()
+    seen = {row.id for row in records}
+    if pinned_ids:
+        records += [
+            row
+            for row in session.scalars(
+                select(InformationRecord).where(InformationRecord.id.in_(pinned_ids))
+            ).all()
+            if row.id not in seen
+        ]
     ranked: list[RetrievedInformation] = []
     for row in records:
         title = (row.title or "").casefold()
@@ -94,7 +103,7 @@ def search_information(
             if row.registration_deadline_at
             else ""
         )
-        score = 0
+        score = 30 if row.id in pinned_ids else 0
         for term in terms:
             if term in title:
                 score += 8

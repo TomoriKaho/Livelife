@@ -131,7 +131,7 @@ $env:AGENT_LLM_MODEL = '<兼容模型名>'
 uv run --locked --group local-db python -m app.dev --port 18000 --reload
 ```
 
-不要把这些变量写进前端 `.env` 或提交到仓库。自建兼容端点也可填写对应服务地址；用户问题、有限对话上下文和命中的公开信息片段会发送给模型服务。会话和 token 使用统计写入 PostgreSQL，24 小时后过期；无需额外 Redis。
+不要把这些变量写进前端 `.env` 或提交到仓库。自建兼容端点也可填写对应服务地址；用户问题、有限对话上下文和命中的公开信息片段会发送给模型服务。会话、独立消息行及 token 使用统计写入 PostgreSQL；账号对话一直保留到主动删除或注销，登录有效期与历史保留分离，无需额外 Redis。
 
 使用 GPT 推理模型时，额外设置 `AGENT_LLM_REASONING_EFFORT=high`，例如 `AGENT_LLM_BASE_URL=https://api.openai.com/v1`、`AGENT_LLM_MODEL=gpt-6.1-sol`。此时请求使用 `reasoning_effort` 和 `max_completion_tokens`，不发送 `temperature`；留空则保留普通兼容模型的 `max_tokens` 与温度参数。可选值为 `none/minimal/low/medium/high/xhigh/max`，具体支持范围以所选模型为准。输出上限包含隐藏推理 token，建议本测试配置使用 `AGENT_LLM_MAX_OUTPUT_TOKENS=4096`、`AGENT_LLM_TIMEOUT_SECONDS=180`。模型返回的 completion 用量包含推理消耗，一并计入用户额度。官方参数见 [Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)。
 
@@ -139,7 +139,7 @@ uv run --locked --group local-db python -m app.dev --port 18000 --reload
 
 限制项及默认值：`AGENT_LLM_TIMEOUT_SECONDS=60`、`AGENT_LLM_MAX_OUTPUT_TOKENS=1024`、`AGENT_MAX_MESSAGE_CHARS=4000`、`AGENT_MAX_CONTEXT_CHARS=24000`、`AGENT_RATE_REQUESTS_PER_WINDOW=5`、`AGENT_IP_REQUESTS_PER_HOUR=30`、`AGENT_DAILY_TOKEN_QUOTA=100000`。每个用户最多一个活跃模型请求，创建或关闭对话不会重置额度。频率和 token 窗口按 UTC 计；token 用量优先使用模型返回值，缺失时按字符数估算。每日额度按已认证用户计（跨会话共用），不代表供应商结算账单。
 
-数据库迁移由本地开发入口自动执行。独立数据库先设置 `DATABASE_URL`，再运行 `uv run alembic upgrade head`。`0005_agent_account_auth` 增加所有者与用户额度表，旧匿名会话不认领；前后端须配套升级，迁移和回退限制见[Agent 迁移契约](app/api/agent/API.md#登录失效与迁移)。Agent 契约、SSE 事件和错误码见[Agent API](app/api/agent/API.md)。限流 IP 使用 Uvicorn 仅对可信代理解析后的 `request.client.host`；部署代理变化时先核对可信代理配置，不在应用层直接采信 `X-Forwarded-For`。
+数据库迁移由本地开发入口自动执行。独立数据库先设置 `DATABASE_URL`，再运行 `uv run alembic upgrade head`。`0005_agent_account_auth` 增加所有者与用户额度表；`0006_agent_history` 建立长期会话与消息表，并按开发阶段规则一次性清除升级前的全部 Agent 对话，账户和额度保留，在途预留保守结算。升级前结束在途请求；重复启动/升级不会清除新历史。降级也不能恢复被清理的对话，回退此版本会删除新历史。前后端须配套升级，迁移和回退限制见[Agent 迁移契约](app/api/agent/API.md#登录失效与迁移)。Agent 契约、SSE 事件和错误码见[Agent API](app/api/agent/API.md)。限流 IP 使用 Uvicorn 仅对可信代理解析后的 `request.client.host`；部署代理变化时先核对可信代理配置，不在应用层直接采信 `X-Forwarded-For`。
 
 ## 目录职责与请求处理
 
@@ -200,3 +200,9 @@ Agent 路由位于 `app/api/agent/`，会话和模型服务位于 `app/services/
 | `notifications/` | 提醒计划、设备关联、推送请求及送达记录 |
 
 新增业务先按[契约协作流程](../docs/api.md#接口契约协作)确认接口，再创建 `app/api/<模块>/` 路由包及同目录的 `API.md`，按需要添加 schema、服务用例、repository 与模型。现有空业务路由文件尚未注册，不提供对应 API。各模块契约从公共入口链接，组织方法见[接口指南](../docs/api.md#模块契约怎么组织)。采集与推荐的独立 worker 在实际任务需要时创建，可复用服务与数据访问层，不在请求内执行长时间采集。
+
+### Agent 长期历史联调
+
+先运行迁移，再启动配对的前后端，使用独立的校园测试账号：进入 Agent 创建甲、乙会话，分别发送不同问题；从历史抽屉切换、查找、加载较早消息和删除。刷新、退出再登录、另一浏览器登录后，应能重新列出并继续本账号会话；另一账号看不到它们，切换账号不得出现旧草稿、旧消息或迟到的回答。生成中的会话删除返回提示，等待终态再重试。删除或注销后消息与引用清除，额度不因删会话返还。
+
+专项测试：`uv run pytest tests/test_agent.py tests/test_agent_auth.py tests/test_agent_history.py tests/test_migrations.py`；`uv run --locked --group local-db pytest tests/test_agent_history.py --local-postgres` 在独立临时 PostgreSQL 验证新表、分页与历史检索。测试使用合成账号和模型替身，不需要真实模型凭据。完整联调真实模型、跨设备及 Android 输入法需另记验收结果。接口、上下文预算和位置隐私以 [Agent API](app/api/agent/API.md) 为准。

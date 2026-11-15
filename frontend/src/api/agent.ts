@@ -1,9 +1,10 @@
 import { authState, readAuthToken, clearSession, onAuthSessionChange } from './auth';
 import { checkAndroidStatus } from '../platform/android-config';
 import { getApiBaseUrl } from '../platform/web';
+import { currentLocation, locationTrackingState } from '../platform/location-tracker';
 import { readAgentEvents } from './agent-stream.mjs';
 
-const STORAGE_KEY = 'livelife.agent.session.v2';
+const STORAGE_KEY = 'livelife.agent.session.v3';
 
 export interface AgentCitation {
   rank: number;
@@ -29,12 +30,15 @@ export interface AgentMessage {
   created_at: string;
   client_request_id?: string;
   request_id?: string;
+  rating?: 'like' | 'dislike' | null;
 }
 
 export interface AgentSession {
   session_id: string;
-  session_token: string;
-  expires_at: string;
+  expires_at: string | null;
+  title: string;
+  created_at: string;
+  updated_at: string;
 }
 
 const base = () => getApiBaseUrl().replace(/\/+$/, '');
@@ -69,6 +73,7 @@ async function request<T>(path: string, token?: string, init: RequestInit = {}):
   assertIdentity(captured);
   const response = await fetch(`${base()}${path}`, {
     ...init,
+    signal: init.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(10000)]) : AbortSignal.timeout(10000),
     headers: { ...headers(captured.token, token), ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...init.headers },
   });
   assertIdentity(captured);
@@ -86,51 +91,61 @@ async function request<T>(path: string, token?: string, init: RequestInit = {}):
   return data;
 }
 
-export async function loadAgentSession(): Promise<{ session: AgentSession; messages: AgentMessage[] }> {
+export interface AgentHistoryPage {
+  session_id: string; title: string; expires_at: string | null; created_at: string; updated_at: string;
+  messages: AgentMessage[]; next_before: number | null;
+}
+export interface AgentSessionList { items: AgentSession[]; next_offset: number | null }
+
+export function selectAgentSession(session: AgentSession) {
   const captured = identity();
-  const owner = authState.user?.id;
-  const saved = sessionStorage.getItem(STORAGE_KEY);
-  if (saved) {
+  assertIdentity(captured);
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ owner: authState.user?.id, base: base(), session_id: session.session_id }));
+}
+export async function listAgentSessions(query = '', offset = 0): Promise<AgentSessionList> {
+  return request(`/agent/sessions?${new URLSearchParams({query, offset: String(offset), limit:'20'})}`);
+}
+export async function createAgentSession(): Promise<AgentSession> {
+  const captured = identity();
+  const created = await request<AgentSession>('/agent/sessions', undefined, {method:'POST'});
+  const session = {session_id:created.session_id, title:created.title, created_at:created.created_at, updated_at:created.updated_at, expires_at:created.expires_at};
+  assertIdentity(captured); return session;
+}
+export async function loadAgentMessages(id: string, before?: number): Promise<AgentHistoryPage> {
+  return request(`/agent/sessions/${encodeURIComponent(id)}?limit=50${before ? `&before=${before}` : ''}`);
+}
+export async function loadAgentSession(id?: string): Promise<{ session: AgentSession; messages: AgentMessage[]; next_before: number | null }> {
+  const captured = identity();
+  if (!id) {
+    try { const saved = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || 'null');
+      if (saved?.owner === authState.user?.id && saved.base === base()) id = saved.session_id;
+    } catch { /* malformed hint is discarded; history remains server-owned */ }
+  }
+  if (!id) id = (await listAgentSessions()).items[0]?.session_id;
+  if (id) {
     try {
-      const stored = JSON.parse(saved);
-      const session = stored.session as AgentSession;
-      if (stored.owner === owner && stored.base === base() && session?.session_token && Date.parse(session.expires_at) > Date.now()) {
-        try {
-          const current = await request<{ session_id: string; expires_at: string; messages: AgentMessage[] }>(
-            '/agent/sessions/current', session.session_token,
-          );
-          const renewed = { ...session, session_id: current.session_id, expires_at: current.expires_at };
-          assertIdentity(captured);
-          sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ owner, base: base(), session: renewed }));
-          return { session: renewed, messages: current.messages };
-        } catch (error) {
-          if (!['invalid_session', 'session_expired', 'http_404'].includes((error as Error).message)) throw error;
-        }
-      }
+      const page = await loadAgentMessages(id);
+      const session = {session_id:page.session_id, title:page.title, created_at:page.created_at, updated_at:page.updated_at, expires_at:page.expires_at};
+      assertIdentity(captured);
+      return {session, messages:page.messages, next_before:page.next_before};
     } catch (error) {
-      if (!(error instanceof SyntaxError)) throw error;
+      if ((error as Error).message !== 'session_not_found') throw error;
     }
   }
-  sessionStorage.removeItem(STORAGE_KEY);
-  const session = await request<AgentSession>('/agent/sessions', undefined, { method: 'POST' });
-  assertIdentity(captured);
-  sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ owner, base: base(), session }));
-  return { session, messages: [] };
+  const session = await createAgentSession();
+  return {session, messages:[], next_before:null};
 }
-
-export async function closeAgentSession(token: string): Promise<void> {
-  await request<void>('/agent/sessions/close', token, { method: 'POST' });
-  sessionStorage.removeItem(STORAGE_KEY);
+export async function closeAgentSession(id: string): Promise<void> {
+  await request<void>(`/agent/sessions/${encodeURIComponent(id)}`, undefined, {method:'DELETE'});
 }
-
-export async function rateAgentMessage(token: string, messageId: string, rating: 'like' | 'dislike' | null): Promise<void> {
-  await request<void>(`/agent/messages/${encodeURIComponent(messageId)}/rating`, token, {
-    method: 'POST', body: JSON.stringify({ rating }),
+export async function rateAgentMessage(id: string, messageId: string, rating: 'like' | 'dislike' | null): Promise<void> {
+  await request<void>(`/agent/sessions/${encodeURIComponent(id)}/messages/${encodeURIComponent(messageId)}/rating`, undefined, {
+    method:'POST', body: JSON.stringify({rating}),
   });
 }
 
 export async function sendAgentMessage(
-  token: string,
+  sessionId: string,
   content: string,
   clientRequestId: string,
   handlers: Record<string, (data: any) => void | Promise<void>>,
@@ -143,10 +158,14 @@ export async function sendAgentMessage(
   try {
     await checkAndroidStatus();
     assertIdentity(captured);
-    const response = await fetch(`${base()}/agent/messages/stream`, {
+    const point = currentLocation.value;
+    const age = point ? Date.now() - point.timestamp : Infinity;
+    const location = point && locationTrackingState.value === 'located' && age >= -10000 && age <= 120000
+      ? {latitude:point.latitude, longitude:point.longitude, accuracy:point.accuracy, timestamp:point.timestamp} : undefined;
+    const response = await fetch(`${base()}/agent/sessions/${encodeURIComponent(sessionId)}/messages/stream`, {
       method: 'POST',
-      headers: { ...headers(captured.token, token), Accept: 'text/event-stream', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content, client_request_id: clientRequestId }),
+      headers: { ...headers(captured.token), Accept: 'text/event-stream', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content, client_request_id: clientRequestId, location }),
       signal: combined,
     });
     assertIdentity(captured);

@@ -26,6 +26,7 @@ export function onAuthSessionChange(listener: () => void): () => void {
 function invalidateIdentity(): void {
   sessionStorage.removeItem('livelife.agent.session.v1');
   sessionStorage.removeItem('livelife.agent.session.v2');
+  sessionStorage.removeItem('livelife.agent.session.v3');
   authState.user = null;
   authState.revision += 1;
   for (const listener of sessionListeners) listener();
