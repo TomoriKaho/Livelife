@@ -6,6 +6,13 @@ import MouseWheel from '@better-scroll/mouse-wheel';
 BScroll.use(MouseWheel);
 const viewport = ref(null), content = ref(null);
 let scroll, observer, resizeFrame, motion;
+const emit = defineEmits(['scroll-state']);
+
+function isAtBottom() {
+  if (!scroll || scroll.maxScrollY >= -2) return true;
+  return scroll.y <= scroll.maxScrollY + 2;
+}
+function reportScrollState() { emit('scroll-state', isAtBottom()); }
 
 function refresh() {
   if (!viewport.value || !content.value) return;
@@ -34,15 +41,19 @@ function createScroll() {
     swipeBounceTime: reduced ? 0 : 500,
     mouseWheel: { easeTime: reduced ? 0 : 300 },
   });
+  scroll.on('scroll', reportScrollState);
+  scroll.on('scrollEnd', reportScrollState);
+  reportScrollState();
 }
 function stop() {
   scroll?.stop();
   scroll?.resetPosition(motion?.matches ? 0 : 800);
 }
-function scrollToBottom() {
+function scrollToBottom(duration = motion?.matches ? 0 : 240) {
   if (!scroll) return;
   scroll.refresh();
-  scroll.scrollTo(0, scroll.maxScrollY, motion?.matches ? 0 : 240);
+  scroll.scrollTo(0, scroll.maxScrollY, duration);
+  if (duration === 0) reportScrollState();
 }
 function keyboard(event) {
   if (event.target !== viewport.value || !scroll || event.ctrlKey || event.metaKey || event.altKey) return;
@@ -70,6 +81,7 @@ function nativeScroll() {
   if (!delta || !scroll) return;
   viewport.value.scrollTop = 0;
   scroll.scrollTo(0, Math.max(scroll.maxScrollY, Math.min(0, scroll.y - delta)), 0);
+  reportScrollState();
 }
 onMounted(() => {
   motion = window.matchMedia('(prefers-reduced-motion: reduce)');

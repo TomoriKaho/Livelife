@@ -34,7 +34,7 @@ const ready = computed(() => Boolean(draft.value.trim()) && !sending.value && !l
 const conversation = ref(null);
 const composerPanel = ref(null), expanded = ref(false), longDraft = ref(false);
 const panelBottom = ref(86), panelTop = ref(0), panelInset = ref(17), reservedHeight = ref(140);
-let layoutObserver, layoutFrame, restingViewportHeight = 0, inputFocused = false, keyboardWasOpen = false, compactPanelHeight = 140;
+let layoutObserver, layoutFrame, conversationScrollFrame, restingViewportHeight = 0, inputFocused = false, keyboardWasOpen = false, compactPanelHeight = 140, followingConversation = true;
 function viewportHeight() { return window.visualViewport?.height || window.innerHeight; }
 function updateLayout() {
   const shell = document.querySelector('.phone-shell'), nav = shell?.querySelector('.bottom-nav');
@@ -67,6 +67,22 @@ function toggleExpanded() {
 let noticeTimer, previousFocus, inerted = [], activeRequestController = null;
 function notify(text) { clearTimeout(noticeTimer); notice.value = text; noticeTimer = setTimeout(() => { notice.value = ''; }, 2400); }
 const segments = text => text.split(/(\*\*[^*]+\*\*)/g).map(value => ({ text: value.startsWith('**') ? value.slice(2, -2) : value, bold: value.startsWith('**') }));
+function updateConversationFollowing(atBottom) { followingConversation = atBottom; }
+function queueConversationBottom(force = false) {
+  if (force) followingConversation = true;
+  if (!followingConversation) return;
+  cancelAnimationFrame(conversationScrollFrame);
+  conversationScrollFrame = requestAnimationFrame(async () => {
+    conversationScrollFrame = undefined;
+    await nextTick();
+    if (mounted.value && followingConversation) conversation.value?.scrollToBottom(0);
+  });
+}
+function updateAssistantMessage(update) {
+  const shouldFollow = followingConversation;
+  update();
+  if (shouldFollow) queueConversationBottom();
+}
 function viewMessage(message, index) {
   return {
     id: message.id,
@@ -123,21 +139,20 @@ async function send(retryMessage = null) {
   });
   messages.value.push(assistant);
   sending.value = true;
+  queueConversationBottom(true);
   const controller = new AbortController();
   activeRequestController = controller;
   try {
     await sendAgentMessage(session.value.session_token, text, assistant.requestId, {
       message_start: data => { assistant.id = data.message_id; },
-      citation: data => assistant.citations.push(data),
-      delta: data => { assistant.text += data.text; },
+      citation: data => updateAssistantMessage(() => assistant.citations.push(data)),
+      delta: data => updateAssistantMessage(() => { assistant.text += data.text; }),
       usage: () => {},
-      done: () => { assistant.status = 'completed'; },
-      error: data => { assistant.status = 'failed'; throw new Error(data.code); },
+      done: () => updateAssistantMessage(() => { assistant.status = 'completed'; }),
+      error: data => { throw new Error(data.code); },
     }, controller.signal);
-    assistant.status = 'completed';
-    conversation.value?.scrollToBottom();
   } catch (error) {
-    assistant.status = 'failed';
+    updateAssistantMessage(() => { assistant.status = 'failed'; });
     if (!controller.signal.aborted) {
       notify(error.message === 'token_quota_exceeded' ? '你的账号今日的使用额度已用完。' : '回答失败，请点击重试。');
     }
@@ -200,7 +215,7 @@ onMounted(async () => {
   updateLayout();
 });
 onBeforeUnmount(() => {
-  mounted.value = false; clearTimeout(noticeTimer); cancelAnimationFrame(layoutFrame); layoutObserver?.disconnect(); releaseDrawer();
+  mounted.value = false; clearTimeout(noticeTimer); cancelAnimationFrame(layoutFrame); cancelAnimationFrame(conversationScrollFrame); layoutObserver?.disconnect(); releaseDrawer();
   activeRequestController?.abort(); activeRequestController = null;
   document.removeEventListener('keydown', keydown);
   window.removeEventListener('resize', queueLayout); window.removeEventListener('scroll', queueLayout);
@@ -225,7 +240,7 @@ onBeforeUnmount(removeNativeBack);
       <div class="heading-title"><h1>LiLi<span>智能助手</span></h1></div>
     </header>
 
-    <ElasticList ref="conversation" class="conversation" role="region" aria-label="当前对话">
+    <ElasticList ref="conversation" class="conversation" role="region" aria-label="当前对话" @scroll-state="updateConversationFollowing">
       <p v-if="loading" class="conversation-date">正在连接 LiLi…</p>
       <p v-else-if="!messages.length" class="conversation-date">校园里的事情，可以问问 LiLi</p>
       <article v-for="message in messages" :key="message.id" class="message" :class="`message-${message.role}`" :aria-label="message.role === 'user' ? '你的消息' : 'LiLi 的消息'">

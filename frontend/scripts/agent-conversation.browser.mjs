@@ -21,6 +21,12 @@ export async function verifyAgentConversation() {
   const users = () => document.querySelectorAll('#app .message-user');
   const editor = () => document.querySelector('#app textarea');
   const sendButton = () => document.querySelector('#app .send-button');
+  const conversation = () => document.querySelector('#app .conversation');
+  const conversationContent = () => conversation()?.querySelector('.elastic-list-content');
+  const position = () => {
+    const viewport = conversation().getBoundingClientRect(), content = conversationContent().getBoundingClientRect();
+    return { atTop: Math.abs(content.top - viewport.top) < 3, atBottom: Math.abs(content.bottom - viewport.bottom) < 3 };
+  };
   const input = async text => {
     editor().value = text; editor().dispatchEvent(new Event('input', { bubbles: true }));
     await waitFor(() => !sendButton().disabled, 'Send button did not become ready');
@@ -77,6 +83,22 @@ export async function verifyAgentConversation() {
     assert(users().length === 2 && requests[2].body.content === '快捷键发送的问题', 'retry resends the question without duplicating the user message');
     emit(2, 'delta', { text: '重试成功' }); complete(2);
     await waitFor(() => bubbles()[2]?.textContent === '重试成功', 'Retry response did not render');
+
+    await input('滚动定位测试 '.repeat(180)); sendButton().click();
+    await waitFor(() => requests.length === 4 && users().length === 3, 'Long message did not send');
+    await waitFor(() => position().atBottom, 'Sending a message did not scroll to the conversation bottom');
+    conversation().focus(); conversation().dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    await waitFor(() => position().atTop, 'Home did not move the conversation away from the bottom');
+    emit(3, 'delta', { text: '用户正在阅读历史时不应跳回底部。'.repeat(80) });
+    await waitFor(() => bubbles()[3]?.textContent.includes('不应跳回底部'), 'Long streaming delta did not render');
+    assert(position().atTop, 'Streaming content moved a reader who had scrolled up');
+    conversation().dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    await waitFor(() => position().atBottom, 'End did not move the conversation to the bottom');
+    emit(3, 'delta', { text: '继续跟随底部。'.repeat(40) });
+    await waitFor(() => bubbles()[3]?.textContent.includes('继续跟随底部'), 'Second streaming delta did not render');
+    await waitFor(() => position().atBottom, 'Streaming content did not keep a bottom reader at the bottom');
+    complete(3);
+    results.push('sending forces the bottom while streaming respects manual reading position');
     return results;
   } finally {
     await router.push('/calendar');
