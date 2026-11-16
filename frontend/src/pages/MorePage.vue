@@ -13,7 +13,7 @@ import { registerBackHandler } from '../platform/android-navigation';
 import { fetchProfile, readAccessToken, updateProfile } from '../api/profile';
 import ElasticList from './agent/ElasticList.vue';
 import FavoritesList from './more/FavoritesList.vue';
-import { savedActivities, activityStatus } from '../data/favorites.js';
+import { favorites } from '../state/favorites';
 import { interests, genders } from './onboarding/options.js';
 import OnboardingIcon from './onboarding/OnboardingIcon.vue';
 import ProfileAvatar from './more/ProfileAvatar.vue';
@@ -42,7 +42,15 @@ const advance = ref('30分钟'), recommendationMode = ref('interest');
 const feedback = ref(''), notice = ref('');
 let noticeTimer;
 const deleteOpen = ref(false), deletePassword = ref(''), deleteError = ref(''), deleting = ref(false);
-const favoritesSummary = computed(() => `收藏 ${savedActivities.value.length} 个活动 · ${savedActivities.value.filter(item => activityStatus(item) === 'upcoming').length} 个待开始`);
+const favoritesSummary = computed(() => {
+  void authState.revision;
+  if (!readAccessToken()) return '登录后查看自己的收藏';
+  if (favorites.state.error) return '收藏加载失败，点击重试';
+  if (!favorites.state.loaded) return '正在读取收藏…';
+  return `收藏 ${favorites.state.total} 个活动 · ${favorites.state.counts.upcoming} 个待开始`;
+});
+onMounted(() => { if (readAccessToken()) void favorites.load(); });
+watch(() => authState.revision, () => { if (readAccessToken()) void favorites.load(); });
 function notify(text) { clearTimeout(noticeTimer); notice.value = text; noticeTimer = setTimeout(() => { notice.value = ''; }, 2400); }
 function open(id) {
   if (id === pane.value) return;

@@ -1,6 +1,6 @@
 # 后端开发
 
-后端使用 FastAPI 和 Pydantic，采用模块化单体。当前提供 `GET /test/hello`、存活与数据库就绪检查、[校园邮箱账号与会话 API](app/api/accounts/API.md)、[Agent 对话 API](app/api/agent/API.md)，[地图活动查询 API](app/api/locations/API.md)，以及[通用信息系统](app/services/content/README.md)的内部采集协议、持久化与查询服务。Agent 模型调用只有在环境提供凭证后可用；公众号样本、地点解析和附近查询可通过[本地 Demo](app/services/content/README.md#运行本地-demo)运行。HTTP 契约见[连通性检查 API](app/api/demo/API.md)、[健康检查 API](app/api/health/API.md)、[账户与认证 API](app/api/accounts/API.md)和[Agent API](app/api/agent/API.md)，共享约定与接口索引见[API 入口](../docs/api.md)，整体技术路线见[架构说明](../docs/architecture.md)。
+后端使用 FastAPI 和 Pydantic，采用模块化单体。当前提供 `GET /test/hello`、存活与数据库就绪检查、[校园邮箱账号与会话 API](app/api/accounts/API.md)、[Agent 对话 API](app/api/agent/API.md)，[地图活动查询 API](app/api/locations/API.md)、[活动收藏 API](app/api/favorites/API.md)，以及[通用信息系统](app/services/content/README.md)的内部采集协议、持久化与查询服务。Agent 模型调用只有在环境提供凭证后可用；公众号样本、地点解析和附近查询可通过[本地 Demo](app/services/content/README.md#运行本地-demo)运行。HTTP 契约见[连通性检查 API](app/api/demo/API.md)、[健康检查 API](app/api/health/API.md)、[账户与认证 API](app/api/accounts/API.md)和[Agent API](app/api/agent/API.md)，共享约定与接口索引见[API 入口](../docs/api.md)，整体技术路线见[架构说明](../docs/architecture.md)。
 
 ## 后端安装、启动与检查
 
@@ -49,7 +49,7 @@ uv lock --check
 - `http://localhost` 和 `http://127.0.0.1` 的 5173、8765、8766 端口；
 - Android / Capacitor 原生来源 `https://localhost`。
 
-允许 GET、POST、OPTIONS 和 Accept、Authorization、Content-Type 请求头，暴露 `X-Livelife-Backend-SHA` 响应头。该版本头由测试部署网关注入，本地 Uvicorn 不自动生成。Origin 的协议、主机和端口必须完全匹配；自定义前端端口或手机局域网网页需明确添加对应来源。`curl` 成功不等于浏览器 CORS 已通过。
+允许 GET、POST、PUT、PATCH、DELETE、OPTIONS 和 Accept、Authorization、Content-Type 请求头，暴露 `X-Livelife-Backend-SHA` 响应头。该版本头由测试部署网关注入，本地 Uvicorn 不自动生成。Origin 的协议、主机和端口必须完全匹配；自定义前端端口或手机局域网网页需明确添加对应来源。`curl` 成功不等于浏览器 CORS 已通过。
 
 前端地址配置和界面操作见[前端联调教程](../frontend/README.md#api-地址与联调)。公网预览通过同源网关访问 API，路由前缀、版本头和环境配对由[部署文档](../docs/deployment.md#api-地址与前端关联)维护。
 
@@ -200,3 +200,9 @@ Agent 路由位于 `app/api/agent/`，会话和模型服务位于 `app/services/
 | `notifications/` | 提醒计划、设备关联、推送请求及送达记录 |
 
 新增业务先按[契约协作流程](../docs/api.md#接口契约协作)确认接口，再创建 `app/api/<模块>/` 路由包及同目录的 `API.md`，按需要添加 schema、服务用例、repository 与模型。现有空业务路由文件尚未注册，不提供对应 API。各模块契约从公共入口链接，组织方法见[接口指南](../docs/api.md#模块契约怎么组织)。采集与推荐的独立 worker 在实际任务需要时创建，可复用服务与数据访问层，不在请求内执行长时间采集。
+
+## 账号活动收藏联调
+
+先升级至 `0006_activity_favorites`（自动本地开发入口会执行），通过信息系统导入真实活动，再用账户 Bearer 令牌收藏该信息 UUID。读取、取消、分页、最小快照及时间分类的主要契约见[收藏 API](app/api/favorites/API.md)。旧前端演示收藏不迁移；注销清除个人收藏，清理原始信息则保留不可用识别快照。迁移降级会丢失全部收藏，不影响账号和原活动。与 PR #99 的 Agent 迁移合并时需协调迁移链，验证单一 head。
+
+在 backend 执行 `uv run pytest tests/test_favorites.py`；增加 `--local-postgres` 并安装 local-db 依赖组可检查真实 PostgreSQL 并发幂等与清理。前端操作步骤见[个人页收藏](../frontend/src/pages/more/README.md#账号活动收藏)。无需新增环境变量、模型服务或 SMTP 调用，测试使用独立账号和数据库。

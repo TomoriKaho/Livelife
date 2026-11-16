@@ -146,6 +146,7 @@ versionCode / APK SHA-256：
 | --- | --- |
 | Agent 会话、检索、限额和 SSE | [Agent API 与配置](../backend/app/api/agent/API.md)、后端 `tests/test_agent.py` |
 | 前后端基本检查 | [前端 README](../frontend/README.md#构建预览与检查)、[后端 README](../backend/README.md#后端安装启动与检查) |
+| 账号活动收藏、时间分类与恢复 | [收藏 API](../backend/app/api/favorites/API.md)；[个人页联调](../frontend/src/pages/more/README.md#账号活动收藏)，后端 `tests/test_favorites.py`、前端 `npm run test:favorites` |
 | 个人资料接口、兴趣标签与账户会话鉴权 | [个人资料 API](../backend/app/api/profile/API.md)；后端 `uv run pytest tests/test_profiles.py` |
 | 信息采集接口、持久化、查询与迁移 | [信息系统验证](../backend/app/services/content/README.md#迁移验证与回滚) |
 | 本地 PostgreSQL 自动准备、持久化与停止 | [后端开发入口及集成测试](../backend/README.md#本地数据库自动准备)；真实数据库测试用 `uv run --locked --group local-db pytest --local-postgres` |

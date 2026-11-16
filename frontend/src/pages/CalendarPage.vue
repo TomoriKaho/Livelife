@@ -20,6 +20,7 @@ export const pageMeta = {
 import { computed, ref } from 'vue';
 import { useCalendarActivities } from './calendar/useCalendarActivities';
 import AppIcon from '../components/AppIcon.vue';
+import FavoriteButton from '../components/FavoriteButton.vue';
 import CalendarIcon from './calendar/CalendarIcon.vue';
 import PencilSwatch from './calendar/PencilSwatch.vue';
 import {
@@ -265,7 +266,7 @@ function dayPencil(key) {
             </p>
           </div>
         </a>
-
+        <FavoriteButton :id="item.id" :platform="item.platform" />
       </article>
     </div>
     <p v-else-if="!loading && !error" class="empty">{{ category === 'all' ? '这一天还没有安排活动' : '这一天没有这类活动' }}</p>

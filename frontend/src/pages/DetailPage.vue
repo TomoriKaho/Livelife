@@ -20,6 +20,7 @@ export const pageMeta = {
 import { computed, nextTick, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import AppIcon from '../components/AppIcon.vue';
+import FavoriteButton from '../components/FavoriteButton.vue';
 import AgentIcon from './agent/AgentIcon.vue';
 import { activities, categories } from '../data/activities.js';
 import CommentFace from './detail/CommentFace.vue';
@@ -48,7 +49,6 @@ const threads = {
 
 const route = useRoute();
 const router = useRouter();
-const saved = ref(false);
 const draft = ref('');
 const posted = ref([]);
 const scroller = ref(null);
@@ -76,7 +76,6 @@ const place = computed(() => {
 });
 
 watch(activityId, () => {
-  saved.value = false;
   draft.value = '';
   posted.value = [];
   if (scroller.value) scroller.value.scrollTop = 0;
@@ -145,17 +144,7 @@ function publish() {
           </p>
         </div>
         <div class="facts-actions">
-          <button
-            :key="`save-${saved}`"
-            v-sketch
-            class="action-chip sketch sketch-cast"
-            :class="saved ? 'pencil-fill' : 'sketch-white'"
-            :data-pencil="saved ? 'yellow' : undefined"
-            data-cast="yellow"
-            type="button"
-            :aria-pressed="saved"
-            @click="saved = !saved"
-          >{{ saved ? '已收藏' : '加入收藏' }}</button>
+          <FavoriteButton :id="activity.id" platform="demo" />
           <RouterLink
             v-sketch
             class="action-chip sketch sketch-white sketch-cast"

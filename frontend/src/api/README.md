@@ -6,7 +6,7 @@
 
 [`map-activities.ts`](map-activities.ts) 共用分页、响应校验、Android 状态及预览后端 SHA 检查，读取标准 [`GET /locations/activities`](../../../backend/app/api/locations/API.md)。地图传设备坐标、半径和新鲜时间戳，由信息系统完成筛选；日历不传坐标，传入当前月历或周历的北京时间边界，响应距离为 null。二者使用同一活动 ID 和地点库，不在前端解析地点。
 
-加载、十秒超时、取消旧请求和迟到响应处理分别位于地图 hook 和 [`useCalendarActivities.ts`](../pages/calendar/useCalendarActivities.ts)。日历切换窗口时清除旧条目，失败显示重试，空库不回退样例。真实活动卡片打开来源原文；现有样例详情/收藏不接收真实活动 UUID。日历信源按钮对已完整分页取得的当前窗口数据做显示筛选。
+加载、十秒超时、取消旧请求和迟到响应处理分别位于地图 hook 和 [`useCalendarActivities.ts`](../pages/calendar/useCalendarActivities.ts)。日历切换窗口时清除旧条目，失败显示重试，空库不回退样例。真实活动卡片打开来源原文；现有样例详情不接收真实活动 UUID，账号收藏使用该 UUID。日历信源按钮对已完整分页取得的当前窗口数据做显示筛选。
 
 ## hello 调用与失败处理
 
@@ -50,3 +50,9 @@
 ## 地图附近活动
 
 [`map-activities.ts`](map-activities.ts) 复用平台地址、Android 状态与后端 SHA 校验，调用标准 `GET /locations/activities`。传递设备经纬度、时间戳、半径、关键词与时间窗口；翻页固定服务端返回的时间边界，校验结构化地点、距离、活动及分页字段，按 ID 去重。十秒超时、旧请求取消、迟到响应与定位失效处理在 [`useNearbyActivities.ts`](../pages/map/useNearbyActivities.ts) 中维护。正式字段见[地图接口](../../../backend/app/api/locations/API.md)，启动步骤见[地图联调](../pages/map/README.md#本地信息系统联调)。
+
+## 活动收藏
+
+[`favorites.ts`](favorites.ts) 使用账户 Bearer 调用[收藏 API](../../../backend/app/api/favorites/API.md)，实现幂等 PUT/DELETE、分页、最多 100 个 ID 的批量状态及本人收藏摘要。十秒超时、响应结构/安全外链校验、Android 安装包状态和预览后端 SHA 门禁均在请求层执行；401 只在仍为原凭证时清除会话。服务端按登录态确定所有者，客户端不提交 user_id。
+
+[`../state/favorites.ts`](../state/favorites.ts) 和 `favorites-core.ts` 管理共享内存，不在浏览器持久化收藏副本。状态查询在同一微任务中合并，分页按 ID 去重；写入成功才更新，按目标防重复提交。登出、过期和账号切换清空；身份、分类请求代次及单条写入版本防止旧响应回填。重新进入页面/回到前台重新查询服务端，其他设备的变化在重新查询后可见，不新增 WebSocket。界面、时间分类和验证步骤见[个人页收藏](../pages/more/README.md#账号活动收藏)。

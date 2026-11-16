@@ -389,6 +389,9 @@ def test_information_service_stays_internal_while_map_has_its_own_route():
         "/profile/interests",
         "/profile/me",
         "/locations/activities",
+        "/favorites/activities",
+        "/favorites/activities/status",
+        "/favorites/activities/{target}",
     }
 
 

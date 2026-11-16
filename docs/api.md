@@ -13,6 +13,7 @@
 | 连通性检查 | [连通性检查 API](../backend/app/api/demo/API.md) | 客户端与后端连通性测试 |
 | 健康检查 | [健康检查 API](../backend/app/api/health/API.md) | 进程存活及数据库就绪检查 |
 | 个人资料 | [个人资料 API](../backend/app/api/profile/API.md) | 兴趣标签目录、当前用户资料读取与更新 |
+| 活动收藏 | [活动收藏 API](../backend/app/api/favorites/API.md) | 账号级幂等收藏、分页、时间分类及不可用快照 |
 | 地图活动 | [地图活动查询 API](../backend/app/api/locations/API.md) | 信息系统统一完成地点关联、时间/关键词/半径筛选，返回地图结构化结果 |
 | Agent 对话 | [Agent API](../backend/app/api/agent/API.md) | 账户 Bearer + 对话凭证、所有权、用户额度与 SSE |
 | 账户与认证 | [账户与认证 API](../backend/app/api/accounts/API.md) | 校园邮箱验证、注册、登录、会话与用户身份 |
