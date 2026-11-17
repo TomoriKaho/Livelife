@@ -501,6 +501,7 @@ def _summary(row):
     return {
         "session_id": row.id,
         "title": row.title or "新的对话",
+        "is_pinned": row.is_pinned,
         "created_at": row.created_at,
         "updated_at": row.last_seen_at,
         "expires_at": row.expires_at,
@@ -519,7 +520,11 @@ def list_sessions(factory, *, user_id, query="", limit=20, offset=0):
                 or_(AgentSession.title.ilike(pattern, escape="!"), AgentSession.id.in_(matches))
             )
         rows = db.scalars(
-            statement.order_by(AgentSession.last_seen_at.desc(), AgentSession.id.desc())
+            statement.order_by(
+                AgentSession.is_pinned.desc(),
+                AgentSession.last_seen_at.desc(),
+                AgentSession.id.desc(),
+            )
             .offset(offset)
             .limit(limit + 1)
         ).all()
@@ -546,6 +551,14 @@ def get_conversation(factory, settings, session_id, *, user_id, limit=50, before
             "messages": [dict(item.payload) for item in reversed(page)],
             "next_before": page[-1].sequence if len(rows) > limit else None,
         }
+
+
+def pin_session(factory, settings, session_id, *, user_id, is_pinned):
+    with factory() as db, db.begin():
+        row = _session(db, settings, str(session_id), datetime.now(UTC), user_id)
+        row.is_pinned = is_pinned
+        db.flush()
+        return _summary(row)
 
 
 def _expire_request(db, row, usage, now):

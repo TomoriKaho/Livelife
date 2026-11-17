@@ -206,3 +206,5 @@ Agent 路由位于 `app/api/agent/`，会话和模型服务位于 `app/services/
 先运行迁移，再启动配对的前后端，使用独立的校园测试账号：进入 Agent 创建甲、乙会话，分别发送不同问题；从历史抽屉切换、查找、加载较早消息和删除。刷新、退出再登录、另一浏览器登录后，应能重新列出并继续本账号会话；另一账号看不到它们，切换账号不得出现旧草稿、旧消息或迟到的回答。生成中的会话删除返回提示，等待终态再重试。删除或注销后消息与引用清除，额度不因删会话返还。
 
 专项测试：`uv run pytest tests/test_agent.py tests/test_agent_auth.py tests/test_agent_history.py tests/test_migrations.py`；`uv run --locked --group local-db pytest tests/test_agent_history.py --local-postgres` 在独立临时 PostgreSQL 验证新表、分页与历史检索。测试使用合成账号和模型替身，不需要真实模型凭据。完整联调真实模型、跨设备及 Android 输入法需另记验收结果。接口、上下文预算和位置隐私以 [Agent API](app/api/agent/API.md) 为准。
+
+Agent 会话置顶需升级至 `0007_agent_pins`：只添加默认未置顶字段，保留会话与消息；降级只丢失置顶状态。临时新对话和置顶排序/接口见[Agent 契约](app/api/agent/API.md#临时新对话与置顶)。

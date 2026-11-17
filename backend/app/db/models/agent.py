@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from uuid import UUID
 
-from sqlalchemy import JSON, Date, ForeignKey, Index, Integer, String, Uuid
+from sqlalchemy import JSON, Boolean, Date, ForeignKey, Index, Integer, String, Uuid, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.models.base import Base
@@ -24,6 +24,7 @@ class AgentSession(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     legacy_messages: Mapped[list[dict]] = mapped_column("messages", JSON, default=list)
     title: Mapped[str] = mapped_column(String(100), default="新的对话")
+    is_pinned: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     message_rows: Mapped[list["AgentMessage"]] = relationship(
         cascade="all, delete-orphan", order_by="AgentMessage.sequence", lazy="select"
     )

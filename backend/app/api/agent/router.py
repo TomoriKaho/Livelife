@@ -18,9 +18,11 @@ from app.services.agent.schemas import (
     AgentRatingRequest,
     ConversationResponse,
     CreateSessionResponse,
+    PinSessionRequest,
     SendMessageRequest,
     SessionListResponse,
     SessionResponse,
+    SessionSummary,
 )
 from app.services.agent.service import (
     AgentError,
@@ -31,6 +33,7 @@ from app.services.agent.service import (
     get_conversation,
     get_history,
     list_sessions,
+    pin_session,
     rate_message,
 )
 
@@ -434,6 +437,25 @@ def conversation(
 @router.delete("/sessions/{session_id}", status_code=204)
 def delete_conversation(session_id: UUID, request: Request, user: User = Depends(_agent_user)):
     return end_session(request, user)
+
+
+@router.patch("/sessions/{session_id}", response_model=SessionSummary)
+def pin_conversation(
+    session_id: UUID,
+    payload: PinSessionRequest,
+    request: Request,
+    user: User = Depends(_agent_user),
+):
+    try:
+        return pin_session(
+            _factory(request),
+            get_agent_settings(),
+            session_id,
+            user_id=user.id,
+            is_pinned=payload.is_pinned,
+        )
+    except AgentError as error:
+        _raise_agent_error(error)
 
 
 @router.post("/sessions/{session_id}/messages/stream")

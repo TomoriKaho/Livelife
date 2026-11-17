@@ -34,6 +34,7 @@ export interface AgentMessage {
 }
 
 export interface AgentSession {
+  is_pinned?: boolean;
   session_id: string;
   expires_at: string | null;
   title: string;
@@ -93,10 +94,18 @@ async function request<T>(path: string, token?: string, init: RequestInit = {}):
 
 export interface AgentHistoryPage {
   session_id: string; title: string; expires_at: string | null; created_at: string; updated_at: string;
+  is_pinned?: boolean;
   messages: AgentMessage[]; next_before: number | null;
 }
 export interface AgentSessionList { items: AgentSession[]; next_offset: number | null }
 
+export function selectAgentDraft() {
+  identity();
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify({owner:authState.user?.id, base:base(), draft:true}));
+}
+export async function pinAgentSession(id: string, is_pinned: boolean): Promise<AgentSession> {
+  return request(`/agent/sessions/${encodeURIComponent(id)}`, undefined, {method:"PATCH", body:JSON.stringify({is_pinned})});
+}
 export function selectAgentSession(session: AgentSession) {
   const captured = identity();
   assertIdentity(captured);
@@ -108,32 +117,34 @@ export async function listAgentSessions(query = '', offset = 0): Promise<AgentSe
 export async function createAgentSession(): Promise<AgentSession> {
   const captured = identity();
   const created = await request<AgentSession>('/agent/sessions', undefined, {method:'POST'});
-  const session = {session_id:created.session_id, title:created.title, created_at:created.created_at, updated_at:created.updated_at, expires_at:created.expires_at};
+  const session = {session_id:created.session_id, title:created.title, is_pinned:created.is_pinned, created_at:created.created_at, updated_at:created.updated_at, expires_at:created.expires_at};
   assertIdentity(captured); return session;
 }
 export async function loadAgentMessages(id: string, before?: number): Promise<AgentHistoryPage> {
   return request(`/agent/sessions/${encodeURIComponent(id)}?limit=50${before ? `&before=${before}` : ''}`);
 }
-export async function loadAgentSession(id?: string): Promise<{ session: AgentSession; messages: AgentMessage[]; next_before: number | null }> {
+export async function loadAgentSession(id?: string): Promise<{ session: AgentSession | null; messages: AgentMessage[]; next_before: number | null }> {
   const captured = identity();
   if (!id) {
     try { const saved = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || 'null');
-      if (saved?.owner === authState.user?.id && saved.base === base()) id = saved.session_id;
+      if (saved?.owner === authState.user?.id && saved.base === base()) {
+        if (saved.draft) return {session:null, messages:[], next_before:null};
+        id = saved.session_id;
+      }
     } catch { /* malformed hint is discarded; history remains server-owned */ }
   }
   if (!id) id = (await listAgentSessions()).items[0]?.session_id;
   if (id) {
     try {
       const page = await loadAgentMessages(id);
-      const session = {session_id:page.session_id, title:page.title, created_at:page.created_at, updated_at:page.updated_at, expires_at:page.expires_at};
+      const session = {session_id:page.session_id, title:page.title, is_pinned:page.is_pinned, created_at:page.created_at, updated_at:page.updated_at, expires_at:page.expires_at};
       assertIdentity(captured);
       return {session, messages:page.messages, next_before:page.next_before};
     } catch (error) {
       if ((error as Error).message !== 'session_not_found') throw error;
     }
   }
-  const session = await createAgentSession();
-  return {session, messages:[], next_before:null};
+  return {session:null, messages:[], next_before:null};
 }
 export async function closeAgentSession(id: string): Promise<void> {
   await request<void>(`/agent/sessions/${encodeURIComponent(id)}`, undefined, {method:'DELETE'});

@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class CreateSessionResponse(BaseModel):
+    is_pinned: bool = False
     session_id: UUID
     session_token: str
     title: str
@@ -68,6 +69,7 @@ class AgentRatingRequest(BaseModel):
 
 
 class SessionSummary(BaseModel):
+    is_pinned: bool = False
     session_id: UUID
     title: str
     created_at: datetime
@@ -83,3 +85,8 @@ class SessionListResponse(BaseModel):
 class ConversationResponse(SessionSummary):
     messages: list[MessageResponse]
     next_before: int | None
+
+
+class PinSessionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    is_pinned: bool = Field(strict=True)

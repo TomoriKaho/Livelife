@@ -32,12 +32,65 @@ from app.services.agent.service import (
     finish_request,
     get_conversation,
     get_history,
+    list_sessions,
+    pin_session,
 )
 
 
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+def test_pin_is_durable_idempotent_and_owner_scoped(sessions):
+    config = settings()
+    a = create_session(sessions, config, "local", user_id=ACCOUNT_ID)
+    b = create_session(sessions, config, "local", user_id=ACCOUNT_ID)
+    before = a["updated_at"]
+    for _ in range(2):
+        result = pin_session(sessions, config, a["session_id"], user_id=ACCOUNT_ID, is_pinned=True)
+        assert result["is_pinned"] is True
+        assert result["updated_at"] == before
+    page = list_sessions(sessions, user_id=ACCOUNT_ID, limit=1)
+    assert page["items"][0]["session_id"] == a["session_id"]
+    assert (
+        list_sessions(sessions, user_id=ACCOUNT_ID, offset=1)["items"][0]["session_id"]
+        == b["session_id"]
+    )
+    with pytest.raises(AgentError) as error:
+        pin_session(sessions, config, a["session_id"], user_id=uuid4(), is_pinned=False)
+    assert error.value.status_code == 404
+    assert get_conversation(sessions, config, a["session_id"], user_id=ACCOUNT_ID)["is_pinned"]
+    pin_session(sessions, config, a["session_id"], user_id=ACCOUNT_ID, is_pinned=False)
+    assert list_sessions(sessions, user_id=ACCOUNT_ID)["items"][0]["session_id"] == b["session_id"]
+
+
+@pytest.mark.anyio
+async def test_pin_http_contract(tmp_path, monkeypatch):
+    app, database = make_api_app(tmp_path, monkeypatch)
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://test",
+            headers={"Authorization": "Bearer account-test-token"},
+        ) as client:
+            sid = (await client.post("/agent/sessions")).json()["session_id"]
+            result = await client.patch(f"/agent/sessions/{sid}", json={"is_pinned": True})
+            assert result.status_code == 200
+            assert result.json()["is_pinned"] is True
+            assert (await client.get(f"/agent/sessions/{sid}")).json()["is_pinned"] is True
+            invalid = await client.patch(f"/agent/sessions/{sid}", json={"is_pinned": "yes"})
+            assert invalid.status_code == 422
+            missing = await client.patch(f"/agent/sessions/{uuid4()}", json={"is_pinned": True})
+            assert missing.status_code == 404
+            unauthorized = await client.patch(
+                f"/agent/sessions/{sid}",
+                json={"is_pinned": False},
+                headers={"Authorization": "Bearer invalid"},
+            )
+            assert unauthorized.status_code == 401
+    finally:
+        database.close()
 
 
 def test_permanent_paged_messages_and_deletion(sessions):

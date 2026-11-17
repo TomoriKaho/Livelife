@@ -12,7 +12,7 @@ import { authState } from '../api/auth';
 import { registerBackHandler } from '../platform/android-navigation';
 import { sessionShuffle } from '../data/session-style';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { loadAgentSession, rateAgentMessage, sendAgentMessage, listAgentSessions, createAgentSession, closeAgentSession, loadAgentMessages, selectAgentSession } from '../api/agent';
+import { loadAgentSession, rateAgentMessage, sendAgentMessage, listAgentSessions, createAgentSession, closeAgentSession, loadAgentMessages, selectAgentSession, selectAgentDraft, pinAgentSession } from '../api/agent';
 import AgentIcon from './agent/AgentIcon.vue';
 import LiLiAvatar from './agent/LiLiAvatar.vue';
 import UserPlaneAvatar from './agent/UserPlaneAvatar.vue';
@@ -24,11 +24,12 @@ const router = useRouter();
 const colors = sessionShuffle('agent-demo-colors', ['mint', 'blue', 'pink', 'lavender', 'yellow']);
 const messages = ref([]), session = ref(null), loading = ref(true), sending = ref(false);
 const history = ref([]), historyQuery = ref(''), historyOffset = ref(null), historyLoading = ref(false), historyError = ref('');
+const temporaryExists = ref(false), temporaryText = ref(''), menuItem = ref(null), menuStyle = ref({}), menuBusy = ref(false);
 const nextBefore = ref(null), conversationError = ref(''), wantedSessionId = ref(null);
 let selectionGeneration = 0, historyGeneration = 0;
 const historyOpen = ref(false), drawer = ref(null), historyTrigger = ref(null), mounted = ref(false);
 const composer = ref(null), draft = ref(''), notice = ref('');
-const ready = computed(() => Boolean(session.value) && Boolean(draft.value.trim()) && !sending.value && !loading.value);
+const ready = computed(() => !conversationError.value && Boolean(draft.value.trim()) && !sending.value && !loading.value);
 const conversation = ref(null);
 const composerPanel = ref(null), expanded = ref(false), longDraft = ref(false);
 const panelBottom = ref(86), panelTop = ref(0), panelInset = ref(17), reservedHeight = ref(140);
@@ -87,7 +88,8 @@ async function loadConversation(id) {
   try {
     const result = await loadAgentSession(id);
     if (!mounted.value || revision !== authState.revision || generation !== selectionGeneration) return;
-    selectAgentSession(result.session);
+    if (result.session) selectAgentSession(result.session);
+    else { temporaryExists.value = true; selectAgentDraft(); }
     session.value = result.session;
     messages.value = result.messages.map(viewMessage);
     nextBefore.value = result.next_before;
@@ -112,7 +114,7 @@ async function copy(message) {
   } catch { notify('复制失败，请长按消息复制'); }
 }
 async function send(retryMessage = null) {
-  if (!session.value || sending.value) return;
+  if (sending.value || loading.value || conversationError.value) return;
   const text = (retryMessage?.text || draft.value).trim();
   if (!text) return;
   let userMessage = retryMessage;
@@ -127,10 +129,15 @@ async function send(retryMessage = null) {
   });
   messages.value.push(assistant);
   sending.value = true;
-  const generation = selectionGeneration;
+  const generation = selectionGeneration, revision = authState.revision;
   const controller = new AbortController();
   activeRequestController = controller;
   try {
+    if (!session.value) {
+      const created = await createAgentSession();
+      if (!mounted.value || generation !== selectionGeneration || revision !== authState.revision) return;
+      session.value = created; selectAgentSession(created); temporaryExists.value = false; temporaryText.value = "";
+    }
     await sendAgentMessage(session.value.session_id, text, assistant.requestId, {
       message_start: data => { assistant.id = data.message_id; assistant.requestId = data.request_id || assistant.requestId; },
       citation: data => assistant.citations.push(data),
@@ -178,27 +185,48 @@ async function refreshHistory(append = false) {
   } catch { if (generation === historyGeneration) historyError.value = '历史加载失败，请重试。'; }
   finally { if (generation === historyGeneration) historyLoading.value = false; }
 }
-async function chooseHistory(item) { historyOpen.value = false; await loadConversation(item.session_id); }
-async function newConversation() {
-  const generation = ++selectionGeneration, revision = authState.revision;
-  activeRequestController?.abort(); sending.value = false; loading.value = true;
-  session.value = null; messages.value = []; draft.value = ''; nextBefore.value = null;
+async function chooseHistory(item) {
+  if (sending.value && !session.value) return;
+  if (!session.value) temporaryText.value = draft.value;
+  menuItem.value = null; historyOpen.value = false; await loadConversation(item.session_id);
+}
+function newConversation() {
+  if (sending.value && !session.value) return;
+  if (!session.value && temporaryExists.value && !conversationError.value) { historyOpen.value = false; return; }
+  selectionGeneration++; activeRequestController?.abort(); sending.value = false;
+  session.value = null; messages.value = []; draft.value = temporaryText.value; nextBefore.value = null;
+  conversationError.value = ''; wantedSessionId.value = null; loading.value = false;
+  temporaryExists.value = true; selectAgentDraft(); menuItem.value = null; historyOpen.value = false;
+}
+async function openMenu(item, event) {
+  if (menuItem.value?.session_id === item.session_id) { menuItem.value = null; return; }
+  const rect = event.currentTarget.getBoundingClientRect(), overlay = drawer.value.getBoundingClientRect();
+  menuStyle.value = {left: Math.max(8, Math.min(rect.right - overlay.left - 142, overlay.width - 150)) + 'px', top: Math.max(8, Math.min(rect.bottom - overlay.top + 4, overlay.height - 110)) + 'px'};
+  menuItem.value = item; await nextTick(); document.querySelector('.conversation-menu button')?.focus();
+}
+async function togglePin(item) {
+  if (menuBusy.value) return;
+  menuBusy.value = true; const revision = authState.revision;
   try {
-    const created = await createAgentSession();
-    if (revision !== authState.revision || generation !== selectionGeneration || !mounted.value) return;
-    await loadConversation(created.session_id); historyOpen.value = false;
-  } catch { if (generation === selectionGeneration && revision === authState.revision) notify('创建失败，请重试。'); }
-  finally { if (generation === selectionGeneration) loading.value = false; }
+    const updated = await pinAgentSession(item.session_id, !item.is_pinned);
+    if (revision !== authState.revision || !mounted.value) return;
+    if (session.value?.session_id === item.session_id) session.value = updated;
+    menuItem.value = null; await refreshHistory();
+  } catch { if (revision === authState.revision) notify('置顶状态保存失败，请重试。'); }
+  finally { menuBusy.value = false; }
 }
 async function deleteConversation(item) {
   if (!window.confirm('永久删除这段对话及其消息？')) return;
-  const revision = authState.revision;
+  if (menuBusy.value) return;
+  menuBusy.value = true; const revision = authState.revision;
   try {
     await closeAgentSession(item.session_id);
     if (revision !== authState.revision || !mounted.value) return;
-    if (session.value?.session_id === item.session_id) await loadConversation();
+    if (session.value?.session_id === item.session_id) { temporaryExists.value = false; newConversation(); }
+    menuItem.value = null;
     await refreshHistory();
-  } catch { notify('删除失败；生成中的对话请等待结束后再删除。'); }
+  } catch { if (revision === authState.revision) notify('删除失败；生成中的对话请等待结束后再删除。'); }
+  finally { menuBusy.value = false; }
 }
 async function olderMessages() {
   if (!session.value || !nextBefore.value || loading.value) return;
@@ -213,6 +241,7 @@ async function olderMessages() {
 }
 function keydown(event) {
   if (event.isComposing) return;
+  if (event.key === 'Escape' && menuItem.value) { menuItem.value = null; drawer.value?.querySelector('.history-more')?.focus(); event.preventDefault(); return; }
   if (event.key === 'Escape') { if (!historyOpen.value && expanded.value) toggleExpanded(); historyOpen.value = false; }
   if (!historyOpen.value || event.key !== 'Tab') return;
   const nodes = [...drawer.value.querySelectorAll('button,a,input,textarea')].filter(node => !node.disabled);
@@ -222,6 +251,7 @@ function keydown(event) {
 }
 function releaseDrawer() { for (const [node, value] of inerted) node.inert = value; inerted = []; }
 watch(historyOpen, async open => {
+  menuItem.value = null;
   if (open) {
     void refreshHistory();
     conversation.value?.stop(); previousFocus = document.activeElement; await nextTick();
@@ -234,7 +264,7 @@ watch(historyOpen, async open => {
 watch(() => authState.revision, () => {
   activeRequestController?.abort();
   selectionGeneration++; historyGeneration++; history.value = []; historyQuery.value = ''; historyOffset.value = null; nextBefore.value = null; conversationError.value = ''; wantedSessionId.value = null;
-  messages.value = []; session.value = null; draft.value = '';
+  messages.value = []; session.value = null; draft.value = ''; temporaryExists.value = false; temporaryText.value = ''; menuItem.value = null;
   historyOpen.value = false; sending.value = false; notice.value = '';
   if (mounted.value) router.replace('/onboarding');
 }, { flush: 'sync' });
@@ -315,7 +345,7 @@ onBeforeUnmount(removeNativeBack);
 
     <Transition name="chat-toast"><p v-if="notice" v-sketch class="sketch chat-notice" data-pencil="yellow" role="status">{{ notice }}</p></Transition>
 
-    <Teleport v-if="mounted" to=".phone-shell"><Transition name="history-slide"><div v-if="historyOpen" class="history-overlay" @click.self="historyOpen = false"><aside id="lili-history" ref="drawer" v-sketch class="sketch history-drawer" data-pencil="mint" role="dialog" aria-modal="true" aria-labelledby="lili-history-title"><header><div><p>和 LiLi 的</p><h2 id="lili-history-title">小小对话簿</h2></div><button type="button" class="drawer-close" aria-label="关闭历史对话" @click="historyOpen = false"><AgentIcon name="close" /></button></header><form class="history-search" @submit.prevent="refreshHistory()"><input v-model="historyQuery" aria-label="查找历史对话" placeholder="查找对话…" /><button type="submit" :disabled="historyLoading">查找</button></form><button class="history-new" :disabled="loading" @click="newConversation">新建对话</button><ElasticList class="history-list" role="region" aria-label="历史对话列表"><p v-if="historyError" role="alert">{{ historyError }}<button @click="refreshHistory()">重试</button></p><p v-if="historyLoading">正在加载历史…</p><p v-else-if="!history.length && !historyError" class="history-empty">这里还没有对话</p><div v-for="item in history" :key="item.session_id" class="history-entry"><button v-sketch class="sketch history-item" :data-pencil="session?.session_id === item.session_id ? 'yellow' : undefined" :aria-current="session?.session_id === item.session_id ? 'true' : undefined" @click="chooseHistory(item)"><AgentIcon name="chat" /><span><strong>{{ item.title }}</strong><small>{{ new Date(item.updated_at).toLocaleString() }}</small></span></button><button class="history-delete" :aria-label="`删除对话：${item.title}`" @click="deleteConversation(item)">删除</button></div><button v-if="historyOffset !== null" :disabled="historyLoading" @click="refreshHistory(true)">更多对话</button></ElasticList><footer><div class="drawer-avatar"><LiLiAvatar /></div><p>校园生活，慢慢聊。</p></footer></aside></div></Transition></Teleport>
+    <Teleport v-if="mounted" to=".phone-shell"><Transition name="history-slide"><div v-if="historyOpen" class="history-overlay" @click.self="menuItem ? menuItem = null : historyOpen = false"><aside id="lili-history" ref="drawer" v-sketch class="sketch history-drawer" data-pencil="mint" role="dialog" aria-modal="true" aria-labelledby="lili-history-title" @click="menuItem = null"><header><div><p>和 LiLi 的</p><h2 id="lili-history-title">小小对话簿</h2></div><button type="button" class="drawer-close" aria-label="关闭历史对话" @click="historyOpen = false"><AgentIcon name="close" /></button></header><form class="history-search" @submit.prevent="refreshHistory()"><input v-model="historyQuery" aria-label="查找历史对话" placeholder="查找对话…" /><button type="submit" :disabled="historyLoading">查找</button></form><button class="history-new" :disabled="loading" @click="newConversation">新建对话</button><ElasticList class="history-list" role="region" aria-label="历史对话列表"><button v-if="temporaryExists" v-sketch class="sketch history-item history-temporary" :data-pencil="!session ? 'yellow' : undefined" @click="newConversation">新对话<small>发送后保存</small></button><p v-if="historyError" role="alert">{{ historyError }}<button @click="refreshHistory()">重试</button></p><p v-if="historyLoading">正在加载历史…</p><p v-else-if="!history.length && !temporaryExists && !historyError" class="history-empty">这里还没有对话</p><div v-for="item in history" :key="item.session_id" class="history-entry"><button v-sketch class="sketch history-item" :data-pencil="session?.session_id === item.session_id ? 'yellow' : undefined" :aria-current="session?.session_id === item.session_id ? 'true' : undefined" @click="chooseHistory(item)"><AgentIcon name="chat" /><span><strong><span v-if="item.is_pinned" class="pin-marker">置顶 · </span>{{ item.title }}</strong><small>{{ new Date(item.updated_at).toLocaleString() }}</small></span></button><button class="history-more" type="button" :aria-label="`对话操作：${item.title}`" aria-haspopup="menu" :aria-expanded="menuItem?.session_id === item.session_id" :disabled="menuBusy" @click.stop="openMenu(item, $event)"><svg viewBox="0 0 36 16" aria-hidden="true"><path d="M6 5c4-1 5 5 1 6-4 1-6-4-1-6Zm12 0c4 0 4 6 0 6-4 0-4-5 0-6Zm12 0c4 1 3 6-1 6-4-1-3-6 1-6Z" /></svg></button></div><button v-if="historyOffset !== null" :disabled="historyLoading" @click="refreshHistory(true)">更多对话</button></ElasticList><footer><div class="drawer-avatar"><LiLiAvatar /></div><p>校园生活，慢慢聊。</p></footer><div v-if="menuItem" v-sketch class="sketch conversation-menu" data-pencil="yellow" role="menu" aria-label="对话操作" :style="menuStyle" @click.stop><button role="menuitem" :disabled="menuBusy" @click="togglePin(menuItem)">{{ menuItem.is_pinned ? '取消置顶' : '置顶' }}</button><button role="menuitem" class="menu-delete" :disabled="menuBusy" @click="deleteConversation(menuItem)">删除</button></div></aside></div></Transition></Teleport>
   </section>
 </template>
 
@@ -367,10 +397,20 @@ onBeforeUnmount(removeNativeBack);
 
 <style scoped>
 .history-search { display:flex; gap:6px; margin-bottom:12px; } .history-search input { min-width:0; width:100%; font:inherit; border:1px solid #20304b44; border-radius:8px; padding:8px; background:#fff8; }
-.history-search button,.history-new,.history-delete { font:inherit; background:transparent; border:0; color:var(--ink); min-height:40px; } .history-new { margin-bottom:8px; } .history-entry { position:relative; padding-bottom:30px; } .history-delete { position:absolute; right:5px; bottom:0; font-size:12px; }
+.history-search button,.history-new { font:inherit; background:transparent; border:0; color:var(--ink); min-height:40px; } .history-new { margin-bottom:8px; }
 </style>
 
 <style scoped>
 .history-search button { flex: none; min-width: 48px; white-space: nowrap; }
 .history-item strong { overflow-wrap: anywhere; }
+</style>
+
+<style scoped>
+.history-entry { display: flex; align-items: center; gap: 4px; padding-bottom: 0; margin-bottom: 8px; }
+.history-entry .history-item { flex: 1; min-width: 0; width: auto; margin: 0; padding: 10px 8px; }
+.history-more { flex: none; display: grid; place-items: center; width: 36px; min-height: 44px; border: 0; background: transparent; color: var(--ink); }
+.history-more svg { width: 26px; height: 16px; fill: currentColor; }.pin-marker { color: #32705b; font-size: 10px; }
+.conversation-menu { position: absolute; z-index: 2; width: 142px; padding: 5px; background: #f8f4ea; box-shadow: 2px 4px 12px #20304b22; }
+.conversation-menu button { display: block; width: 100%; min-height: 44px; padding: 8px 12px; text-align: left; border: 0; font: inherit; font-size: 13px; background: transparent; color: var(--ink); }.conversation-menu .menu-delete { color: #92333e; }.conversation-menu button:focus-visible { outline: 2px dashed #406b91; outline-offset: -4px; border-radius: 9px; background: #ffffff55; }
+.history-temporary { min-height: 44px; align-items: center; flex-wrap: wrap; }.history-temporary small { font-size: 10px; color: var(--muted); }
 </style>
