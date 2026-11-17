@@ -45,6 +45,6 @@
 
 `0006_activity_favorites` 在当前 `0003_place_resolution` 后新增表和索引，不修改既有账号、活动、对话。账户 FK 为 CASCADE，注销亦显式清理；信息 UUID 刻意没有级联 FK，允许保留被清理活动的快照。降级删除收藏表及全部收藏，不影响原活动；收藏无法恢复。
 
-PR #99 有独立 Agent 历史迁移；合并后须协调 Alembic 迁移链并验证单一 head，不能把未合并分支当当前依赖。开发入口自动迁移其本地库，独立库按[后端教程](../../../README.md#数据库配置与健康检查)升级；不在未确认的共享库操作。
+收藏与 Agent 历史/置顶迁移由 `0008_merge_history_favorites` 合流为单一 head，不改写已应用版本。从任一旧分支执行 `alembic upgrade head` 会补齐另一支并合流；合流本身不修改业务数据。降级至合流前会再次出现两条迁移头，按具体分支选择目标并先核对数据删除限制。开发入口自动迁移其本地库，独立库按[后端教程](../../../README.md#数据库配置与健康检查)升级；不在未确认的共享库操作。
 
 在 backend 执行 `uv run pytest tests/test_favorites.py`。真实 PostgreSQL 并发检查执行 `uv run --locked --group local-db pytest tests/test_favorites.py --local-postgres`，只使用独立临时数据库。前端联调见[个人页说明](../../../../frontend/src/pages/more/README.md#账号活动收藏)。

@@ -144,7 +144,7 @@ versionCode / APK SHA-256：
 
 | 修改范围 | 检查入口 |
 | --- | --- |
-| Agent 会话、检索、限额和 SSE | [Agent API 与配置](../backend/app/api/agent/API.md)、后端 `tests/test_agent.py` |
+| Agent 长期多会话、检索、限额和 SSE | [Agent API 与配置](../backend/app/api/agent/API.md)、后端 `tests/test_agent.py`、`tests/test_agent_history.py`；前端历史恢复见 [Agent 页面回归](../frontend/src/pages/agent/README.md#多会话历史与恢复) |
 | 前后端基本检查 | [前端 README](../frontend/README.md#构建预览与检查)、[后端 README](../backend/README.md#后端安装启动与检查) |
 | 账号活动收藏、时间分类与恢复 | [收藏 API](../backend/app/api/favorites/API.md)；[个人页联调](../frontend/src/pages/more/README.md#账号活动收藏)，后端 `tests/test_favorites.py`、前端 `npm run test:favorites` |
 | 个人资料接口、兴趣标签与账户会话鉴权 | [个人资料 API](../backend/app/api/profile/API.md)；后端 `uv run pytest tests/test_profiles.py` |

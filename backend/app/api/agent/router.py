@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 from contextlib import aclosing
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials
 
@@ -16,9 +16,13 @@ from app.services.accounts.auth import TEST_USER_ID, authenticated_user
 from app.services.agent.llm import AgentModelError, estimate_input_tokens, stream_completion
 from app.services.agent.schemas import (
     AgentRatingRequest,
+    ConversationResponse,
     CreateSessionResponse,
+    PinSessionRequest,
     SendMessageRequest,
+    SessionListResponse,
     SessionResponse,
+    SessionSummary,
 )
 from app.services.agent.service import (
     AgentError,
@@ -26,7 +30,10 @@ from app.services.agent.service import (
     close_session,
     create_session,
     finish_request,
+    get_conversation,
     get_history,
+    list_sessions,
+    pin_session,
     rate_message,
 )
 
@@ -55,7 +62,7 @@ def _factory(request: Request):
 
 
 def _token(request: Request) -> str:
-    token = request.headers.get("x-agent-session", "")
+    token = str(request.path_params.get("session_id") or request.headers.get("x-agent-session", ""))
     if not token.strip():
         raise HTTPException(status_code=401, detail={"code": "session_token_required"})
     return token.strip()
@@ -85,6 +92,9 @@ def _public_message(message: dict) -> dict:
         "citations": message.get("citations", []),
         "rating": message.get("rating"),
         "created_at": message["created_at"],
+        "client_request_id": message.get("client_request_id"),
+        "request_id": message.get("request_id"),
+        "completed_at": message.get("completed_at"),
     }
 
 
@@ -164,6 +174,7 @@ async def send_message(
             content=payload.content,
             client_request_id=payload.client_request_id,
             ip=_client_ip(request),
+            location=payload.location.model_dump() if payload.location else None,
         )
     except AgentError as error:
         _raise_agent_error(error)
@@ -385,3 +396,84 @@ async def send_message(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.get("/sessions", response_model=SessionListResponse)
+def conversations(
+    request: Request,
+    query: str = Query("", max_length=200),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0, le=100000),
+    user: User = Depends(_agent_user),
+):
+    return list_sessions(
+        _factory(request), user_id=user.id, query=query, limit=limit, offset=offset
+    )
+
+
+@router.get("/sessions/{session_id}", response_model=ConversationResponse)
+def conversation(
+    session_id: UUID,
+    request: Request,
+    limit: int = Query(50, ge=1, le=100),
+    before: int | None = Query(None, ge=1),
+    user: User = Depends(_agent_user),
+):
+    try:
+        result = get_conversation(
+            _factory(request),
+            get_agent_settings(),
+            session_id,
+            user_id=user.id,
+            limit=limit,
+            before=before,
+        )
+        result["messages"] = [_public_message(message) for message in result["messages"]]
+        return result
+    except AgentError as error:
+        _raise_agent_error(error)
+
+
+@router.delete("/sessions/{session_id}", status_code=204)
+def delete_conversation(session_id: UUID, request: Request, user: User = Depends(_agent_user)):
+    return end_session(request, user)
+
+
+@router.patch("/sessions/{session_id}", response_model=SessionSummary)
+def pin_conversation(
+    session_id: UUID,
+    payload: PinSessionRequest,
+    request: Request,
+    user: User = Depends(_agent_user),
+):
+    try:
+        return pin_session(
+            _factory(request),
+            get_agent_settings(),
+            session_id,
+            user_id=user.id,
+            is_pinned=payload.is_pinned,
+        )
+    except AgentError as error:
+        _raise_agent_error(error)
+
+
+@router.post("/sessions/{session_id}/messages/stream")
+async def conversation_stream(
+    session_id: UUID,
+    request: Request,
+    payload: SendMessageRequest,
+    user: User = Depends(_agent_user),
+):
+    return await send_message(request, payload, user)
+
+
+@router.post("/sessions/{session_id}/messages/{message_id}/rating", status_code=204)
+def conversation_rating(
+    session_id: UUID,
+    message_id: UUID,
+    payload: AgentRatingRequest,
+    request: Request,
+    user: User = Depends(_agent_user),
+):
+    return submit_rating(message_id, payload, request, user)
