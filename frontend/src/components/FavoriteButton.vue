@@ -31,5 +31,5 @@ async function toggle() {
   </div>
 </template>
 <style scoped>
-.favorite-control { margin: 8px 0; font-size: 12px; }.favorite-toggle,.favorite-login { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 8px 14px; color: var(--ink); background: transparent; text-decoration: none; }.favorite-control small { display: block; margin-top: 6px; color: var(--muted); line-height: 1.6; overflow-wrap: anywhere; }button:disabled { opacity: .6; }
+.favorite-control { min-width: 0; max-width: 100%; margin: 8px 0; font-size: 12px; }.favorite-toggle,.favorite-login { display: inline-flex; align-items: center; justify-content: center; max-width: 100%; min-height: 44px; padding: 8px 14px; color: var(--ink); background: transparent; text-decoration: none; white-space: normal; overflow-wrap: anywhere; }.favorite-control small { display: block; margin-top: 6px; color: var(--muted); line-height: 1.6; overflow-wrap: anywhere; }button:disabled { opacity: .6; }
 </style>
