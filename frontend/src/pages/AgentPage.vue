@@ -34,7 +34,7 @@ const ready = computed(() => !conversationError.value && Boolean(draft.value.tri
 const conversation = ref(null);
 const composerPanel = ref(null), expanded = ref(false), longDraft = ref(false);
 const panelBottom = ref(86), panelTop = ref(0), panelInset = ref(17), reservedHeight = ref(140);
-let layoutObserver, layoutFrame, restingViewportHeight = 0, inputFocused = false, keyboardWasOpen = false, compactPanelHeight = 140;
+let layoutObserver, layoutFrame, conversationScrollFrame, restingViewportHeight = 0, inputFocused = false, keyboardWasOpen = false, compactPanelHeight = 140, followingConversation = true;
 function viewportHeight() { return window.visualViewport?.height || window.innerHeight; }
 function updateLayout() {
   const shell = document.querySelector('.phone-shell'), nav = shell?.querySelector('.bottom-nav');
@@ -67,6 +67,22 @@ function toggleExpanded() {
 let noticeTimer, previousFocus, inerted = [], activeRequestController = null;
 function notify(text) { clearTimeout(noticeTimer); notice.value = text; noticeTimer = setTimeout(() => { notice.value = ''; }, 2400); }
 const segments = text => text.split(/(\*\*[^*]+\*\*)/g).map(value => ({ text: value.startsWith('**') ? value.slice(2, -2) : value, bold: value.startsWith('**') }));
+function updateConversationFollowing(atBottom) { followingConversation = atBottom; }
+function queueConversationBottom(force = false) {
+  if (force) followingConversation = true;
+  if (!followingConversation) return;
+  cancelAnimationFrame(conversationScrollFrame);
+  conversationScrollFrame = requestAnimationFrame(async () => {
+    conversationScrollFrame = undefined;
+    await nextTick();
+    if (mounted.value && followingConversation) conversation.value?.scrollToBottom(0);
+  });
+}
+function updateAssistantMessage(update) {
+  const shouldFollow = followingConversation;
+  update();
+  if (shouldFollow) queueConversationBottom();
+}
 function viewMessage(message, index) {
   return {
     id: message.id,
@@ -170,6 +186,7 @@ async function send(retryTarget = null) {
   sending.value = true;
   let streamStarted = false;
   let terminalStatus = null;
+  if (!isRetry || messages.value.at(-1) === assistant) queueConversationBottom(true);
   const generation = selectionGeneration, revision = authState.revision;
   const controller = new AbortController();
   activeRequestController = controller;
@@ -186,39 +203,48 @@ async function send(retryTarget = null) {
         assistant.requestId = data.request_id || assistant.requestId;
         userMessage.requestId = data.request_id || userMessage.requestId;
       },
-      citation: data => { streamStarted = true; assistant.citations.push(data); },
-      delta: data => { streamStarted = true; assistant.text += data.text; },
+      citation: data => updateAssistantMessage(() => { streamStarted = true; assistant.citations.push(data); }),
+      delta: data => updateAssistantMessage(() => { streamStarted = true; assistant.text += data.text; }),
       usage: () => {},
-      done: data => { terminalStatus = data?.status || 'completed'; assistant.status = terminalStatus; assistant.errorCode = null; },
+      done: data => updateAssistantMessage(() => {
+        terminalStatus = data?.status || 'completed';
+        assistant.status = terminalStatus;
+        assistant.errorCode = null;
+      }),
       error: data => {
         const code = data?.code || 'agent_internal_error';
-        assistant.status = 'failed';
-        assistant.errorCode = code;
+        updateAssistantMessage(() => {
+          assistant.status = 'failed';
+          assistant.errorCode = code;
+        });
         throw new Error(code);
       },
     }, controller.signal);
     if (terminalStatus !== 'completed') throw new Error('incomplete_stream');
-    assistant.status = 'completed';
-    assistant.errorCode = null;
-    conversation.value?.scrollToBottom();
+    updateAssistantMessage(() => {
+      assistant.status = 'completed';
+      assistant.errorCode = null;
+    });
   } catch (error) {
     const code = error instanceof Error ? error.message : 'agent_internal_error';
-    if (controller.signal.aborted) {
-      assistant.status = 'cancelled';
-      assistant.errorCode = null;
-    } else if (!streamStarted && previousSnapshot && isTransientBusyError(code)) {
-      assistant.text = previousSnapshot.text;
-      assistant.citations = previousSnapshot.citations;
-      assistant.status = previousSnapshot.status;
-      assistant.errorCode = previousSnapshot.errorCode;
-    } else {
-      if (!streamStarted && previousSnapshot) {
+    updateAssistantMessage(() => {
+      if (controller.signal.aborted) {
+        assistant.status = 'cancelled';
+        assistant.errorCode = null;
+      } else if (!streamStarted && previousSnapshot && isTransientBusyError(code)) {
         assistant.text = previousSnapshot.text;
         assistant.citations = previousSnapshot.citations;
+        assistant.status = previousSnapshot.status;
+        assistant.errorCode = previousSnapshot.errorCode;
+      } else {
+        if (!streamStarted && previousSnapshot) {
+          assistant.text = previousSnapshot.text;
+          assistant.citations = previousSnapshot.citations;
+        }
+        assistant.status = 'failed';
+        assistant.errorCode = code;
       }
-      assistant.status = 'failed';
-      assistant.errorCode = code;
-    }
+    });
     if (generation === selectionGeneration && !controller.signal.aborted) {
       notify(failureNoticeText(code));
     }
@@ -351,7 +377,7 @@ onMounted(async () => {
   updateLayout();
 });
 onBeforeUnmount(() => {
-  selectionGeneration++; historyGeneration++; mounted.value = false; clearTimeout(noticeTimer); cancelAnimationFrame(layoutFrame); layoutObserver?.disconnect(); releaseDrawer();
+  selectionGeneration++; historyGeneration++; mounted.value = false; clearTimeout(noticeTimer); cancelAnimationFrame(layoutFrame); cancelAnimationFrame(conversationScrollFrame); layoutObserver?.disconnect(); releaseDrawer();
   activeRequestController?.abort(); activeRequestController = null;
   document.removeEventListener('keydown', keydown);
   window.removeEventListener('resize', queueLayout); window.removeEventListener('scroll', queueLayout);
@@ -376,7 +402,8 @@ onBeforeUnmount(removeNativeBack);
       <div class="heading-title"><h1>LiLi<span>智能助手</span></h1></div>
     </header>
 
-    <ElasticList ref="conversation" class="conversation" role="region" aria-label="当前对话"><p v-if="conversationError" role="alert">{{ conversationError }}<button @click="loadConversation(wantedSessionId)">重新加载对话</button></p><button v-if="nextBefore" :disabled="loading" @click="olderMessages">加载较早消息</button><button v-if="messages.some(m => m.status === 'pending') && !sending" @click="loadConversation(session?.session_id)">刷新对话状态</button>
+    <ElasticList ref="conversation" class="conversation" role="region" aria-label="当前对话" @scroll-state="updateConversationFollowing">
+      <p v-if="conversationError" role="alert">{{ conversationError }}<button @click="loadConversation(wantedSessionId)">重新加载对话</button></p><button v-if="nextBefore" :disabled="loading" @click="olderMessages">加载较早消息</button><button v-if="messages.some(m => m.status === 'pending') && !sending" @click="loadConversation(session?.session_id)">刷新对话状态</button>
       <p v-if="loading" class="conversation-date">正在连接 LiLi…</p>
       <p v-else-if="!messages.length" class="conversation-date">校园里的事情，可以问问 LiLi</p>
       <article v-for="message in messages" :key="message.id" class="message" :class="`message-${message.role}`" :aria-label="message.role === 'user' ? '你的消息' : 'LiLi 的消息'">

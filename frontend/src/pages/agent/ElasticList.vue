@@ -6,6 +6,13 @@ import MouseWheel from '@better-scroll/mouse-wheel';
 BScroll.use(MouseWheel);
 const viewport = ref(null), content = ref(null);
 let scroll, observer, resizeFrame, motion;
+const emit = defineEmits(['scroll-state']);
+
+function isAtBottom() {
+  if (!scroll || scroll.maxScrollY >= -2) return true;
+  return scroll.y <= scroll.maxScrollY + 2;
+}
+function reportScrollState() { emit('scroll-state', isAtBottom()); }
 
 function refresh() {
   if (!viewport.value || !content.value) return;
@@ -24,6 +31,8 @@ function createScroll() {
   scroll = new BScroll(viewport.value, {
     scrollY: true,
     scrollX: false,
+    // Report while dragging and during momentum, before the next SSE update.
+    probeType: 3,
     click: true,
     disableMouse: false,
     disableTouch: false,
@@ -34,28 +43,33 @@ function createScroll() {
     swipeBounceTime: reduced ? 0 : 500,
     mouseWheel: { easeTime: reduced ? 0 : 300 },
   });
+  scroll.on('scroll', reportScrollState);
+  scroll.on('scrollEnd', reportScrollState);
+  reportScrollState();
 }
 function stop() {
   scroll?.stop();
   scroll?.resetPosition(motion?.matches ? 0 : 800);
 }
-function scrollToBottom() {
+function scrollToBottom(duration = motion?.matches ? 0 : 240) {
   if (!scroll) return;
   scroll.refresh();
-  scroll.scrollTo(0, scroll.maxScrollY, motion?.matches ? 0 : 240);
+  scroll.scrollTo(0, scroll.maxScrollY, duration);
+  if (duration === 0) reportScrollState();
 }
 function keyboard(event) {
   if (event.target !== viewport.value || !scroll || event.ctrlKey || event.metaKey || event.altKey) return;
   const page = viewport.value.clientHeight * .85;
   const delta = { ArrowDown: -40, ArrowUp: 40, PageDown: -page, PageUp: page, ' ': event.shiftKey ? page : -page }[event.key];
-  let target;
-  if (event.key === 'Home') target = 0;
-  else if (event.key === 'End') target = scroll.maxScrollY;
-  else if (delta != null) target = scroll.y + delta;
-  else return;
+  if (event.key !== 'Home' && event.key !== 'End' && delta == null) return;
   event.preventDefault();
   scroll.stop();
-  scroll.scrollTo(0, Math.max(scroll.maxScrollY, Math.min(0, target)), motion.matches ? 0 : 180);
+  // Vue may have rendered a delta before ResizeObserver refreshed the range.
+  refresh();
+  const target = event.key === 'Home' ? 0 : event.key === 'End' ? scroll.maxScrollY : scroll.y + delta;
+  const duration = motion.matches ? 0 : 180;
+  scroll.scrollTo(0, Math.max(scroll.maxScrollY, Math.min(0, target)), duration);
+  if (duration === 0) reportScrollState();
 }
 function focusItem(event) {
   if (!scroll || event.target === viewport.value) return;
@@ -70,6 +84,7 @@ function nativeScroll() {
   if (!delta || !scroll) return;
   viewport.value.scrollTop = 0;
   scroll.scrollTo(0, Math.max(scroll.maxScrollY, Math.min(0, scroll.y - delta)), 0);
+  reportScrollState();
 }
 onMounted(() => {
   motion = window.matchMedia('(prefers-reduced-motion: reduce)');
