@@ -12,7 +12,7 @@ import { authState } from '../api/auth';
 import { registerBackHandler } from '../platform/android-navigation';
 import { sessionShuffle } from '../data/session-style';
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { loadAgentSession, rateAgentMessage, sendAgentMessage } from '../api/agent';
+import { loadAgentSession, rateAgentMessage, sendAgentMessage, listAgentSessions, createAgentSession, closeAgentSession, loadAgentMessages, selectAgentSession, selectAgentDraft, pinAgentSession } from '../api/agent';
 import AgentIcon from './agent/AgentIcon.vue';
 import LiLiAvatar from './agent/LiLiAvatar.vue';
 import UserPlaneAvatar from './agent/UserPlaneAvatar.vue';
@@ -23,14 +23,13 @@ import { composerPlacement } from './agent/composer-layout.mjs';
 const router = useRouter();
 const colors = sessionShuffle('agent-demo-colors', ['mint', 'blue', 'pink', 'lavender', 'yellow']);
 const messages = ref([]), session = ref(null), loading = ref(true), sending = ref(false);
-const history = computed(() => messages.value.length ? [{
-  label: '当前会话',
-  title: messages.value.find(message => message.role === 'user')?.text.slice(0, 22) || '新的对话',
-  summary: '会话将在 24 小时后过期', current: true,
-}] : []);
+const history = ref([]), historyQuery = ref(''), historyOffset = ref(null), historyLoading = ref(false), historyError = ref('');
+const temporaryExists = ref(false), temporaryText = ref(''), menuItem = ref(null), menuStyle = ref({}), menuBusy = ref(false);
+const nextBefore = ref(null), conversationError = ref(''), wantedSessionId = ref(null);
+let selectionGeneration = 0, historyGeneration = 0;
 const historyOpen = ref(false), drawer = ref(null), historyTrigger = ref(null), mounted = ref(false);
 const composer = ref(null), draft = ref(''), notice = ref('');
-const ready = computed(() => Boolean(draft.value.trim()) && !sending.value && !loading.value);
+const ready = computed(() => !conversationError.value && Boolean(draft.value.trim()) && !sending.value && !loading.value);
 const conversation = ref(null);
 const composerPanel = ref(null), expanded = ref(false), longDraft = ref(false);
 const panelBottom = ref(86), panelTop = ref(0), panelInset = ref(17), reservedHeight = ref(140);
@@ -95,21 +94,28 @@ function viewMessage(message, index) {
     requestId: message.request_id || message.client_request_id,
   };
 }
-async function loadConversation() {
+async function loadConversation(id) {
+  wantedSessionId.value = id || null; conversationError.value = '';
+  const generation = ++selectionGeneration;
+  activeRequestController?.abort(); sending.value = false;
+  messages.value = []; session.value = null; nextBefore.value = null; draft.value = '';
   const revision = authState.revision;
   loading.value = true;
   try {
-    const result = await loadAgentSession();
-    if (!mounted.value || revision !== authState.revision) return;
+    const result = await loadAgentSession(id);
+    if (!mounted.value || revision !== authState.revision || generation !== selectionGeneration) return;
+    if (result.session) selectAgentSession(result.session);
+    else { temporaryExists.value = true; selectAgentDraft(); }
     session.value = result.session;
     messages.value = result.messages.map(viewMessage);
-    for (const message of messages.value) if (message.status === 'pending') message.status = 'failed';
+    nextBefore.value = result.next_before;
     await nextTick(); conversation.value?.scrollToBottom();
   } catch (error) {
+    if (revision !== authState.revision || generation !== selectionGeneration) return;
     if (error.message === 'authentication_required') { router.replace('/onboarding'); return; }
-    if (revision !== authState.revision) return;
-    notify('无法连接智能助手，请检查后端和数据库配置。');
-  } finally { loading.value = false; }
+    conversationError.value = '对话加载失败，请检查连接后重试。';
+    notify(conversationError.value);
+  } finally { if (generation === selectionGeneration) loading.value = false; }
 }
 async function copy(message) {
   const text = message.text.replace(/\*\*/g, '');
@@ -124,7 +130,7 @@ async function copy(message) {
   } catch { notify('复制失败，请长按消息复制'); }
 }
 async function send(retryMessage = null) {
-  if (!session.value || sending.value) return;
+  if (sending.value || loading.value || conversationError.value) return;
   const text = (retryMessage?.text || draft.value).trim();
   if (!text) return;
   let userMessage = retryMessage;
@@ -140,11 +146,17 @@ async function send(retryMessage = null) {
   messages.value.push(assistant);
   sending.value = true;
   queueConversationBottom(true);
+  const generation = selectionGeneration, revision = authState.revision;
   const controller = new AbortController();
   activeRequestController = controller;
   try {
-    await sendAgentMessage(session.value.session_token, text, assistant.requestId, {
-      message_start: data => { assistant.id = data.message_id; },
+    if (!session.value) {
+      const created = await createAgentSession();
+      if (!mounted.value || generation !== selectionGeneration || revision !== authState.revision) return;
+      session.value = created; selectAgentSession(created); temporaryExists.value = false; temporaryText.value = "";
+    }
+    await sendAgentMessage(session.value.session_id, text, assistant.requestId, {
+      message_start: data => { assistant.id = data.message_id; assistant.requestId = data.request_id || assistant.requestId; },
       citation: data => updateAssistantMessage(() => assistant.citations.push(data)),
       delta: data => updateAssistantMessage(() => { assistant.text += data.text; }),
       usage: () => {},
@@ -153,12 +165,12 @@ async function send(retryMessage = null) {
     }, controller.signal);
   } catch (error) {
     updateAssistantMessage(() => { assistant.status = 'failed'; });
-    if (!controller.signal.aborted) {
+    if (generation === selectionGeneration && !controller.signal.aborted) {
       notify(error.message === 'token_quota_exceeded' ? '你的账号今日的使用额度已用完。' : '回答失败，请点击重试。');
     }
   } finally {
     if (activeRequestController === controller) activeRequestController = null;
-    if (mounted.value) {
+    if (mounted.value && generation === selectionGeneration) {
       sending.value = false;
       await nextTick(); conversation.value?.refresh();
     }
@@ -173,13 +185,78 @@ async function rate(message, value) {
   if (!session.value || message.status !== 'completed') return;
   const next = message.rating === value ? null : value;
   try {
-    await rateAgentMessage(session.value.session_token, message.id, next);
+    await rateAgentMessage(session.value.session_id, message.id, next);
     message.rating = next;
   } catch { notify('暂时无法保存反馈，请稍后再试。'); }
 }
-function chooseHistory() { historyOpen.value = false; conversation.value?.scrollToBottom(); }
+async function refreshHistory(append = false) {
+  const generation = ++historyGeneration, revision = authState.revision;
+  historyLoading.value = true; historyError.value = '';
+  try {
+    const result = await listAgentSessions(historyQuery.value, append ? historyOffset.value || 0 : 0);
+    if (generation !== historyGeneration || revision !== authState.revision || !mounted.value) return;
+    history.value = append ? [...history.value, ...result.items] : result.items;
+    historyOffset.value = result.next_offset;
+  } catch { if (generation === historyGeneration) historyError.value = '历史加载失败，请重试。'; }
+  finally { if (generation === historyGeneration) historyLoading.value = false; }
+}
+async function chooseHistory(item) {
+  if (sending.value && !session.value) return;
+  if (!session.value) temporaryText.value = draft.value;
+  menuItem.value = null; historyOpen.value = false; await loadConversation(item.session_id);
+}
+function newConversation() {
+  if (sending.value && !session.value) return;
+  if (!session.value && temporaryExists.value && !conversationError.value) { historyOpen.value = false; return; }
+  selectionGeneration++; activeRequestController?.abort(); sending.value = false;
+  session.value = null; messages.value = []; draft.value = temporaryText.value; nextBefore.value = null;
+  conversationError.value = ''; wantedSessionId.value = null; loading.value = false;
+  temporaryExists.value = true; selectAgentDraft(); menuItem.value = null; historyOpen.value = false;
+}
+async function openMenu(item, event) {
+  if (menuItem.value?.session_id === item.session_id) { menuItem.value = null; return; }
+  const rect = event.currentTarget.getBoundingClientRect(), overlay = drawer.value.getBoundingClientRect();
+  menuStyle.value = {left: Math.max(8, Math.min(rect.right - overlay.left - 142, overlay.width - 150)) + 'px', top: Math.max(8, Math.min(rect.bottom - overlay.top + 4, overlay.height - 110)) + 'px'};
+  menuItem.value = item; await nextTick(); document.querySelector('.conversation-menu button')?.focus();
+}
+async function togglePin(item) {
+  if (menuBusy.value) return;
+  menuBusy.value = true; const revision = authState.revision;
+  try {
+    const updated = await pinAgentSession(item.session_id, !item.is_pinned);
+    if (revision !== authState.revision || !mounted.value) return;
+    if (session.value?.session_id === item.session_id) session.value = updated;
+    menuItem.value = null; await refreshHistory();
+  } catch { if (revision === authState.revision) notify('置顶状态保存失败，请重试。'); }
+  finally { menuBusy.value = false; }
+}
+async function deleteConversation(item) {
+  if (!window.confirm('永久删除这段对话及其消息？')) return;
+  if (menuBusy.value) return;
+  menuBusy.value = true; const revision = authState.revision;
+  try {
+    await closeAgentSession(item.session_id);
+    if (revision !== authState.revision || !mounted.value) return;
+    if (session.value?.session_id === item.session_id) { temporaryExists.value = false; newConversation(); }
+    menuItem.value = null;
+    await refreshHistory();
+  } catch { if (revision === authState.revision) notify('删除失败；生成中的对话请等待结束后再删除。'); }
+  finally { menuBusy.value = false; }
+}
+async function olderMessages() {
+  if (!session.value || !nextBefore.value || loading.value) return;
+  const id = session.value.session_id, generation = selectionGeneration;
+  loading.value = true;
+  try {
+    const page = await loadAgentMessages(id, nextBefore.value);
+    if (generation !== selectionGeneration || !mounted.value) return;
+    messages.value = [...page.messages.map(viewMessage), ...messages.value]; nextBefore.value = page.next_before;
+  } catch { notify('较早消息加载失败，请重试。'); }
+  finally { if (generation === selectionGeneration) loading.value = false; }
+}
 function keydown(event) {
   if (event.isComposing) return;
+  if (event.key === 'Escape' && menuItem.value) { menuItem.value = null; drawer.value?.querySelector('.history-more')?.focus(); event.preventDefault(); return; }
   if (event.key === 'Escape') { if (!historyOpen.value && expanded.value) toggleExpanded(); historyOpen.value = false; }
   if (!historyOpen.value || event.key !== 'Tab') return;
   const nodes = [...drawer.value.querySelectorAll('button,a,input,textarea')].filter(node => !node.disabled);
@@ -189,7 +266,9 @@ function keydown(event) {
 }
 function releaseDrawer() { for (const [node, value] of inerted) node.inert = value; inerted = []; }
 watch(historyOpen, async open => {
+  menuItem.value = null;
   if (open) {
+    void refreshHistory();
     conversation.value?.stop(); previousFocus = document.activeElement; await nextTick();
     if (!mounted.value || !historyOpen.value || !drawer.value) return;
     inerted = [...document.querySelector('.phone-shell').children].filter(node => !node.classList.contains('history-overlay')).map(node => [node, node.inert]);
@@ -199,7 +278,8 @@ watch(historyOpen, async open => {
 });
 watch(() => authState.revision, () => {
   activeRequestController?.abort();
-  messages.value = []; session.value = null; draft.value = '';
+  selectionGeneration++; historyGeneration++; history.value = []; historyQuery.value = ''; historyOffset.value = null; nextBefore.value = null; conversationError.value = ''; wantedSessionId.value = null;
+  messages.value = []; session.value = null; draft.value = ''; temporaryExists.value = false; temporaryText.value = ''; menuItem.value = null;
   historyOpen.value = false; sending.value = false; notice.value = '';
   if (mounted.value) router.replace('/onboarding');
 }, { flush: 'sync' });
@@ -215,7 +295,7 @@ onMounted(async () => {
   updateLayout();
 });
 onBeforeUnmount(() => {
-  mounted.value = false; clearTimeout(noticeTimer); cancelAnimationFrame(layoutFrame); cancelAnimationFrame(conversationScrollFrame); layoutObserver?.disconnect(); releaseDrawer();
+  selectionGeneration++; historyGeneration++; mounted.value = false; clearTimeout(noticeTimer); cancelAnimationFrame(layoutFrame); cancelAnimationFrame(conversationScrollFrame); layoutObserver?.disconnect(); releaseDrawer();
   activeRequestController?.abort(); activeRequestController = null;
   document.removeEventListener('keydown', keydown);
   window.removeEventListener('resize', queueLayout); window.removeEventListener('scroll', queueLayout);
@@ -241,6 +321,7 @@ onBeforeUnmount(removeNativeBack);
     </header>
 
     <ElasticList ref="conversation" class="conversation" role="region" aria-label="当前对话" @scroll-state="updateConversationFollowing">
+      <p v-if="conversationError" role="alert">{{ conversationError }}<button @click="loadConversation(wantedSessionId)">重新加载对话</button></p><button v-if="nextBefore" :disabled="loading" @click="olderMessages">加载较早消息</button><button v-if="messages.some(m => m.status === 'pending') && !sending" @click="loadConversation(session?.session_id)">刷新对话状态</button>
       <p v-if="loading" class="conversation-date">正在连接 LiLi…</p>
       <p v-else-if="!messages.length" class="conversation-date">校园里的事情，可以问问 LiLi</p>
       <article v-for="message in messages" :key="message.id" class="message" :class="`message-${message.role}`" :aria-label="message.role === 'user' ? '你的消息' : 'LiLi 的消息'">
@@ -280,7 +361,7 @@ onBeforeUnmount(removeNativeBack);
 
     <Transition name="chat-toast"><p v-if="notice" v-sketch class="sketch chat-notice" data-pencil="yellow" role="status">{{ notice }}</p></Transition>
 
-    <Teleport v-if="mounted" to=".phone-shell"><Transition name="history-slide"><div v-if="historyOpen" class="history-overlay" @click.self="historyOpen = false"><aside id="lili-history" ref="drawer" v-sketch class="sketch history-drawer" data-pencil="mint" role="dialog" aria-modal="true" aria-labelledby="lili-history-title"><header><div><p>和 LiLi 的</p><h2 id="lili-history-title">小小对话簿</h2></div><button type="button" class="drawer-close" aria-label="关闭历史对话" @click="historyOpen = false"><AgentIcon name="close" /></button></header><ElasticList class="history-list" role="region" aria-label="历史对话列表"><p v-if="!history.length" class="history-empty">这里还没有对话</p><template v-for="(item, index) in history" :key="index"><h3>{{ item.label }}</h3><button v-sketch class="sketch history-item" data-pencil="yellow" type="button" aria-current="true" @click="chooseHistory"><AgentIcon name="chat" /><span><strong>{{ item.title }}</strong><small>{{ item.summary }}</small></span></button></template></ElasticList><footer><div class="drawer-avatar"><LiLiAvatar /></div><p>校园生活，慢慢聊。</p></footer></aside></div></Transition></Teleport>
+    <Teleport v-if="mounted" to=".phone-shell"><Transition name="history-slide"><div v-if="historyOpen" class="history-overlay" @click.self="menuItem ? menuItem = null : historyOpen = false"><aside id="lili-history" ref="drawer" v-sketch class="sketch history-drawer" data-pencil="mint" role="dialog" aria-modal="true" aria-labelledby="lili-history-title" @click="menuItem = null"><header><div><p>和 LiLi 的</p><h2 id="lili-history-title">小小对话簿</h2></div><button type="button" class="drawer-close" aria-label="关闭历史对话" @click="historyOpen = false"><AgentIcon name="close" /></button></header><form class="history-search" @submit.prevent="refreshHistory()"><input v-model="historyQuery" aria-label="查找历史对话" placeholder="查找对话…" /><button type="submit" :disabled="historyLoading">查找</button></form><button class="history-new" :disabled="loading" @click="newConversation">新建对话</button><ElasticList class="history-list" role="region" aria-label="历史对话列表"><button v-if="temporaryExists" v-sketch class="sketch history-item history-temporary" :data-pencil="!session ? 'yellow' : undefined" @click="newConversation">新对话<small>发送后保存</small></button><p v-if="historyError" role="alert">{{ historyError }}<button @click="refreshHistory()">重试</button></p><p v-if="historyLoading">正在加载历史…</p><p v-else-if="!history.length && !temporaryExists && !historyError" class="history-empty">这里还没有对话</p><div v-for="item in history" :key="item.session_id" class="history-entry"><button v-sketch class="sketch history-item" :data-pencil="session?.session_id === item.session_id ? 'yellow' : undefined" :aria-current="session?.session_id === item.session_id ? 'true' : undefined" @click="chooseHistory(item)"><AgentIcon name="chat" /><span><strong><span v-if="item.is_pinned" class="pin-marker">置顶 · </span>{{ item.title }}</strong><small>{{ new Date(item.updated_at).toLocaleString() }}</small></span></button><button class="history-more" type="button" :aria-label="`对话操作：${item.title}`" aria-haspopup="menu" :aria-expanded="menuItem?.session_id === item.session_id" :disabled="menuBusy" @click.stop="openMenu(item, $event)"><svg viewBox="0 0 36 16" aria-hidden="true"><path d="M6 5c4-1 5 5 1 6-4 1-6-4-1-6Zm12 0c4 0 4 6 0 6-4 0-4-5 0-6Zm12 0c4 1 3 6-1 6-4-1-3-6 1-6Z" /></svg></button></div><button v-if="historyOffset !== null" :disabled="historyLoading" @click="refreshHistory(true)">更多对话</button></ElasticList><footer><div class="drawer-avatar"><LiLiAvatar /></div><p>校园生活，慢慢聊。</p></footer><div v-if="menuItem" v-sketch class="sketch conversation-menu" data-pencil="yellow" role="menu" aria-label="对话操作" :style="menuStyle" @click.stop><button role="menuitem" :disabled="menuBusy" @click="togglePin(menuItem)">{{ menuItem.is_pinned ? '取消置顶' : '置顶' }}</button><button role="menuitem" class="menu-delete" :disabled="menuBusy" @click="deleteConversation(menuItem)">删除</button></div></aside></div></Transition></Teleport>
   </section>
 </template>
 
@@ -312,14 +393,14 @@ onBeforeUnmount(removeNativeBack);
 .send-button .agent-icon { width: 24px; height: 24px; }.send-button:disabled { opacity: .65; cursor: default; }
 .composer-expand { position: absolute; top: 8px; right: 10px; display: grid; place-items: center; width: 44px; height: 44px; padding: 11px; border: 0; background: transparent; color: var(--ink); }
 .composer-expand .agent-icon { width: 22px; height: 22px; }
-.composer-section.is-expanded { padding-top: calc(10px + env(safe-area-inset-top, 0px)); }
+.composer-section.is-expanded { padding-top: calc(10px + var(--safe-top)); }
 .is-expanded .attachments { display: none; }
 .is-expanded .composer-box { flex: 1; min-height: 0; flex-direction: column; align-items: stretch; }
 .is-expanded .composer-tools { align-self: flex-end; }
 .composer-more { position: relative; }.attachment-menu { position: absolute; right: -42px; bottom: 52px; width: 154px; padding: 10px; z-index: 4; background: transparent; backdrop-filter: blur(15px); border-radius: 15px; transform-origin: 70% 100%; }.attachment-menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 8px; min-height: 44px; background: transparent; border: 0; font-size: 13px; }.attachment-menu .agent-icon { width: 22px; height: 22px; }
 .attachments { display: flex; flex-wrap: nowrap; gap: 8px; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; padding: 0 1px 2px; max-height: 65px; }.attachment { display: flex; flex: none; align-items: center; gap: 6px; padding: 9px 8px 9px 11px; max-width: 210px; font-size: 11px; background: transparent; }.attachment>span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.attachment img { display: block; width: 30px; height: 30px; object-fit: cover; border-radius: 5px; }.attachment>.agent-icon { width: 24px; height: 24px; }.attachment button { display: grid; place-items: center; width: 28px; height: 28px; padding: 5px; flex: none; background: transparent; border: 0; }.attachment button .agent-icon { width: 16px; height: 16px; }
 .chat-notice { position: absolute; z-index: 70; left: 50%; bottom: 90px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 34px); padding: 13px 18px; font-size: 12px; text-align: center; background: transparent; backdrop-filter: blur(12px); border-radius: 15px; }
-.history-overlay { position: absolute; inset: 0; z-index: 80; background: #20304b28; }.history-drawer { display: flex; flex-direction: column; width: 66.6667%; height: 100%; margin: 0; padding: calc(24px + env(safe-area-inset-top, 0px)) 15px 24px; background: transparent; backdrop-filter: blur(22px); border-radius: 15px; overflow: hidden; }.history-drawer header { display: flex; align-items: center; justify-content: space-between; gap: 3px; margin-bottom: 22px; }.history-drawer header p { font-size: 11px; margin: 0 0 6px; color: var(--muted); }.history-drawer h2 { margin: 0; font-size: 22px; font-weight: 400; white-space: nowrap; }.drawer-close { display: grid; place-items: center; flex: none; width: 38px; height: 44px; padding: 8px; background: transparent; border: 0; }.drawer-close .agent-icon { width: 22px; height: 22px; }.history-list { min-height: 0; flex: 1; }.history-list h3 { font-size: 11px; color: var(--muted); font-weight: 400; margin: 15px 8px 8px; }.history-list h3:first-child { margin-top: 0; }.history-item { display: flex; gap: 7px; align-items: flex-start; width: 100%; padding: 15px 10px; margin-bottom: 10px; background: transparent; text-align: left; }.history-item>.agent-icon { width: 19px; height: 19px; margin-top: 2px; }.history-item>span { min-width: 0; flex: 1; }.history-item strong { font-size: 13px; font-weight: 400; display: block; line-height: 1.6; }.history-item small { display: block; font-size: 10px; color: var(--muted); margin-top: 5px; line-height: 1.6; }.history-drawer footer { display: flex; align-items: center; gap: 7px; margin-top: 12px; flex: none; }.drawer-avatar { width: 48px; height: 52px; }.history-drawer footer p { font-size: 11px; margin: 0; color: var(--muted); }
+.history-overlay { position: absolute; inset: 0; z-index: 80; background: #20304b28; }.history-drawer { display: flex; flex-direction: column; width: 66.6667%; height: 100%; margin: 0; padding: calc(24px + var(--safe-top)) 15px calc(24px + var(--safe-bottom)); background: transparent; backdrop-filter: blur(22px); border-radius: 15px; overflow: hidden; }.history-drawer header { display: flex; align-items: center; justify-content: space-between; gap: 3px; margin-bottom: 22px; }.history-drawer header p { font-size: 11px; margin: 0 0 6px; color: var(--muted); }.history-drawer h2 { margin: 0; font-size: 22px; font-weight: 400; white-space: nowrap; }.drawer-close { display: grid; place-items: center; flex: none; width: 38px; height: 44px; padding: 8px; background: transparent; border: 0; }.drawer-close .agent-icon { width: 22px; height: 22px; }.history-list { min-height: 0; flex: 1; }.history-list h3 { font-size: 11px; color: var(--muted); font-weight: 400; margin: 15px 8px 8px; }.history-list h3:first-child { margin-top: 0; }.history-item { display: flex; gap: 7px; align-items: flex-start; width: 100%; padding: 15px 10px; margin-bottom: 10px; background: transparent; text-align: left; }.history-item>.agent-icon { width: 19px; height: 19px; margin-top: 2px; }.history-item>span { min-width: 0; flex: 1; }.history-item strong { font-size: 13px; font-weight: 400; display: block; line-height: 1.6; }.history-item small { display: block; font-size: 10px; color: var(--muted); margin-top: 5px; line-height: 1.6; }.history-drawer footer { display: flex; align-items: center; gap: 7px; margin-top: 12px; flex: none; }.drawer-avatar { width: 48px; height: 52px; }.history-drawer footer p { font-size: 11px; margin: 0; color: var(--muted); }
 .history-empty { padding: 14px 8px; color: var(--muted); font-size: 12px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .history-slide-enter-active,.history-slide-leave-active { transition: background-color .35s ease; }.history-slide-enter-active .history-drawer,.history-slide-leave-active .history-drawer { transition: transform .38s cubic-bezier(.22,1,.36,1); }.history-slide-enter-from,.history-slide-leave-to { background: transparent; }.history-slide-enter-from .history-drawer,.history-slide-leave-to .history-drawer { transform: translateX(-102%); }
@@ -328,4 +409,24 @@ onBeforeUnmount(removeNativeBack);
 @keyframes lili-think { to { transform: rotate(360deg); } }@keyframes lili-dot { 0%,70%,100% { opacity: .3; transform: translateY(0); }35% { opacity: 1; transform: translateY(-2px); } }
 @media(max-width:359px) { .agent-page { padding: 0 10px; }.chat-heading { gap: 8px; }.heading-title h1 { font-size: 25px; }.message-avatar { width: 36px; height: 40px; }.message-user .message-avatar { width: 36px; height: 40px; }.message-content,.message-user .message-content { max-width: calc(100% - 41px); }.message-bubble { padding: 12px 13px; }.message-text { font-size: 13px; }.message-actions button { padding-left: 5px; padding-right: 5px; }.message-actions .rating-action { min-width: 29px; }.composer-box { padding-left: 12px; gap: 3px; }.composer-tools { gap: 0; }.history-drawer { padding-left: 10px; padding-right: 10px; }.history-drawer h2 { font-size: 19px; }.history-item { padding-left: 8px; padding-right: 8px; }.history-item strong { font-size: 12px; } }
 @media(prefers-reduced-motion:reduce) { .history-slide-enter-active,.history-slide-leave-active,.history-slide-enter-active .history-drawer,.history-slide-leave-active .history-drawer,.attachment-pop-enter-active,.attachment-pop-leave-active,.chat-toast-enter-active,.chat-toast-leave-active { transition: none; } }
+</style>
+
+<style scoped>
+.history-search { display:flex; gap:6px; margin-bottom:12px; } .history-search input { min-width:0; width:100%; font:inherit; border:1px solid #20304b44; border-radius:8px; padding:8px; background:#fff8; }
+.history-search button,.history-new { font:inherit; background:transparent; border:0; color:var(--ink); min-height:40px; } .history-new { margin-bottom:8px; }
+</style>
+
+<style scoped>
+.history-search button { flex: none; min-width: 48px; white-space: nowrap; }
+.history-item strong { overflow-wrap: anywhere; }
+</style>
+
+<style scoped>
+.history-entry { display: flex; align-items: center; gap: 4px; padding-bottom: 0; margin-bottom: 8px; }
+.history-entry .history-item { flex: 1; min-width: 0; width: auto; margin: 0; padding: 10px 8px; }
+.history-more { flex: none; display: grid; place-items: center; width: 36px; min-height: 44px; border: 0; background: transparent; color: var(--ink); }
+.history-more svg { width: 26px; height: 16px; fill: currentColor; }.pin-marker { color: #32705b; font-size: 10px; }
+.conversation-menu { position: absolute; z-index: 2; width: 142px; padding: 5px; background: #f8f4ea; box-shadow: 2px 4px 12px #20304b22; }
+.conversation-menu button { display: block; width: 100%; min-height: 44px; padding: 8px 12px; text-align: left; border: 0; font: inherit; font-size: 13px; background: transparent; color: var(--ink); }.conversation-menu .menu-delete { color: #92333e; }.conversation-menu button:focus-visible { outline: 2px dashed #406b91; outline-offset: -4px; border-radius: 9px; background: #ffffff55; }
+.history-temporary { min-height: 44px; align-items: center; flex-wrap: wrap; }.history-temporary small { font-size: 10px; color: var(--muted); }
 </style>

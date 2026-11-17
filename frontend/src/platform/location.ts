@@ -1,4 +1,4 @@
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Geolocation, type PermissionStatus, type Position, type PositionOptions } from '@capacitor/geolocation';
 
 /** A minimum, portable position shape. Do not persist or upload it here. */
@@ -18,7 +18,7 @@ export type LocationResult =
   | { status: 'error'; error: LocationErrorCode };
 
 export type CurrentLocationOptions = Pick<PositionOptions,
-  'enableHighAccuracy' | 'timeout' | 'maximumAge' | 'minimumUpdateInterval' | 'interval'>;
+  'enableHighAccuracy' | 'timeout' | 'maximumAge' | 'minimumUpdateInterval' | 'interval' | 'enableLocationFallback'>;
 
 type PositionLike = Pick<Position, 'timestamp'> & {
   coords: Pick<Position['coords'], 'latitude' | 'longitude' | 'accuracy'> & { heading?: number | null };
@@ -38,9 +38,9 @@ export interface LocationWatchProvider extends LocationProvider {
 
 export type LocationWatchStop = () => Promise<void>;
 
-export const defaultCurrentLocationOptions: Required<CurrentLocationOptions> = {
-  // The map needs a usable on-campus point. On Android this also requests the
-  // fine-location alias instead of accepting a roughly 100 m fused fix.
+export const defaultCurrentLocationOptions: CurrentLocationOptions = {
+  // Prefer GPS where authorized, while Android also subscribes to OEM network
+  // fixes so indoor acquisition does not depend on a satellite fix.
   enableHighAccuracy: true,
   timeout: 10_000,
   maximumAge: 0,
@@ -50,6 +50,37 @@ export const defaultCurrentLocationOptions: Required<CurrentLocationOptions> = {
   interval: 1_000,
 };
 
+/** Android uses a bounded system-provider request and a recent monotonic-age cache. */
+export function resolveLocationOptions(options: CurrentLocationOptions = {}, platform = Capacitor.getPlatform()): PositionOptions {
+  return { ...defaultCurrentLocationOptions,
+    ...(platform === 'android' ? { timeout: 20_000, maximumAge: 15_000 } : {}),
+    ...options };
+}
+
+type AndroidLocationEvent = PositionLike | { error: LocationErrorCode };
+interface AndroidLocationBridge extends Omit<LocationWatchProvider, 'watchPosition'> {
+  watchPosition(options: PositionOptions, callback: (event: AndroidLocationEvent | null, error?: unknown) => void): Promise<string>;
+}
+
+/** Keep native watch errors as events: a timed-out watch can still deliver GPS later. */
+export function createAndroidLocationProvider(bridge: AndroidLocationBridge): LocationWatchProvider {
+  return {
+    checkPermissions: () => bridge.checkPermissions(),
+    requestPermissions: () => bridge.requestPermissions(),
+    getCurrentPosition: options => bridge.getCurrentPosition(options),
+    watchPosition: (options, callback) => bridge.watchPosition(options, (event, error) => {
+      if (event && 'error' in event) callback(null, { code: event.error });
+      else callback(event, error);
+    }),
+    clearWatch: options => bridge.clearWatch(options),
+  };
+}
+
+const androidLocation = createAndroidLocationProvider(registerPlugin<AndroidLocationBridge>('DeviceLocation'));
+function defaultProvider(): LocationWatchProvider {
+  return Capacitor.getPlatform() === 'android' ? androidLocation : Geolocation;
+}
+
 function permissionGranted(status: PermissionStatus) {
   return status.location === 'granted' || status.coarseLocation === 'granted';
 }
@@ -57,6 +88,7 @@ function permissionGranted(status: PermissionStatus) {
 function mapError(error: unknown): LocationErrorCode {
   const value = error as { code?: string | number; message?: string } | undefined;
   const code = String(value?.code ?? '');
+  if (['unsupported', 'permission-denied', 'unavailable', 'timeout'].includes(code)) return code as LocationErrorCode;
   const message = value?.message?.toLowerCase() ?? '';
   if (code === '1' || code === 'OS-PLUG-GLOC-0003' || /permission|denied/.test(message)) return 'permission-denied';
   if (code === '3' || code === 'OS-PLUG-GLOC-0010' || /timeout|timed out/.test(message)) return 'timeout';
@@ -106,7 +138,7 @@ function reportWatchedPosition(
  */
 export async function getCurrentLocation(
   options: CurrentLocationOptions = {},
-  provider: LocationProvider = Geolocation,
+  provider: LocationProvider = defaultProvider(),
 ): Promise<LocationResult> {
   if (!platformSupportsLocation(provider)) return { status: 'error', error: 'unsupported' };
 
@@ -123,7 +155,7 @@ export async function getCurrentLocation(
     if (!permissionGranted(permission)) permission = await provider.requestPermissions();
     if (!permissionGranted(permission)) return { status: 'error', error: 'permission-denied' };
 
-    const position = await provider.getCurrentPosition({ ...defaultCurrentLocationOptions, ...options });
+    const position = await provider.getCurrentPosition(resolveLocationOptions(options));
     const location = toLocation(position);
     return location ? { status: 'success', location } : { status: 'error', error: 'unavailable' };
   } catch (error) {
@@ -141,14 +173,14 @@ export async function getCurrentLocation(
 export async function watchCurrentLocation(
   listener: (result: LocationResult) => void,
   options: CurrentLocationOptions = {},
-  provider: LocationWatchProvider = Geolocation,
+  provider: LocationWatchProvider = defaultProvider(),
 ): Promise<LocationWatchStop> {
   if (!platformSupportsLocation(provider)) {
     listener({ status: 'error', error: 'unsupported' });
     return async () => {};
   }
 
-  const positionOptions = { ...defaultCurrentLocationOptions, ...options };
+  const positionOptions = resolveLocationOptions(options);
   try {
     // Capacitor's web wrapper delegates to this same browser API but cannot
     // request permission itself. Calling the standard watcher prompts as needed.
@@ -168,10 +200,11 @@ export async function watchCurrentLocation(
       return async () => {};
     }
 
+    let active = true;
     const id = await provider.watchPosition(positionOptions, (position, error) => {
-      reportWatchedPosition(listener, position, error);
+      if (active) reportWatchedPosition(listener, position, error);
     });
-    return async () => { await provider.clearWatch({ id }); };
+    return async () => { if (!active) return; active = false; await provider.clearWatch({ id }); };
   } catch (error) {
     listener({ status: 'error', error: mapError(error) });
     return async () => {};

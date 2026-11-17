@@ -411,7 +411,7 @@ onBeforeUnmount(() => {
 .interest-notice {
   position: absolute;
   z-index: 75;
-  bottom: calc(105px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(105px + var(--safe-bottom));
   left: 50%;
   transform: translateX(-50%);
   width: max-content;

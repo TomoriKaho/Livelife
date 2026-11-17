@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.db.dependencies import get_session
 from app.db.models.accounts import EmailVerificationCode, User, UserSession
-from app.db.models.agent import AgentSession, AgentUserUsage
+from app.db.models.agent import AgentMessage, AgentSession, AgentUserUsage
 from app.db.models.profile import UserInterest, UserProfile
 from app.schemas.accounts import (
     AccountDeletionRequest,
@@ -194,6 +194,13 @@ def delete_account(
         raise HTTPException(status_code=401, detail="Session is invalid or expired")
     # Match Agent admission/finalization: usage first, then conversations.
     session.execute(delete(AgentUserUsage).where(AgentUserUsage.user_id == user.id))
+    session.execute(
+        delete(AgentMessage).where(
+            AgentMessage.session_id.in_(
+                select(AgentSession.id).where(AgentSession.user_id == user.id)
+            )
+        )
+    )
     session.execute(delete(AgentSession).where(AgentSession.user_id == user.id))
     session.execute(delete(UserSession).where(UserSession.user_id == user.id))
     session.execute(delete(UserInterest).where(UserInterest.user_id == user.id))

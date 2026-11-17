@@ -15,6 +15,7 @@
   --mint: #c4eed7;
   --pink: #fac4ba;
   --lavender: #d9c8f3;
+  --shell-paper: #f8f4ea;
   --phone-width: 430px;
   font-family: 'LiveLife Rounded', 'Comic Sans MS', cursive;
   font-weight: 400;
@@ -23,10 +24,10 @@
   font-synthesis: none;
 }
 * { box-sizing: border-box; }
-/* The viewport includes native insets; reserve them inside the body, rather
-   than adding them to a second viewport-height shell. Only page content scrolls. */
-html { height: 100%; height: 100dvh; overflow: hidden; overscroll-behavior: none; }
-body { margin: 0; min-width: 280px; height: 100%; overflow: hidden; overscroll-behavior: none; background: transparent; padding: var(--safe-top) 0 var(--safe-bottom); }
+/* Capacitor 8 SystemBars / viewport-fit=cover expose system-bar insets on html;
+   shell chrome and focus overlays consume --safe-top / --safe-bottom once. */
+html { height: 100%; height: 100dvh; overflow: hidden; overscroll-behavior: none; background-color: var(--shell-paper); --safe-top: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)); --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)); }
+body { margin: 0; min-width: 280px; height: 100%; overflow: hidden; overscroll-behavior: none; background-color: var(--shell-paper); padding: 0; }
 #app { width: 100%; height: 100%; min-height: 0; display: grid; place-items: center; overflow: hidden; }
 button, a { -webkit-tap-highlight-color: transparent; }
 button { font: inherit; color: inherit; cursor: pointer; }
@@ -36,11 +37,11 @@ button:active, .nav-item:active { transform: translateY(1px); }
 [hidden] { display: none !important; }
 .svg-library { position: absolute; width: 0; height: 0; overflow: hidden; }
 .icon { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 2.1; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
-.phone-shell { position: relative; width: min(100%, var(--phone-width)); height: 100%; min-height: 0; margin: 0 auto; display: flex; flex-direction: column; background-color: #f8f4ea; overflow: hidden; }
+.phone-shell { position: relative; width: min(100%, var(--phone-width)); height: 100%; min-height: 0; margin: 0 auto; display: flex; flex-direction: column; background-color: var(--shell-paper); overflow: hidden; }
 .sketch { position: relative; border: 1.8px solid transparent; }
 .has-sketch { isolation: isolate; }
 .pencil-fill { background: transparent; }
-.app-header { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 6px; position: relative; }
+.app-header { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; padding: calc(12px + var(--safe-top)) 16px 6px; position: relative; }
 .app-header.map-header { padding-bottom: 2px; }
 .app-brand { display: inline-flex; align-items: center; gap: 7px; min-width: 0; padding: 8px 14px 9px; background: transparent; white-space: nowrap; }
 .app-brand::before { content: ''; position: absolute; left: -8px; top: 10px; width: 5px; height: 2.5px; background: var(--yellow); box-shadow: -1px 8px 0 var(--yellow), 3px 15px 0 var(--yellow); transform: rotate(28deg); }
@@ -85,16 +86,16 @@ h1 { font-size: 28px; letter-spacing: .5px; margin: 0; font-weight: 400; line-he
 .page-footer p { margin: 0; font-size: 11px; letter-spacing: 1px; }
 .footer-dash { width: 13px; height: 1px; background: #b9b9a9; transform: rotate(-8deg); }
 .footer-dash:last-child { transform: rotate(8deg); }
-.bottom-nav { position: relative; z-index: 20; isolation: isolate; flex-shrink: 0; display: flex; justify-content: space-around; gap: 2px; padding: 5px 10px calc(9px + env(safe-area-inset-bottom, 0px)); background: transparent; border-top: 2px solid transparent; }
+.bottom-nav { position: relative; z-index: 20; isolation: isolate; flex-shrink: 0; display: flex; justify-content: space-around; gap: 2px; padding: 5px 10px calc(9px + var(--safe-bottom)); background: transparent; border-top: 2px solid transparent; }
 .nav-item { position: relative; display: flex; flex-direction: column; gap: 5px; align-items: center; justify-content: center; flex: 1; min-height: 70px; min-width: 0; padding: 8px 6px; border: 1.6px solid transparent; font-size: 12px; line-height: 1.2; white-space: nowrap; container-type: inline-size; }
 /* 随按钮的可用宽度缩放内容，同时保留完整点击区域和四周留白。 */
 .nav-item .icon { width: clamp(22px, 42cqi, 26px); height: clamp(22px, 42cqi, 26px); stroke-width: 2.2; }
 .nav-item > span { font-size: clamp(10px, 21cqi, 12px); }
 .nav-item[aria-current='page'] .icon { color: #245888; }
-.toast { position: fixed; bottom: calc(105px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); width: max-content; max-width: min(360px, calc(100% - 40px)); padding: 13px 18px; font-size: 13px; background: transparent; text-align: center; z-index: 10; }
+.toast { position: fixed; bottom: calc(105px + var(--safe-bottom)); left: 50%; transform: translateX(-50%); width: max-content; max-width: min(360px, calc(100% - 40px)); padding: 13px 18px; font-size: 13px; background: transparent; text-align: center; z-index: 10; }
 @media (min-width: 600px) {
-  body { padding: max(24px, var(--safe-top)) 24px max(24px, var(--safe-bottom)); }
-  .phone-shell { height: min(880px, 100%); }
+  body { background-color: transparent; padding: max(24px, var(--safe-top)) 24px max(24px, var(--safe-bottom)); }
+  .phone-shell { height: min(880px, 100%); --safe-top: 0px; --safe-bottom: 0px; }
 }
 @media (max-width: 359px) {
   .app-header { gap: 6px; padding-left: 14px; padding-right: 14px; }
@@ -111,6 +112,3 @@ h1 { font-size: 28px; letter-spacing: .5px; margin: 0; font-weight: 400; line-he
   .placeholder { animation: arrive .22s ease-out; }
   @keyframes arrive { from { opacity: .3; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 }
-
-/* Capacitor 8 exposes native system-bar insets as CSS variables. */
-html { --safe-top: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)); --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)); }

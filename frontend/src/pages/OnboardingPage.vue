@@ -94,15 +94,15 @@ watch(step, async () => {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 8px 17px;
-  background-color: #f8f4ea;
+  padding: calc(8px + var(--safe-top)) 17px calc(8px + var(--safe-bottom));
+  background-color: var(--shell-paper);
 }
 .onboarding-body { position: relative; flex: 1; min-height: 0; overflow-x: clip; overflow-y: auto; }
 .step-pane.has-chrome { padding-top: 48px; }
 .onboarding-mast,
 .onboarding-actions { position: absolute; z-index: 2; left: 17px; right: 17px; }
-.onboarding-mast { top: calc(12px + env(safe-area-inset-top, 0px)); }
-.onboarding-actions { bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
+.onboarding-mast { top: calc(12px + var(--safe-top)); }
+.onboarding-actions { bottom: calc(8px + var(--safe-bottom)); }
 .slide-left-enter-active,
 .slide-left-leave-active,
 .slide-right-enter-active,
@@ -122,8 +122,8 @@ watch(step, async () => {
 .dock-leave-to,
 .mast-enter-from,
 .mast-leave-to { transform: translateX(100%); }
-.dock-leave-active { position: absolute; left: 17px; right: 17px; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
-.mast-leave-active { position: absolute; left: 17px; right: 17px; top: calc(12px + env(safe-area-inset-top, 0px)); }
+.dock-leave-active { position: absolute; left: 17px; right: 17px; bottom: calc(8px + var(--safe-bottom)); }
+.mast-leave-active { position: absolute; left: 17px; right: 17px; top: calc(12px + var(--safe-top)); }
 @media (prefers-reduced-motion: reduce) {
   .slide-left-enter-active,
   .slide-left-leave-active,
