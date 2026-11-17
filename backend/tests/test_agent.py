@@ -673,3 +673,146 @@ def test_reasoning_configuration_rejects_invalid_value(monkeypatch):
     monkeypatch.setenv("AGENT_LLM_REASONING_EFFORT", "invalid-secret-value")
     with pytest.raises(RuntimeError, match="^AGENT_LLM_REASONING_EFFORT is invalid$"):
         get_agent_settings()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("lines", "expected_chunks", "expected_code"),
+    [
+        (
+            [
+                'data: {"choices":[{"delta":{"content":"前半句"},"finish_reason":null}]}',
+                'data: {"choices":[{"delta":{"content":"但未正常结束"}}]}',
+            ],
+            [("前半句", None), ("但未正常结束", None)],
+            "model_incomplete_stream",
+        ),
+        (
+            [
+                'data: {"choices":[{"delta":{"content":"达到长度上限"},"finish_reason":"length"}]}',
+                'data: {"choices":[],"usage":{"prompt_tokens":14,"completion_tokens":8}}',
+                "data: [DONE]",
+            ],
+            [("达到长度上限", None), (None, {"input_tokens": 14, "output_tokens": 8})],
+            "model_length_limit",
+        ),
+        (
+            [
+                'data: {"choices":[{"delta":{"content":"部分输出"},'
+                '"finish_reason":"content_filter"}]}',
+                "data: [DONE]",
+            ],
+            [("部分输出", None)],
+            "model_content_filtered",
+        ),
+        (
+            [
+                'data: {"choices":[{"delta":{"content":"先发一点"}}]}',
+                'data: {"error":{"message":"upstream aborted"}}',
+                "data: [DONE]",
+            ],
+            [("先发一点", None)],
+            "model_unavailable",
+        ),
+    ],
+)
+async def test_model_stream_rejects_eof_and_abnormal_finish_reasons(
+    monkeypatch, lines, expected_chunks, expected_code
+):
+    fake = _FakeAsyncClient(_FakeStreamResponse(lines))
+    monkeypatch.setattr("app.services.agent.llm.httpx.AsyncClient", lambda **_kwargs: fake)
+
+    seen = []
+    with pytest.raises(AgentModelError, match=f"^{expected_code}$"):
+        async for item in stream_completion(
+            settings(
+                llm_base_url="https://llm.example.test/v1",
+                llm_api_key="test-key",
+                llm_model="test-model",
+            ),
+            history=[],
+            sources=(),
+        ):
+            seen.append(item)
+
+    assert seen == expected_chunks
+
+
+@pytest.mark.anyio
+async def test_http_partial_eof_and_length_truncation_never_mark_completed(tmp_path, monkeypatch):
+    from app.db.models import AgentUserUsage
+
+    app, database = make_api_app(tmp_path, monkeypatch, model=True)
+    try:
+        with database.session_factory() as session, session.begin():
+            make_information(session, title="百讲活动安排", content="今晚七点有交响音乐会。")
+
+        scripted_streams = [
+            [
+                'data: {"choices":[{"delta":{"content":"今晚七点有"}}]}',
+                # Fault injection: EOF without [DONE] and without network exception.
+            ],
+            [
+                'data: {"choices":[{"delta":{"content":"音乐会曲目包括"},'
+                '"finish_reason":"length"}]}',
+                'data: {"choices":[],"usage":{"prompt_tokens":40,"completion_tokens":16}}',
+                "data: [DONE]",
+            ],
+        ]
+
+        def fake_client(**_kwargs):
+            return _FakeAsyncClient(_FakeStreamResponse(scripted_streams.pop(0)))
+
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://test",
+            headers={"Authorization": "Bearer account-test-token"},
+        ) as client:
+            monkeypatch.setattr("app.services.agent.llm.httpx.AsyncClient", fake_client)
+            created = (await client.post("/agent/sessions")).json()
+            sid = created["session_id"]
+
+            eof_res = await client.post(
+                f"/agent/sessions/{sid}/messages/stream",
+                json={"content": "百讲活动", "client_request_id": str(uuid4())},
+            )
+            assert eof_res.status_code == 200
+            assert '"text":"今晚七点有"' in eof_res.text
+            assert '"code":"model_incomplete_stream"' in eof_res.text
+            assert "event: done" not in eof_res.text
+
+            restored = (await client.get(f"/agent/sessions/{sid}")).json()
+            eof_msg = restored["messages"][-1]
+            assert eof_msg["status"] == "failed"
+            assert eof_msg["error_code"] == "model_incomplete_stream"
+            assert eof_msg["content"] == "今晚七点有"
+            assert eof_msg["citations"][0]["title"] == "百讲活动安排"
+            rate_res = await client.post(
+                f"/agent/sessions/{sid}/messages/{eof_msg['id']}/rating",
+                json={"rating": "like"},
+            )
+            assert rate_res.status_code == 404
+
+            length_res = await client.post(
+                f"/agent/sessions/{sid}/messages/stream",
+                json={"content": "百讲活动", "client_request_id": str(uuid4())},
+            )
+            assert length_res.status_code == 200
+            assert '"code":"model_length_limit"' in length_res.text
+            assert "event: done" not in length_res.text
+
+            restored_after = (await client.get(f"/agent/sessions/{sid}")).json()
+            length_msg = restored_after["messages"][-1]
+            assert length_msg["status"] == "failed"
+            assert length_msg["error_code"] == "model_length_limit"
+            assert length_msg["content"] == "音乐会曲目包括"
+
+        with database.session_factory() as db:
+            usage = db.get(AgentUserUsage, ACCOUNT_ID)
+            assert usage is not None
+            assert usage.active_request_id is None
+            assert usage.tokens_reserved == 0
+            assert usage.tokens_used > 0
+    finally:
+        database.close()
+

@@ -393,6 +393,7 @@ def finish_request(
     input_tokens: int,
     output_tokens: int,
     estimated_usage: bool,
+    error_code: str | None = None,
 ) -> None:
     now = datetime.now(UTC)
     with factory() as session, session.begin():
@@ -434,6 +435,10 @@ def finish_request(
             output_tokens=output_tokens,
             estimated_usage=estimated_usage,
         )
+        if status != "completed" and error_code:
+            message["error_code"] = error_code
+        else:
+            message.pop("error_code", None)
         reserved = int(message.pop("reserved_tokens", 0))
         stored.payload = message
         if usage.active_request_id == request_id:
@@ -573,7 +578,12 @@ def _expire_request(db, row, usage, now):
         )
     )
     if message and message.payload.get("status") == "pending":
-        message.payload = {**message.payload, "status": "failed", "completed_at": now.isoformat()}
+        message.payload = {
+            **message.payload,
+            "status": "failed",
+            "error_code": "request_expired",
+            "completed_at": now.isoformat(),
+        }
     if usage.active_request_id == row.active_request_id:
         usage.tokens_used += usage.tokens_reserved
         usage.tokens_reserved = 0
