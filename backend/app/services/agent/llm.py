@@ -13,16 +13,20 @@ class AgentModelError(RuntimeError):
 
 
 def _bounded_history(history: list[dict[str, str]], max_chars: int) -> list[dict[str, str]]:
-    selected: list[dict[str, str]] = []
-    remaining = max_chars
-    for message in reversed(history[-8:]):
+    selected = {}
+    remaining = max(0, max_chars)
+    order = (
+        ([len(history) - 1] if history else [])
+        + [i for i in range(len(history) - 1) if history[i].get("priority")]
+        + list(range(len(history) - 2, -1, -1))
+    )
+    for i in dict.fromkeys(order):
         if remaining <= 0:
             break
-        content = message.get("content", "")
-        clipped = content[:remaining]
-        selected.append({"role": message.get("role", "user"), "content": clipped})
-        remaining -= len(clipped)
-    return list(reversed(selected))
+        content = history[i].get("content", "")[:remaining]
+        selected[i] = {"role": history[i].get("role", "user"), "content": content}
+        remaining -= len(content)
+    return [selected[i] for i in sorted(selected)]
 
 
 def completion_messages(
@@ -31,7 +35,9 @@ def completion_messages(
     history: list[dict[str, str]],
     sources: tuple[RetrievedInformation, ...],
 ) -> list[dict[str, str]]:
-    bounded_history = _bounded_history(history, settings.max_context_chars)
+    bounded_history = _bounded_history(
+        history, max(0, settings.max_context_chars // 2 if sources else settings.max_context_chars)
+    )
     history_chars = sum(len(message["content"]) for message in bounded_history)
     source_budget = max(0, settings.max_context_chars - history_chars)
     source_text = "\n\n".join(
@@ -53,7 +59,8 @@ def completion_messages(
             "content": (
                 "你是 LiLi，Livelife 的校园信息助手。你可以介绍自己的用途、"
                 "解释如何使用 Livelife，并自然回应问候；本项目提供校园公开信息检索和来源引用。"
-                "不要声称能访问实时课表、教室占用、选课系统、提醒、地图定位或其他未接入工具。"
+                "不要声称能访问实时课表、教室占用、选课系统、提醒、其他未接入工具。"
+                "可使用本轮 current_context 的时间和用户提供的位置，不得声称执行了地图操作。"
                 "回答校园事实时，必须以本轮 <public_records> 中的公开资料为证据。"
                 "历史对话只帮助理解上下文和补全指代，不是事实证据；不得沿用历史回答中的未验证事实或来源。"
                 "没有足够资料时，明确说明目前没有找到足够的公开资料；若指代不清，先询问用户具体指什么。"

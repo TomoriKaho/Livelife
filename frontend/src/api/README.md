@@ -30,7 +30,7 @@
 
 ## Agent 对话
 
-[agent.ts](agent.ts) 使用账户 Bearer 令牌认证，并用 `X-Agent-Session` 定位当前用户的短期对话。`sessionStorage` 的 v2 缓存绑定账户 ID 与 API 地址，旧 v1 匿名缓存不再恢复。登出、过期、注销、切换账号及跨标签账户变更时清除缓存并中止活动流；请求返回及 SSE 事件回填前检查身份代次，拒绝上一账号的迟到响应。账户 401 要求重新登录，不自动创建匿名会话。`agent-stream.mjs` 解析 SSE 的开始、来源、文本增量、用量、完成和错误事件；失败时保留用户问题供重试。附件不会加入请求。服务端字段和错误语义见[Agent API](../../../backend/app/api/agent/API.md)。
+[agent.ts](agent.ts) 使用账户 Bearer 令牌认证，并以路径会话 ID 定位当前用户的长期对话；分页列出、读取、发送、反馈与删除都由服务端核对归属。`sessionStorage` 的 v3 缓存仅包含当前会话 ID，并绑定账户 ID 与 API 地址，旧 v1/v2 缓存不再恢复。登出、过期、注销、切换账号及跨标签账户变更时清除缓存并中止活动流；请求返回及 SSE 事件回填前检查身份代次，拒绝上一账号的迟到响应。账户 401 要求重新登录，不自动创建匿名会话。`agent-stream.mjs` 解析 SSE 的开始、来源、文本增量、用量、完成和错误事件；失败时保留用户问题供重试。附件不会加入请求。服务端字段和错误语义见[Agent API](../../../backend/app/api/agent/API.md)。
 
 ## 新增业务请求
 
@@ -50,3 +50,5 @@
 ## 地图附近活动
 
 [`map-activities.ts`](map-activities.ts) 复用平台地址、Android 状态与后端 SHA 校验，调用标准 `GET /locations/activities`。传递设备经纬度、时间戳、半径、关键词与时间窗口；翻页固定服务端返回的时间边界，校验结构化地点、距离、活动及分页字段，按 ID 去重。十秒超时、旧请求取消、迟到响应与定位失效处理在 [`useNearbyActivities.ts`](../pages/map/useNearbyActivities.ts) 中维护。正式字段见[地图接口](../../../backend/app/api/locations/API.md)，启动步骤见[地图联调](../pages/map/README.md#本地信息系统联调)。
+
+Agent 的临时新对话只保存绑定账号与 API 地址的选中提示，空历史不自动创建；首次发送才调用创建。`pinAgentSession` 调用账号所有权保护的 PATCH 保存置顶，列表统一由服务端排序，细节见[Agent 契约](../../../backend/app/api/agent/API.md#临时新对话与置顶)。

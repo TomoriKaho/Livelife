@@ -1,12 +1,12 @@
 // Run in an isolated local Vite tab (no real credentials or model requests).
 import { authState, clearSession, readAuthToken, writeAuthToken, logout } from '../src/api/auth.ts';
-import { loadAgentSession, sendAgentMessage } from '../src/api/agent.ts';
+import { loadAgentSession, sendAgentMessage, createAgentSession, selectAgentSession } from '../src/api/agent.ts';
 
 export async function verifyAgentAuth() {
   const originalFetch = window.fetch;
   const savedLocal = localStorage.getItem('livelife.auth.token');
   const savedTab = sessionStorage.getItem('livelife.auth.token');
-  const savedAgent = sessionStorage.getItem('livelife.agent.session.v2');
+  const savedAgent = sessionStorage.getItem('livelife.agent.session.v3');
   const savedUser = authState.user;
   const results = [];
   const assert = (ok, message) => { if (!ok) throw new Error(message); results.push(message); };
@@ -34,9 +34,9 @@ export async function verifyAgentAuth() {
       assert(init.headers.Authorization === 'Bearer account-a', 'Agent creation sends account Bearer');
       return Response.json(conversation, { status: 201 });
     };
-    await loadAgentSession();
+    selectAgentSession(await createAgentSession());
     window.fetch = async (_url, init) => {
-      assert(init.headers.Authorization === 'Bearer account-a' && init.headers['X-Agent-Session'] === conversation.session_token, 'history sends separate account and conversation credentials');
+      assert(init.headers.Authorization === 'Bearer account-a' && !init.headers['X-Agent-Session'], 'history restores by account and conversation ID without a second bearer secret');
       return Response.json({ ...conversation, messages: [] });
     };
     await loadAgentSession();
@@ -48,10 +48,10 @@ export async function verifyAgentAuth() {
     select('account-b');
     release(Response.json({ ...conversation, messages: [{ content: 'private-a' }] }));
     assert((await stale).message === 'authentication_required', 'late history from account A is rejected after switch');
-    assert(sessionStorage.getItem('livelife.agent.session.v2') === null, 'account switch removes prior conversation cache');
+    assert(sessionStorage.getItem('livelife.agent.session.v3') === null, 'account switch removes prior conversation cache');
 
     window.fetch = async () => Response.json(conversation);
-    await loadAgentSession();
+    selectAgentSession(await createAgentSession());
     let requestSignal;
     window.fetch = async (_url, init) => {
       requestSignal = init.signal;
@@ -61,12 +61,12 @@ export async function verifyAgentAuth() {
         },
       }));
     };
-    const stream = sendAgentMessage(conversation.session_token, 'hello', crypto.randomUUID(), {}, new AbortController().signal).catch(error => error);
+    const stream = sendAgentMessage(conversation.session_id, 'hello', crypto.randomUUID(), {}, new AbortController().signal).catch(error => error);
     await waitFor(() => requestSignal);
     clearSession();
     await stream;
     assert(requestSignal.aborted && !readAuthToken(), 'logout/identity clearing aborts active SSE');
-    assert(sessionStorage.getItem('livelife.agent.session.v2') === null, 'logout clears Agent cache');
+    assert(sessionStorage.getItem('livelife.agent.session.v3') === null, 'logout clears Agent cache');
 
     select('account-c');
     calls = 0;
@@ -84,16 +84,16 @@ export async function verifyAgentAuth() {
     await oldLogout;
     assert(readAuthToken() === 'account-e', 'late logout response cannot clear a newer account');
 
-    sessionStorage.setItem('livelife.agent.session.v2', 'synthetic-cache');
+    sessionStorage.setItem('livelife.agent.session.v3', 'synthetic-cache');
     window.dispatchEvent(new StorageEvent('storage', { key: 'livelife.auth.token', storageArea: localStorage }));
-    assert(sessionStorage.getItem('livelife.agent.session.v2') === null && authState.user === null, 'cross-tab identity change invalidates Agent state');
+    assert(sessionStorage.getItem('livelife.agent.session.v3') === null && authState.user === null, 'cross-tab identity change invalidates Agent state');
     return results;
   } finally {
     window.fetch = originalFetch;
     clearSession();
     if (savedLocal !== null) localStorage.setItem('livelife.auth.token', savedLocal);
     if (savedTab !== null) sessionStorage.setItem('livelife.auth.token', savedTab);
-    if (savedAgent !== null) sessionStorage.setItem('livelife.agent.session.v2', savedAgent);
+    if (savedAgent !== null) sessionStorage.setItem('livelife.agent.session.v3', savedAgent);
     authState.user = savedUser;
   }
 }

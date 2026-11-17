@@ -5,7 +5,7 @@ import { authState, writeAuthToken, clearSession } from '../src/api/auth.ts';
 
 export async function verifyAgentConversation() {
   const originalFetch = window.fetch, originalRoute = router.currentRoute.value.fullPath;
-  const storageKey = 'livelife.agent.session.v2', savedSession = sessionStorage.getItem(storageKey);
+  const storageKey = 'livelife.agent.session.v3', savedSession = sessionStorage.getItem(storageKey);
   const savedLocal = localStorage.getItem('livelife.auth.token'), savedTab = sessionStorage.getItem('livelife.auth.token'), savedUser = authState.user;
   const requests = [], results = [], encoder = new TextEncoder();
   const assert = (condition, message) => { if (!condition) throw new Error(message); results.push(message); };
@@ -35,9 +35,9 @@ export async function verifyAgentConversation() {
     window.fetch = async (url, init) => {
       const path = new URL(url instanceof Request ? url.url : String(url), location.href).pathname;
       if (path.endsWith('/auth/me')) return Response.json({ id: 'browser-user', email: 'browser@stu.pku.edu.cn' });
-      if (path.endsWith('/agent/sessions')) return Response.json(session, { status: 201 });
-      if (path.endsWith('/agent/sessions/current')) return Response.json({ ...session, messages: [] });
-      if (path.endsWith('/agent/messages/stream')) {
+      if (path.endsWith('/agent/sessions')) return init?.method === 'POST' ? Response.json(session, {status:201}) : Response.json({items:[],next_offset:null});
+      if (path.endsWith(`/agent/sessions/${session.session_id}`)) return Response.json({ ...session, messages: [] });
+      if (path.endsWith('/messages/stream')) {
         const request = { body: JSON.parse(init.body), controller: null };
         requests.push(request);
         return new Response(new ReadableStream({
