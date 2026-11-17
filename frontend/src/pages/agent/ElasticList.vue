@@ -31,6 +31,8 @@ function createScroll() {
   scroll = new BScroll(viewport.value, {
     scrollY: true,
     scrollX: false,
+    // Report while dragging and during momentum, before the next SSE update.
+    probeType: 3,
     click: true,
     disableMouse: false,
     disableTouch: false,
@@ -59,14 +61,15 @@ function keyboard(event) {
   if (event.target !== viewport.value || !scroll || event.ctrlKey || event.metaKey || event.altKey) return;
   const page = viewport.value.clientHeight * .85;
   const delta = { ArrowDown: -40, ArrowUp: 40, PageDown: -page, PageUp: page, ' ': event.shiftKey ? page : -page }[event.key];
-  let target;
-  if (event.key === 'Home') target = 0;
-  else if (event.key === 'End') target = scroll.maxScrollY;
-  else if (delta != null) target = scroll.y + delta;
-  else return;
+  if (event.key !== 'Home' && event.key !== 'End' && delta == null) return;
   event.preventDefault();
   scroll.stop();
-  scroll.scrollTo(0, Math.max(scroll.maxScrollY, Math.min(0, target)), motion.matches ? 0 : 180);
+  // Vue may have rendered a delta before ResizeObserver refreshed the range.
+  refresh();
+  const target = event.key === 'Home' ? 0 : event.key === 'End' ? scroll.maxScrollY : scroll.y + delta;
+  const duration = motion.matches ? 0 : 180;
+  scroll.scrollTo(0, Math.max(scroll.maxScrollY, Math.min(0, target)), duration);
+  if (duration === 0) reportScrollState();
 }
 function focusItem(event) {
   if (!scroll || event.target === viewport.value) return;

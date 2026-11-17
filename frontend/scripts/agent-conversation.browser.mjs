@@ -25,8 +25,12 @@ export async function verifyAgentConversation() {
   const conversationContent = () => conversation()?.querySelector('.elastic-list-content');
   const position = () => {
     const viewport = conversation().getBoundingClientRect(), content = conversationContent().getBoundingClientRect();
-    return { atTop: Math.abs(content.top - viewport.top) < 3, atBottom: Math.abs(content.bottom - viewport.bottom) < 3 };
+    return { top: content.top - viewport.top, atTop: Math.abs(content.top - viewport.top) < 3, atBottom: Math.abs(content.bottom - viewport.bottom) < 3 };
   };
+  const paint = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const mouse = (target, type, x, y) => target.dispatchEvent(new MouseEvent(type, {
+    bubbles: true, cancelable: true, button: 0, buttons: type === 'mouseup' ? 0 : 1, clientX: x, clientY: y,
+  }));
   const input = async text => {
     editor().value = text; editor().dispatchEvent(new Event('input', { bubbles: true }));
     await waitFor(() => !sendButton().disabled, 'Send button did not become ready');
@@ -91,13 +95,37 @@ export async function verifyAgentConversation() {
     await waitFor(() => position().atTop, 'Home did not move the conversation away from the bottom');
     emit(3, 'delta', { text: '用户正在阅读历史时不应跳回底部。'.repeat(80) });
     await waitFor(() => bubbles()[3]?.textContent.includes('不应跳回底部'), 'Long streaming delta did not render');
-    assert(position().atTop, 'Streaming content moved a reader who had scrolled up');
+    assert(position().atTop, 'streaming preserves a reader who has scrolled up');
     conversation().dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
     await waitFor(() => position().atBottom, 'End did not move the conversation to the bottom');
     emit(3, 'delta', { text: '继续跟随底部。'.repeat(40) });
     await waitFor(() => bubbles()[3]?.textContent.includes('继续跟随底部'), 'Second streaming delta did not render');
     await waitFor(() => position().atBottom, 'Streaming content did not keep a bottom reader at the bottom');
+    await paint();
+    const viewport = conversation().getBoundingClientRect(), x = viewport.left + viewport.width / 2;
+    try {
+      mouse(conversation(), 'mousedown', x, viewport.top + 40);
+      mouse(window, 'mousemove', x, viewport.top + 100);
+      mouse(window, 'mousemove', x, viewport.top + 160);
+      await paint();
+      const readingTop = position().top;
+      assert(!position().atBottom, 'drag leaves the bottom before release');
+      emit(3, 'delta', { text: '拖动未松手时收到的内容。'.repeat(40) });
+      await waitFor(() => bubbles()[3]?.textContent.includes('拖动未松手'), 'Delta during dragging did not render');
+      await paint();
+      assert(Math.abs(position().top - readingTop) < 3, 'streaming preserves the reading position during an active drag');
+    } finally {
+      mouse(window, 'mouseup', x, viewport.top + 160);
+    }
     complete(3);
+    await waitFor(() => !document.querySelector('#app .thinking-message'), 'Dragged response did not complete');
+    conversation().focus({ preventScroll: true });
+    conversation().dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    await waitFor(() => position().atTop, 'Home after dragging did not reach history');
+    await input('阅读历史后主动发送'); sendButton().click();
+    await waitFor(() => requests.length === 5 && users().length === 4, 'Send while reading history did not append a user message');
+    await waitFor(() => position().atBottom, 'Sending while reading history did not force the bottom');
+    complete(4);
     results.push('sending forces the bottom while streaming respects manual reading position');
     return results;
   } finally {
