@@ -20,6 +20,7 @@ export const pageMeta = {
 import { computed, ref } from 'vue';
 import { useCalendarActivities } from './calendar/useCalendarActivities';
 import AppIcon from '../components/AppIcon.vue';
+import FavoriteButton from '../components/FavoriteButton.vue';
 import CalendarIcon from './calendar/CalendarIcon.vue';
 import PencilSwatch from './calendar/PencilSwatch.vue';
 import {
@@ -265,7 +266,7 @@ function dayPencil(key) {
             </p>
           </div>
         </a>
-
+        <FavoriteButton :id="item.id" :platform="item.platform" />
       </article>
     </div>
     <p v-else-if="!loading && !error" class="empty">{{ category === 'all' ? '这一天还没有安排活动' : '这一天没有这类活动' }}</p>
@@ -312,14 +313,15 @@ function dayPencil(key) {
 .agenda-head p { margin: 0; color: var(--muted); font-size: 14px; display: inline-flex; align-items: center; gap: 2px; }
 .more { width: 14px; height: 14px; transform: rotate(-90deg); }
 .agenda { display: flex; flex-direction: column; gap: 10px; }
-.event-card { position: relative; display: flex; align-items: stretch; background: transparent; }
-.accent { width: 5px; margin: 12px 0 12px 8px; border-radius: 4px; flex: none; background: var(--ink); }
+.event-card { position: relative; display: grid; grid-template-columns: 5px minmax(0, 1fr); column-gap: 8px; padding: 12px; background: transparent; }
+.accent { grid-row: 1 / 3; width: 5px; border-radius: 4px; background: var(--ink); }
 .accent[data-accent='pink'] { background: #e99796; }
 .accent[data-accent='blue'] { background: #5ea7e5; }
 .accent[data-accent='yellow'] { background: #f0b24a; }
 .accent[data-accent='lavender'] { background: #ab94de; }
 .accent[data-accent='mint'] { background: #7ec9a8; }
-.event-link { flex: 1; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: center; padding: 10px 40px 10px 8px; color: inherit; }
+.event-link { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: center; color: inherit; }
+.event-card > :deep(.favorite-control) { grid-column: 2; justify-self: end; min-width: 0; max-width: 100%; margin: 10px 0 0; }
 .badge { width: 40px; height: 40px; display: grid; place-items: center; background: transparent; color: var(--ink); }
 .event-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px; min-width: 0; }
 .event-kind { margin: 0; font-size: 13px; line-height: 1.3; flex: none; }

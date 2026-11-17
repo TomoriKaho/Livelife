@@ -1,45 +1,66 @@
-<script setup>
-import { computed, ref } from 'vue';
+<script setup lang="ts">
+import { computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { RouterLink } from 'vue-router';
-import { categories } from '../../data/activities.js';
-import { activityStatus, favoriteTabs, savedActivities, removeSaved, activityMapRoute, activityDetailRoute } from '../../data/favorites.js';
+import { authState, readAuthToken } from '../../api/auth';
+import type { FavoriteItem, FavoriteStatus } from '../../api/favorites';
+import { favorites } from '../../state/favorites';
 import MoreIcon from './MoreIcon.vue';
-const active = ref('upcoming');
-const grouped = computed(() => Object.fromEntries(favoriteTabs.map(tab => [tab.id,
-  savedActivities.value.filter(item => activityStatus(item) === tab.id)
-    .sort((a, b) => `${a.date} ${a.start}`.localeCompare(`${b.date} ${b.start}`))])));
-const emit = defineEmits(['remove']);
-function remove(item) { removeSaved(item.id); emit('remove', `已移除「${item.title}」`); }
-</script>
 
+const state = favorites.state;
+const tabs: { id: FavoriteStatus; label: string }[] = [
+  { id: 'upcoming', label: '待开始' }, { id: 'ongoing', label: '进行中' },
+  { id: 'ended', label: '已结束' }, { id: 'unknown', label: '时间待定' },
+];
+const loggedIn = computed(() => { void authState.revision; return Boolean(readAuthToken()); });
+const emit = defineEmits<{ remove: [message: string] }>();
+async function remove(item: FavoriteItem) {
+  if (await favorites.set(item.id, false)) emit('remove', `已移除「${item.title || '未命名活动'}」`);
+}
+function select(status: FavoriteStatus) { if (state.category !== status) { state.category = status; void favorites.load(); } }
+const format = (value: string) => new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value));
+function time(item: FavoriteItem) {
+  if (!item.start_at) return `${item.activity_date || '日期未知'} · 开始时间待定`;
+  return `${format(item.start_at)}${item.end_at ? ` – ${format(item.end_at)}` : '（结束时间未知，按时间点分类）'}`;
+}
+onMounted(() => { if (!state.loading) void favorites.load(); });
+watch(() => authState.revision, () => { if (readAuthToken()) void favorites.load(); });
+const timer = setInterval(() => { if (!document.hidden && readAuthToken() && !state.loading) void favorites.load(); }, 60_000);
+onBeforeUnmount(() => clearInterval(timer));
+</script>
 <template>
   <section class="favorites-list" aria-label="管理收藏的活动">
-    <p class="favorites-lede">喜欢的活动，放在这里慢慢发现。<small>演示时间：10月3日 15:00</small></p>
-    <div class="favorite-tabs" role="tablist" aria-label="收藏活动状态">
-      <button v-for="tab in favoriteTabs" :id="`favorite-tab-${tab.id}`" :key="tab.id" v-sketch class="sketch" :data-pencil="active === tab.id ? tab.pencil : undefined" type="button" role="tab" :aria-selected="active === tab.id" aria-controls="favorite-panel" @click="active = tab.id">{{ tab.label }}<small>{{ grouped[tab.id].length }}</small></button>
-    </div>
-    <div id="favorite-panel" role="tabpanel" :aria-labelledby="`favorite-tab-${active}`">
-      <article v-for="item in grouped[active]" :key="item.id" v-sketch class="favorite-card sketch" :aria-label="item.title">
-        <div class="favorite-meta"><span v-sketch class="category-tag sketch" :data-pencil="categories[item.category].pencil">{{ item.label }}</span><small>{{ favoriteTabs.find(tab => tab.id === active).label }}</small></div>
-        <h2>{{ item.title }}</h2>
-        <p><MoreIcon name="clock" />{{ item.date.slice(5).replace('-', '月') }}日 · {{ item.time }}</p>
-        <p><MoreIcon name="pin" />{{ item.place }}</p>
-        <div class="favorite-actions">
-          <RouterLink v-sketch class="sketch" data-pencil="blue" :to="activityMapRoute(item)"><MoreIcon name="map" /><span>跳转至地图页</span></RouterLink>
-          <RouterLink v-sketch class="sketch" data-pencil="yellow" :to="activityDetailRoute(item)"><MoreIcon name="detail" /><span>跳转至详情页</span></RouterLink>
-          <button class="remove-favorite" type="button" :aria-label="`移除收藏：${item.title}`" title="移除收藏" @click="remove(item)"><MoreIcon name="trash" /></button>
-        </div>
-      </article>
-      <div v-if="!grouped[active].length" class="empty-favorites"><MoreIcon name="heart" /><p>这里暂时没有收藏的活动。</p><RouterLink v-sketch class="sketch" data-pencil="yellow" to="/calendar">去日历发现活动</RouterLink></div>
-    </div>
+    <p class="favorites-lede">喜欢的活动，放在这里慢慢发现。<small>按北京时间及已知起止时间分类；不推测缺失时间。</small></p>
+    <p v-if="!loggedIn">登录后可保存并恢复自己的收藏。<RouterLink to="/login">前往登录</RouterLink></p>
+    <template v-else>
+      <div class="favorite-tabs" role="tablist" aria-label="收藏活动状态">
+        <button v-for="tab in tabs" :key="tab.id" v-sketch class="sketch" :data-pencil="state.category === tab.id ? 'yellow' : undefined" type="button" role="tab" :aria-selected="state.category === tab.id" @click="select(tab.id)">{{ tab.label }}<small>{{ state.counts[tab.id] }}</small></button>
+      </div>
+      <button v-sketch class="reload-favorites sketch" type="button" :disabled="state.loading" @click="favorites.load()">重新加载收藏</button>
+      <p v-if="state.loading" role="status">正在加载收藏…</p>
+      <p v-if="state.error" class="favorites-error" role="alert">{{ state.error }}<button v-sketch class="retry-favorites sketch" type="button" @click="favorites.load()">重试</button></p>
+      <div role="tabpanel" :aria-label="tabs.find(tab => tab.id === state.category)?.label">
+        <article v-for="item in state.items" :key="item.id" v-sketch class="favorite-card sketch" :aria-label="item.title || '未命名活动'">
+          <div class="favorite-meta"><span>{{ item.source_name || item.platform }}</span><small>{{ item.available ? tabs.find(tab => tab.id === item.status)?.label : '内容已不可用 · 收藏时信息' }}</small></div>
+          <h2>{{ item.title || '未命名活动' }}</h2>
+          <p><MoreIcon name="clock" />{{ time(item) }}</p>
+          <p v-if="item.available"><MoreIcon name="pin" />{{ item.location || item.place?.name || '地点未提供' }}</p>
+          <p v-else>原活动已被清理或不再可用；这里保留最小识别信息。</p>
+          <div class="favorite-actions">
+            <RouterLink v-if="item.available && item.place?.building_id" v-sketch class="sketch" data-pencil="blue" :to="{ path: '/map', query: { activity: item.id } }"><MoreIcon name="map" />查看地图</RouterLink>
+            <a v-if="item.available && item.source_url" v-sketch class="sketch" data-pencil="yellow" :href="item.source_url" target="_blank" rel="noopener noreferrer">查看原文</a>
+            <button v-sketch class="remove-favorite sketch" type="button" :disabled="state.pending[item.id]" :aria-label="`移除收藏：${item.title || '未命名活动'}`" @click="remove(item)">{{ state.pending[item.id] ? '移除中…' : '移除收藏' }}</button>
+          </div>
+          <p v-if="state.errors[item.id]" role="alert">{{ state.errors[item.id] }}</p>
+        </article>
+        <div v-if="state.loaded && !state.loading && !state.error && !state.items.length" class="empty-favorites"><MoreIcon name="heart" /><p>这里暂时没有收藏的活动。</p><RouterLink to="/calendar">去日历发现活动</RouterLink></div>
+        <button v-if="state.next !== null" v-sketch class="load-more sketch" type="button" :disabled="state.loading" @click="favorites.load(true)">加载更多收藏</button>
+      </div>
+    </template>
   </section>
 </template>
-
 <style scoped>
-.favorites-lede { margin: 5px 2px 20px; font-size: 14px; line-height: 1.8; }.favorites-lede small { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; }
-.favorite-tabs { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin-bottom: 19px; }.favorite-tabs button { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 8px 4px; background: transparent; font-size: 13px; }.favorite-tabs small { font-size: 11px; }
-.favorite-card { padding: 14px 13px 12px; margin-bottom: 15px; }.favorite-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }.category-tag { padding: 4px 10px; font-size: 11px; }.favorite-meta>small { color: var(--muted); font-size: 11px; }.favorite-card h2 { margin: 14px 0 10px; font-size: 17px; line-height: 1.5; font-weight: 400; overflow-wrap: anywhere; }.favorite-card p { display: flex; align-items: center; gap: 7px; margin: 7px 0; color: var(--muted); font-size: 12px; line-height: 1.6; }.favorite-card p .more-icon { width: 17px; height: 17px; }
-.favorite-actions { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) 44px; gap: 7px; margin-top: 14px; }.favorite-actions a { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 44px; padding: 7px 4px; font-size: 11px; text-decoration: none; color: var(--ink); }.favorite-actions a .more-icon { width: 17px; height: 17px; }.remove-favorite { display: grid; place-items: center; width: 44px; height: 44px; border: 0; background: transparent; color: #92333e; }.remove-favorite .more-icon { width: 23px; height: 23px; }
-.empty-favorites { display: grid; justify-items: center; gap: 14px; padding: 42px 10px; color: var(--muted); }.empty-favorites>.more-icon { width: 42px; height: 42px; }.empty-favorites p { font-size: 14px; margin: 0; }.empty-favorites a { padding: 12px 18px; color: var(--ink); text-decoration: none; font-size: 13px; }
-@media(max-width:359px) { .favorite-card { padding-inline: 10px; }.favorite-actions { gap: 5px; }.favorite-actions a { flex-direction: column; font-size: 10px; gap: 2px; } }
+.favorites-lede { margin: 5px 2px 20px; font-size: 14px; line-height: 1.8; }.favorites-lede small { display: block; color: var(--muted); font-size: 11px; }
+.favorite-tabs { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 7px; margin-bottom: 12px; }.favorite-tabs button { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px; min-height: 44px; padding: 8px 3px; background: transparent; font-size: 12px; }.favorite-tabs small { font-size: 11px; }
+.favorite-card { padding: 14px 13px 12px; margin: 15px 0; }.favorite-meta { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: 12px; }.favorite-meta small { color: var(--muted); }.favorite-card h2 { margin: 14px 0 10px; font-size: 17px; line-height: 1.5; font-weight: 400; overflow-wrap: anywhere; }.favorite-card p { display: flex; align-items: center; gap: 7px; margin: 7px 0; color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }.more-icon { width: 18px; height: 18px; flex: none; }
+.favorite-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }.favorite-actions a,.favorite-actions button,.reload-favorites,.load-more,.retry-favorites { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 44px; padding: 8px 10px; font-size: 12px; text-decoration: none; color: var(--ink); background: transparent; }.favorites-error { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; line-height: 1.6; }.favorite-actions .remove-favorite { color: #92333e; }.empty-favorites { display: grid; justify-items: center; gap: 14px; padding: 32px 10px; color: var(--muted); }.empty-favorites p { font-size: 14px; margin: 0; }button:disabled { opacity: .6; }
 </style>

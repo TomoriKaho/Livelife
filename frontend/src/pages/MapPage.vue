@@ -7,7 +7,10 @@ import { registerBackHandler } from '../platform/android-navigation';
 import { computed, defineAsyncComponent, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue';
 import { sessionShuffle } from '../data/session-style';
 import { RouterLink, useRoute } from 'vue-router';
-import { saved, toggleSave, activityDetailRoute } from '../data/favorites.js';
+import { activityDetailRoute } from '../data/favorites.js';
+import FavoriteButton from '../components/FavoriteButton.vue';
+import { favoriteDetail, isInformationId } from '../api/favorites';
+import { authState } from '../api/auth';
 import AppIcon from '../components/AppIcon.vue';
 import ActivityDrawer from './map/ActivityDrawer.vue';
 import OsmAttribution from './map/OsmAttribution.vue';
@@ -26,6 +29,9 @@ const route = useRoute(), focusPoint = ref(null), routedActivity = ref(null);
 const mode = ref('3d'), filter = ref('all'), search = ref(''), selected = ref(null), floor = ref(2), scene = ref(null), detail = ref(null);
 const deviceLocation = ref(null), outsideCampus = ref(false);
 const liveDetail = ref(null);
+const favoriteRouteError = ref('');
+const favoriteRouteLoading = ref(false);
+let favoriteRouteGeneration = 0;
 const { items: matchedActivities, buildings: nearbyBuildings, radius, keyword, today, state: activityState, message: activityMessage, retry: refreshActivities } = useNearbyActivities();
 const nearbyActivities = matchedActivities;
 const drawer = ref(null), mapFocusInset = ref(180), drawerOcclusion = ref(180), drawerExpandedHeight = ref(540);
@@ -87,7 +93,7 @@ function buildingPencil(id) { return venuePencil[id] || 'yellow'; }
 function roomLabel(activity) { return /^\d/.test(activity.room) ? `${currentBuilding.value?.label || '教室'} ${activity.room}` : activity.room; }
 function startTime(time) { return time.split('–')[0]; }
 function liveTime(value) { return new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value)); }
-function liveTimeRange(item) { return `${liveTime(item.start_at)}${item.end_at ? `–${liveTime(item.end_at)}` : ' 开始'}`; }
+function liveTimeRange(item) { return item.start_at ? `${liveTime(item.start_at)}${item.end_at ? `–${liveTime(item.end_at)}` : ' 开始（结束时间未知）'}` : '开始时间待定'; }
 const locationState = computed(() => locationTrackingState.value === 'located' && outsideCampus.value ? 'outside-campus' : locationTrackingState.value);
 const locationHint = computed(() => ({
   locating: '正在获取当前位置…',
@@ -191,6 +197,8 @@ async function requestDeviceHeadingPermission() {
   try { await requestPermission.call(orientationEvent); } catch { /* requires an explicit user gesture on some browsers */ }
 }
 function openLiveActivity(activity) {
+  favoriteRouteGeneration++; favoriteRouteLoading.value = false;
+  favoriteRouteError.value = ''; routedActivity.value = null;
   if (!selected.value) drawerBeforeSelection = drawer.value?.getState() ?? 'middle';
   selected.value = activity.building; liveDetail.value = activity; detail.value = null;
   drawer.value?.setState('expanded');
@@ -223,12 +231,14 @@ const removeBackHandler = registerBackHandler(() => {
   if (search.value) { search.value = ''; return true; }
   return false;
 });
-onBeforeUnmount(() => { removeBackHandler(); cancelAnimationFrame(deviceHeadingFrame); stopDeviceHeadingListener(); });
+onBeforeUnmount(() => { favoriteRouteGeneration++; removeBackHandler(); cancelAnimationFrame(deviceHeadingFrame); stopDeviceHeadingListener(); });
 function closeDetail() {
   detail.value = null;
   drawer.value?.setState(drawer.value?.getState() || 'expanded');
 }
 function select(id) {
+  favoriteRouteGeneration++;
+  favoriteRouteLoading.value = false; favoriteRouteError.value = '';
   focusPoint.value = null; routedActivity.value = null; detail.value = null; liveDetail.value = null;
   if (id) {
     // 只记录进入建筑探索前的档位，切换建筑或查看详情不覆盖这份状态。
@@ -260,6 +270,7 @@ function syncDeviceLocation(location) {
 async function centerOnDeviceLocation() {
   const point = deviceLocation.value?.point;
   if (!point || !scene.value) return false;
+  favoriteRouteGeneration++; favoriteRouteLoading.value = false;
   centeredOnDevice = true;
   // Explicitly locating exits exploration and restores each map's fixed
   // location view: CampusPlan resets scale and CampusScene resets its camera
@@ -298,6 +309,28 @@ async function setMode(value) {
 async function applyActivityRoute() {
   const raw = route.query.activity;
   const id = Array.isArray(raw) ? raw[0] : raw;
+  const generation = ++favoriteRouteGeneration, revision = authState.revision;
+  favoriteRouteError.value = '';
+  favoriteRouteLoading.value = false;
+  if (id && isInformationId(id)) {
+    // A delayed first GPS fix must not override this explicit saved-activity route.
+    centeredOnDevice = true;
+    favoriteRouteLoading.value = true;
+    liveDetail.value = null; routedActivity.value = null;
+    try {
+      const item = await favoriteDetail(id);
+      if (generation !== favoriteRouteGeneration || revision !== authState.revision) return;
+      if (!item.available || !item.place?.building_id) { favoriteRouteError.value = '收藏活动已不可用或没有可显示的地图地点。'; return; }
+      centeredOnDevice = true;
+      openLiveActivity({ ...item, location: item.location || item.place.name, building: item.place.building_id, summary: '已收藏活动，完整内容请查看来源原文。' });
+      routedActivity.value = { id: item.id, title: item.title || '收藏活动' };
+    } catch (error) {
+      if (generation === favoriteRouteGeneration && revision === authState.revision) favoriteRouteError.value = error instanceof Error ? error.message : '收藏活动加载失败。';
+    } finally {
+      if (generation === favoriteRouteGeneration && revision === authState.revision) favoriteRouteLoading.value = false;
+    }
+    return;
+  }
   const item = activities.find(activity => activity.id === id);
   if (!item) return;
   filter.value = 'all'; mode.value = '3d';
@@ -310,10 +343,13 @@ async function applyActivityRoute() {
 }
 onMounted(() => { void startDeviceHeadingListener(); applyActivityRoute(); });
 watch(() => route.query.activity, applyActivityRoute);
+watch(() => authState.revision, () => {
+  if (isInformationId(String(route.query.activity || ''))) { liveDetail.value = null; routedActivity.value = null; void applyActivityRoute(); }
+});
 watch(currentLocation, syncDeviceLocation, { immediate: true });
 watch(scene, value => { if (value && !centeredOnDevice) void centerOnDeviceLocation(); });
 // A changed query must not leave an old event detail visible.
-watch(matchedActivities, records => { if (liveDetail.value) liveDetail.value = records.find(item => item.id === liveDetail.value.id) || null; });
+watch(matchedActivities, records => { if (liveDetail.value && routedActivity.value?.id !== liveDetail.value.id) liveDetail.value = records.find(item => item.id === liveDetail.value.id) || null; });
 const mapActivities = computed(() => matchedActivities.value.map(item => ({ ...item, floor: null })));
 </script>
 
@@ -351,6 +387,8 @@ const mapActivities = computed(() => matchedActivities.value.map(item => ({ ...i
       </div>
     </div>
     <ActivityDrawer ref="drawer" @measure="mapFocusInset = $event" @layout="onDrawerLayout">
+      <p v-if="favoriteRouteLoading" role="status">正在读取收藏活动…</p>
+      <p v-if="favoriteRouteError" role="alert">{{ favoriteRouteError }}<button type="button" @click="applyActivityRoute">重试</button></p>
       <details v-if="!selected && !detail" class="query-filters">
         <summary>筛选 · {{ radius }} 米 · {{ today ? '仅今天' : '今天至后天' }}</summary>
         <label>范围 <select v-model.number="radius" aria-label="搜索半径"><option :value="100">100 米</option><option :value="300">300 米</option><option :value="500">500 米</option><option :value="1000">1 千米</option></select></label>
@@ -362,6 +400,7 @@ const mapActivities = computed(() => matchedActivities.value.map(item => ({ ...i
         <section class="activity-intro" :aria-label="liveDetail.title || '活动详情'">
           <div class="intro-head"><button class="intro-back" type="button" aria-label="返回建筑" @click="liveDetail = null"><AppIcon name="back" /></button><span class="live-label">{{ liveDetail.platform === "demo" ? "合成演示活动" : (liveDetail.source_name || "已查询活动") }}</span></div>
           <h2 class="live-title">{{ liveDetail.title || '未命名活动' }}</h2>
+          <FavoriteButton :id="liveDetail.id" :platform="liveDetail.platform" />
           <p class="intro-fact"><AppIcon name="clock" /><strong>{{ liveTimeRange(liveDetail) }}</strong></p>
           <p class="intro-fact"><AppIcon name="pin" /><strong>{{ liveDetail.location }}</strong></p>
           <p class="intro-fact">{{ liveDetail.location_resolution?.room ? `教室 ${liveDetail.location_resolution.room}` : "场地详情见原文" }} · {{ liveDetail.location_resolution?.floor || "楼层未确认" }}</p><p class="intro-copy">{{ liveDetail.summary }}</p>
@@ -378,10 +417,7 @@ const mapActivities = computed(() => matchedActivities.value.map(item => ({ ...i
           <div class="intro-title-row">
             <h2 v-sketch :key="detail.id" class="intro-name sketch sketch-white sketch-cast" :data-cast="activityPencil(detail.category)">{{ detail.title }}</h2>
             <div class="intro-actions">
-              <button class="intro-save" type="button" :aria-pressed="saved.has(detail.id)" :aria-label="saved.has(detail.id) ? '取消收藏' : '收藏活动'" @click="toggleSave(detail.id)">
-                <span v-sketch :key="detail.id" class="bookmark-pencil sketch sketch-fill-only" :class="saved.has(detail.id) ? 'pencil-fill' : 'sketch-white'" :data-pencil="saved.has(detail.id) ? 'yellow' : undefined"></span>
-                <svg viewBox="0 0 24 32" aria-hidden="true"><path d="M4 2.5h16v26l-8-6-8 6Z" /></svg>
-              </button>
+              <FavoriteButton :id="detail.id" platform="demo" />
               <RouterLink class="intro-view" :to="activityDetailRoute(detail)" aria-label="查看活动详情">
                 <span v-sketch class="eye-pencil sketch sketch-white sketch-fill-only" aria-hidden="true"></span>
                 <AppIcon name="eye" />

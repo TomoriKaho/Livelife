@@ -6,7 +6,7 @@
 
 [`map-activities.ts`](map-activities.ts) 共用分页、响应校验、Android 状态及预览后端 SHA 检查，读取标准 [`GET /locations/activities`](../../../backend/app/api/locations/API.md)。地图传设备坐标、半径和新鲜时间戳，由信息系统完成筛选；日历不传坐标，传入当前月历或周历的北京时间边界，响应距离为 null。二者使用同一活动 ID 和地点库，不在前端解析地点。
 
-加载、十秒超时、取消旧请求和迟到响应处理分别位于地图 hook 和 [`useCalendarActivities.ts`](../pages/calendar/useCalendarActivities.ts)。日历切换窗口时清除旧条目，失败显示重试，空库不回退样例。真实活动卡片打开来源原文；现有样例详情/收藏不接收真实活动 UUID。日历信源按钮对已完整分页取得的当前窗口数据做显示筛选。
+加载、十秒超时、取消旧请求和迟到响应处理分别位于地图 hook 和 [`useCalendarActivities.ts`](../pages/calendar/useCalendarActivities.ts)。日历切换窗口时清除旧条目，失败显示重试，空库不回退样例。真实活动卡片打开来源原文；现有样例详情不接收真实活动 UUID，账号收藏使用该 UUID。日历信源按钮对已完整分页取得的当前窗口数据做显示筛选。
 
 ## hello 调用与失败处理
 
@@ -32,6 +32,8 @@
 
 [agent.ts](agent.ts) 使用账户 Bearer 令牌认证，并以路径会话 ID 定位当前用户的长期对话；分页列出、读取、发送、反馈与删除都由服务端核对归属。`sessionStorage` 的 v3 缓存仅包含当前会话 ID，并绑定账户 ID 与 API 地址，旧 v1/v2 缓存不再恢复。登出、过期、注销、切换账号及跨标签账户变更时清除缓存并中止活动流；请求返回及 SSE 事件回填前检查身份代次，拒绝上一账号的迟到响应。账户 401 要求重新登录，不自动创建匿名会话。`agent-stream.mjs` 解析 SSE 的开始、来源、文本增量、用量、完成和错误事件；失败时保留用户问题供重试。附件不会加入请求。服务端字段和错误语义见[Agent API](../../../backend/app/api/agent/API.md)。
 
+Agent 的临时新对话只保存绑定账号与 API 地址的选中提示，空历史不自动创建；首次发送才调用创建。`pinAgentSession` 调用账号所有权保护的 PATCH 保存置顶，列表统一由服务端排序，细节见[Agent 契约](../../../backend/app/api/agent/API.md#临时新对话与置顶)。
+
 ## 新增业务请求
 
 按已确认的模块契约实现请求和类型，复用平台地址配置；后端未完成时明确标识 Mock。接口变化同步受影响的调用方、错误处理和测试，不将部署私钥或其他服务端秘密打包进客户端。
@@ -51,4 +53,8 @@
 
 [`map-activities.ts`](map-activities.ts) 复用平台地址、Android 状态与后端 SHA 校验，调用标准 `GET /locations/activities`。传递设备经纬度、时间戳、半径、关键词与时间窗口；翻页固定服务端返回的时间边界，校验结构化地点、距离、活动及分页字段，按 ID 去重。十秒超时、旧请求取消、迟到响应与定位失效处理在 [`useNearbyActivities.ts`](../pages/map/useNearbyActivities.ts) 中维护。正式字段见[地图接口](../../../backend/app/api/locations/API.md)，启动步骤见[地图联调](../pages/map/README.md#本地信息系统联调)。
 
-Agent 的临时新对话只保存绑定账号与 API 地址的选中提示，空历史不自动创建；首次发送才调用创建。`pinAgentSession` 调用账号所有权保护的 PATCH 保存置顶，列表统一由服务端排序，细节见[Agent 契约](../../../backend/app/api/agent/API.md#临时新对话与置顶)。
+## 活动收藏
+
+[`favorites.ts`](favorites.ts) 使用账户 Bearer 调用[收藏 API](../../../backend/app/api/favorites/API.md)，实现幂等 PUT/DELETE、分页、最多 100 个 ID 的批量状态及本人收藏摘要。十秒超时、响应结构/安全外链校验、Android 安装包状态和预览后端 SHA 门禁均在请求层执行；401 只在仍为原凭证时清除会话。服务端按登录态确定所有者，客户端不提交 user_id。
+
+[`../state/favorites.ts`](../state/favorites.ts) 和 `favorites-core.ts` 管理共享内存，不在浏览器持久化收藏副本。状态查询在同一微任务中合并，分页按 ID 去重；写入成功才更新，按目标防重复提交。登出、过期和账号切换清空；身份、分类请求代次及单条写入版本防止旧响应回填。重新进入页面/回到前台重新查询服务端，其他设备的变化在重新查询后可见，不新增 WebSocket。界面、时间分类和验证步骤见[个人页收藏](../pages/more/README.md#账号活动收藏)。
