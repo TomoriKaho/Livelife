@@ -1,12 +1,51 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { defaultCurrentLocationOptions, getCurrentLocation, watchCurrentLocation, createAndroidLocationProvider, resolveLocationOptions } from '../src/platform/location.ts';
-import { applyLocationResult } from '../src/platform/location-tracker.ts';
+import { applyLocationResult, locationEnabled, locationTrackingState, currentLocation, setLocationEnabled, startLocationTracking, refreshCurrentLocation, usableCurrentLocation } from '../src/platform/location-tracker.ts';
 
 const granted = { location: 'granted', coarseLocation: 'granted' };
 const prompt = { location: 'prompt', coarseLocation: 'prompt' };
 const denied = { location: 'denied', coarseLocation: 'denied' };
 const position = { coords: { latitude: 39.991, longitude: 116.304, accuracy: 12.5 }, timestamp: 1_700_000_000_000 };
+
+test('application preference stops watches and pending requests, ignores late fixes and survives account-independent restarts', async () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const callbacks = new Map(), cleared = [];
+  let next = 0;
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { geolocation: {
+    watchPosition(success) { callbacks.set(++next, success); return next; },
+    clearWatch(id) { cleared.push(id); },
+  } } });
+  try {
+    await setLocationEnabled(false);
+    await startLocationTracking();
+    assert.equal(next, 0);
+    assert.deepEqual(await refreshCurrentLocation(), {status:'error', error:'disabled'});
+    await setLocationEnabled(true);
+    await startLocationTracking();
+    assert.equal(next, 1);
+    callbacks.get(1)({...position, timestamp:Date.now()});
+    assert.ok(usableCurrentLocation());
+    const pending = refreshCurrentLocation();
+    await setLocationEnabled(false);
+    assert.deepEqual(await pending, {status:'error', error:'disabled'});
+    await Promise.resolve();
+    assert.deepEqual(cleared.sort(), [1, 2]);
+    for (const callback of callbacks.values()) callback({...position, timestamp:Date.now()+1});
+    assert.equal(currentLocation.value, null);
+    assert.equal(locationTrackingState.value, 'disabled');
+    assert.equal(usableCurrentLocation(), null);
+    await startLocationTracking();
+    assert.equal(next, 2);
+    await setLocationEnabled(true);
+    assert.equal(next, 3);
+    assert.equal(locationEnabled.value, true);
+  } finally {
+    await setLocationEnabled(false);
+    if (original) Object.defineProperty(globalThis, 'navigator', original);
+    else delete globalThis.navigator;
+  }
+});
 
 function provider({ check = granted, request = granted, result = position, error } = {}) {
   const calls = [];
@@ -24,6 +63,60 @@ function provider({ check = granted, request = granted, result = position, error
 
 test('reports unsupported before calling the default plugin outside a location-capable platform', async () => {
   assert.deepEqual(await getCurrentLocation(), { status: 'error', error: 'unsupported' });
+});
+
+test('closing during native permission request prevents a later subscription', async () => {
+  let grant;
+  const controller = new AbortController();
+  const api = { ...provider({check:prompt}),
+    requestPermissions: () => new Promise(resolve => { grant = resolve; }),
+    async watchPosition() { assert.fail('must not subscribe after application disabled'); },
+    async clearWatch() {},
+  };
+  const pending = watchCurrentLocation(() => assert.fail('must not publish'), {}, api, controller.signal);
+  await Promise.resolve();
+  controller.abort(); grant(granted);
+  await pending;
+});
+
+test('preference is saved per device and restored by a fresh tracker instance', async () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  const saved = new Map();
+  Object.defineProperty(globalThis, 'localStorage', {configurable:true, value:{
+    getItem: key => saved.get(key) ?? null, setItem: (key,value) => saved.set(key,value),
+  }});
+  try {
+    const firstUse = await import('../src/platform/location-tracker.ts?first-use');
+    assert.equal(firstUse.locationEnabled.value, true);
+    assert.equal(firstUse.locationTrackingState.value, 'idle');
+    const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+    let requests = 0;
+    Object.defineProperty(globalThis, 'navigator', {configurable:true, value:{geolocation:{
+      watchPosition(success, failure) { requests++; failure({code:1}); return 1; },
+      clearWatch() {},
+    }}});
+    try {
+      await firstUse.startLocationTracking();
+      assert.equal(requests, 1);
+      assert.equal(firstUse.locationTrackingState.value, 'permission-denied');
+      await firstUse.stopLocationTracking();
+    } finally {
+      if (originalNavigator) Object.defineProperty(globalThis, 'navigator', originalNavigator);
+      else delete globalThis.navigator;
+    }
+    await setLocationEnabled(true);
+    assert.equal(saved.get('livelife.location.enabled'), 'true');
+    const restored = await import('../src/platform/location-tracker.ts?restore-enabled');
+    assert.equal(restored.locationEnabled.value, true);
+    await setLocationEnabled(false);
+    const disabled = await import('../src/platform/location-tracker.ts?restore-disabled');
+    assert.equal(disabled.locationEnabled.value, false);
+    assert.equal(disabled.locationTrackingState.value, 'disabled');
+  } finally {
+    await setLocationEnabled(false);
+    if (original) Object.defineProperty(globalThis, 'localStorage', original);
+    else delete globalThis.localStorage;
+  }
 });
 
 test('uses the browser geolocation API to prompt for and obtain a web position', async () => {
