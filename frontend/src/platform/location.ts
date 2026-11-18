@@ -174,7 +174,9 @@ export async function watchCurrentLocation(
   listener: (result: LocationResult) => void,
   options: CurrentLocationOptions = {},
   provider: LocationWatchProvider = defaultProvider(),
+  signal?: AbortSignal,
 ): Promise<LocationWatchStop> {
+  if (signal?.aborted) return async () => {};
   if (!platformSupportsLocation(provider)) {
     listener({ status: 'error', error: 'unsupported' });
     return async () => {};
@@ -194,7 +196,9 @@ export async function watchCurrentLocation(
     }
 
     let permission = await provider.checkPermissions();
+    if (signal?.aborted) return async () => {};
     if (!permissionGranted(permission)) permission = await provider.requestPermissions();
+    if (signal?.aborted) return async () => {};
     if (!permissionGranted(permission)) {
       listener({ status: 'error', error: 'permission-denied' });
       return async () => {};

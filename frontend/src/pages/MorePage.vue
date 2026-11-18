@@ -10,6 +10,7 @@ export const pageMeta = {
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { registerBackHandler } from '../platform/android-navigation';
+import { locationEnabled, locationTrackingState, setLocationEnabled, restartLocationTracking } from '../platform/location-tracker';
 import { fetchProfile, readAccessToken, updateProfile } from '../api/profile';
 import ElasticList from './agent/ElasticList.vue';
 import FavoritesList from './more/FavoritesList.vue';
@@ -37,7 +38,8 @@ const canEditProfile = computed(() => !hasSession.value || (profileLoaded.value 
 const profile = reactive({ ...initialProfile }), profileDraft = reactive({ ...initialProfile });
 const selectedInterests = ref([...initialInterests]);
 const pickedInterests = computed(() => interests.filter(item => selectedInterests.value.includes(item.id)));
-const prefs = reactive({ personalized: true, reminders: true, recommendations: false, location: true, useIdentity: true, useInterests: true, quiet: false });
+const prefs = reactive({ personalized: true, reminders: true, recommendations: false, useIdentity: true, useInterests: true, quiet: false });
+const locationStatus = computed(() => ({ disabled: '应用定位已关闭', idle: '等待定位', locating: '正在获取位置…', located: '已获得位置', 'permission-denied': '系统位置权限未授予，请授权后重试', unavailable: '系统定位未开启或暂不可用', timeout: '定位超时，请重试', unsupported: '此设备暂不支持定位' }[locationTrackingState.value]));
 const advance = ref('30分钟'), recommendationMode = ref('interest');
 const feedback = ref(''), notice = ref('');
 let noticeTimer;
@@ -205,7 +207,9 @@ onBeforeUnmount(() => { clearTimeout(noticeTimer); });
         <h2 class="field-heading">账户信息</h2>
         <dl class="account-info"><div><dt>账户 ID</dt><dd>{{ authState.user?.id || '演示账户' }}</dd></div><div><dt>登录邮箱</dt><dd>{{ authState.user?.email || '未登录' }}</dd></div></dl>
         <h2 class="field-heading spaced-heading">定位权限</h2>
-        <div class="switch-row"><span><strong>使用定位发现附近活动</strong><small>开启后，以当前位置寻找附近信息</small></span><PreferenceSwitch v-model="prefs.location" label="使用定位发现附近活动" /></div>
+        <div class="switch-row"><span><strong>使用定位发现附近活动</strong><small>开启后用于附近查询及智能助手；仍需系统授权</small></span><PreferenceSwitch :model-value="locationEnabled" label="使用定位发现附近活动" @update:model-value="setLocationEnabled" /></div>
+        <p class="small-note" role="status">{{ locationStatus }}</p>
+        <button v-if="locationEnabled && !['locating', 'located'].includes(locationTrackingState)" type="button" @click="restartLocationTracking">重试定位</button>
         <p class="small-note">当前校区：北京大学燕园校区</p>
         <h2 class="field-heading spaced-heading">推荐数据偏好</h2><p class="small-note">你来决定，推荐可以参考哪些信息。</p>
         <div class="switch-row"><span><strong>使用校园身份</strong><small>根据学生、教职工等身份筛选信息</small></span><PreferenceSwitch v-model="prefs.useIdentity" label="推荐使用校园身份" /></div>
