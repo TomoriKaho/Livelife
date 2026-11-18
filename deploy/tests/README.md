@@ -46,6 +46,8 @@ LIVELIFE_RAG_INTEGRATION=1 backend/.venv/bin/python -m unittest discover \
   -s deploy/tests -p test_retrieval_deployment.py -v
 ```
 
+Linux x86_64 使用 pgembed 0.2.0 的新 venv 时，先执行 `backend/.venv/bin/python deploy/repair-pgembed-psql.py`；已知原生客户端修复与哈希校验见[构建说明](../BUILDING.md)。
+
 真实集成使用临时 PostgreSQL 和回环 HTTP 编码替身，验证已经应用检索迁移的数据库公开复制、
 缺失状态回填、编码与向量 SQL 门禁，以及同分支两个 worker 的锁接管；另实际启动 FastAPI，
 验证 worker 退出后启动器退出并清理 API。它不下载真实模型，

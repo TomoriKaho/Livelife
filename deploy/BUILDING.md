@@ -31,6 +31,8 @@
 本地运行 prepare-backend 且未设置 `LIVELIFE_REMOTE_BACKEND=true` 时仍执行全部专项。
 历史版本无能力标记时沿用原路径。
 
+pgembed 0.2.0 的已知 Linux x86_64 wheel 中，`psql` 的非执行 LOAD 段缺少覆盖 DT_DEBUG 所需的写权限，可能在启动时 SIGSEGV。GitHub 专项在安装依赖后运行 `backend/.venv/bin/python deploy/repair-pgembed-psql.py`：仅接受脚本内固定的原始或已修复 SHA-256，将该段从 R 改为 RW，并核对修复后摘要及 `psql --version`。脚本原子替换当前 venv 的文件，不原地修改 uv 硬链接缓存；未知二进制或不同 pgembed 版本明确失败，升级依赖时须重新评估。课程机控制 venv 已做同一修复；新安装或重装后，先备份原文件，再用该 venv 的解释器运行此脚本。其他平台无需应用这项已知二进制修复。
+
 课程机任务记录和网页包默认保留 7 天。后端 release.json 中仍指向的任务目录永久保留到实例真正清理，避免回收正在运行或固定绑定/回滚使用的 venv。公网网页仍按自身当前/上一版本及容量规则保存，不跟随课程机包到期删除。磁盘不足 1 GiB 时拒绝新构建。下载缓存和 source.git 是项目级缓存；长期磁盘配额与缓存淘汰需要根据实际增长维护，不将 1.4 TiB 共享磁盘视为本组独占。
 
 ## 课程机 SSH 控制连接复用

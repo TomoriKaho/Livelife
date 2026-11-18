@@ -29,14 +29,14 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check uv==0.12.23
           uv sync --project backend --locked --group local-db
+      - name: Verify bundled PostgreSQL client
+        run: backend/.venv/bin/python deploy/repair-pgembed-psql.py
       - name: Test backend with real PostgreSQL
         working-directory: backend
         run: uv run --no-sync pytest --local-postgres
       - name: Test RAG snapshot, publication gate and worker lifecycle
         env:
           LIVELIFE_RAG_INTEGRATION: "1"
-          # setup-python's library search path must not override native PG tools.
-          LD_LIBRARY_PATH: ""
         run: backend/.venv/bin/python -m unittest discover -s deploy/tests -p test_retrieval_deployment.py -v
       - name: Diagnose native PostgreSQL tools on failure
         if: failure()
