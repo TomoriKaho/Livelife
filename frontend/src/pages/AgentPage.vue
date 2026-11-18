@@ -19,6 +19,7 @@ import UserPlaneAvatar from './agent/UserPlaneAvatar.vue';
 import ElasticList from './agent/ElasticList.vue';
 import ElasticTextarea from './agent/ElasticTextarea.vue';
 import { composerPlacement } from './agent/composer-layout.mjs';
+import { canRetryMessage, failureNoticeText, isTransientBusyError, messageStatusNote } from './agent/message-state';
 
 const router = useRouter();
 const colors = sessionShuffle('agent-demo-colors', ['mint', 'blue', 'pink', 'lavender', 'yellow']);
@@ -88,10 +89,12 @@ function viewMessage(message, index) {
     role: message.role === 'assistant' ? 'agent' : 'user',
     text: message.content,
     status: message.status,
+    errorCode: message.error_code || null,
     citations: message.citations || [],
     rating: message.rating || null,
     color: colors[index % colors.length],
-    requestId: message.request_id || message.client_request_id,
+    clientRequestId: message.client_request_id || null,
+    requestId: message.request_id || null,
   };
 }
 async function loadConversation(id) {
@@ -129,23 +132,61 @@ async function copy(message) {
     notify('已复制这条消息');
   } catch { notify('复制失败，请长按消息复制'); }
 }
-async function send(retryMessage = null) {
+async function send(retryTarget = null) {
   if (sending.value || loading.value || conversationError.value) return;
-  const text = (retryMessage?.text || draft.value).trim();
+  const isRetry = Boolean(retryTarget?.userMessage && retryTarget?.assistantMessage);
+  const text = (isRetry ? retryTarget.userMessage.text : draft.value).trim();
   if (!text) return;
-  let userMessage = retryMessage;
+  let userMessage = isRetry ? retryTarget.userMessage : null;
   if (!userMessage) {
-    userMessage = { id: crypto.randomUUID(), role: 'user', text, status: 'completed', citations: [], color: colors[messages.value.length % colors.length] };
+    userMessage = reactive({
+      id: crypto.randomUUID(),
+      role: 'user',
+      text,
+      status: 'completed',
+      errorCode: null,
+      citations: [],
+      rating: null,
+      color: colors[messages.value.length % colors.length],
+      clientRequestId: crypto.randomUUID(),
+      requestId: null,
+    });
     messages.value.push(userMessage);
     draft.value = '';
+  } else if (!userMessage.clientRequestId) {
+    userMessage.clientRequestId = crypto.randomUUID();
   }
-  const assistant = reactive({
-    id: crypto.randomUUID(), role: 'agent', text: '', status: 'pending', citations: [],
-    color: colors[messages.value.length % colors.length], requestId: crypto.randomUUID(),
+  const previousSnapshot = isRetry ? {
+    text: retryTarget.assistantMessage.text,
+    citations: [...retryTarget.assistantMessage.citations],
+    status: retryTarget.assistantMessage.status,
+    errorCode: retryTarget.assistantMessage.errorCode || null,
+  } : null;
+  const assistant = isRetry ? retryTarget.assistantMessage : reactive({
+    id: crypto.randomUUID(),
+    role: 'agent',
+    text: '',
+    status: 'pending',
+    errorCode: null,
+    citations: [],
+    rating: null,
+    color: colors[messages.value.length % colors.length],
+    clientRequestId: null,
+    requestId: null,
   });
-  messages.value.push(assistant);
+  if (isRetry) {
+    assistant.text = '';
+    assistant.citations = [];
+    assistant.status = 'pending';
+    assistant.errorCode = null;
+    assistant.rating = null;
+  } else {
+    messages.value.push(assistant);
+  }
   sending.value = true;
-  queueConversationBottom(true);
+  let streamStarted = false;
+  let terminalStatus = null;
+  if (!isRetry || messages.value.at(-1) === assistant) queueConversationBottom(true);
   const generation = selectionGeneration, revision = authState.revision;
   const controller = new AbortController();
   activeRequestController = controller;
@@ -155,18 +196,57 @@ async function send(retryMessage = null) {
       if (!mounted.value || generation !== selectionGeneration || revision !== authState.revision) return;
       session.value = created; selectAgentSession(created); temporaryExists.value = false; temporaryText.value = "";
     }
-    await sendAgentMessage(session.value.session_id, text, assistant.requestId, {
-      message_start: data => { assistant.id = data.message_id; assistant.requestId = data.request_id || assistant.requestId; },
-      citation: data => updateAssistantMessage(() => assistant.citations.push(data)),
-      delta: data => updateAssistantMessage(() => { assistant.text += data.text; }),
+    await sendAgentMessage(session.value.session_id, text, userMessage.clientRequestId, {
+      message_start: data => {
+        streamStarted = true;
+        assistant.id = data.message_id;
+        assistant.requestId = data.request_id || assistant.requestId;
+        userMessage.requestId = data.request_id || userMessage.requestId;
+      },
+      citation: data => updateAssistantMessage(() => { streamStarted = true; assistant.citations.push(data); }),
+      delta: data => updateAssistantMessage(() => { streamStarted = true; assistant.text += data.text; }),
       usage: () => {},
-      done: () => updateAssistantMessage(() => { assistant.status = 'completed'; }),
-      error: data => { throw new Error(data.code); },
+      done: data => updateAssistantMessage(() => {
+        terminalStatus = data?.status || 'completed';
+        assistant.status = terminalStatus;
+        assistant.errorCode = null;
+      }),
+      error: data => {
+        const code = data?.code || 'agent_internal_error';
+        updateAssistantMessage(() => {
+          assistant.status = 'failed';
+          assistant.errorCode = code;
+        });
+        throw new Error(code);
+      },
     }, controller.signal);
+    if (terminalStatus !== 'completed') throw new Error('incomplete_stream');
+    updateAssistantMessage(() => {
+      assistant.status = 'completed';
+      assistant.errorCode = null;
+    });
   } catch (error) {
-    updateAssistantMessage(() => { assistant.status = 'failed'; });
+    const code = error instanceof Error ? error.message : 'agent_internal_error';
+    updateAssistantMessage(() => {
+      if (controller.signal.aborted) {
+        assistant.status = 'cancelled';
+        assistant.errorCode = null;
+      } else if (!streamStarted && previousSnapshot && isTransientBusyError(code)) {
+        assistant.text = previousSnapshot.text;
+        assistant.citations = previousSnapshot.citations;
+        assistant.status = previousSnapshot.status;
+        assistant.errorCode = previousSnapshot.errorCode;
+      } else {
+        if (!streamStarted && previousSnapshot) {
+          assistant.text = previousSnapshot.text;
+          assistant.citations = previousSnapshot.citations;
+        }
+        assistant.status = 'failed';
+        assistant.errorCode = code;
+      }
+    });
     if (generation === selectionGeneration && !controller.signal.aborted) {
-      notify(error.message === 'token_quota_exceeded' ? '你的账号今日的使用额度已用完。' : '回答失败，请点击重试。');
+      notify(failureNoticeText(code));
     }
   } finally {
     if (activeRequestController === controller) activeRequestController = null;
@@ -177,9 +257,11 @@ async function send(retryMessage = null) {
   }
 }
 function retry(message) {
+  if (!canRetryMessage(message)) return;
   const index = messages.value.indexOf(message);
+  if (index < 0) return;
   const previous = messages.value.slice(0, index).reverse().find(item => item.role === 'user');
-  if (previous) send(previous);
+  if (previous) void send({ userMessage: previous, assistantMessage: message });
 }
 async function rate(message, value) {
   if (!session.value || message.status !== 'completed') return;
@@ -329,11 +411,14 @@ onBeforeUnmount(removeNativeBack);
         <div class="message-content">
           <div v-sketch class="sketch pencil-fill message-bubble" :data-pencil="message.color">
             <div v-if="message.status === 'pending' && !message.text" class="thinking-message" role="status" aria-label="LiLi 正在准备回答"><span class="thinking-orbit" aria-hidden="true"><i></i><i></i><i></i></span><span>正在准备回答<span class="thinking-dots" aria-hidden="true"><i>·</i><i>·</i><i>·</i></span></span></div>
-            <p v-else class="message-text"><template v-for="(part, i) in segments(message.text)" :key="i"><strong v-if="part.bold">{{ part.text }}</strong><template v-else>{{ part.text }}</template></template></p>
+            <template v-else>
+              <p v-if="message.text" class="message-text"><template v-for="(part, i) in segments(message.text)" :key="i"><strong v-if="part.bold">{{ part.text }}</strong><template v-else>{{ part.text }}</template></template></p>
+              <p v-if="messageStatusNote(message)" class="message-status-note" role="status">{{ messageStatusNote(message) }}</p>
+            </template>
           </div>
           <div class="message-actions" :aria-label="message.role === 'agent' ? '助手消息操作' : '你的消息操作'">
             <button type="button" :disabled="!message.text" aria-label="复制消息" @click="copy(message)"><AgentIcon name="copy" /><span>复制</span></button>
-            <button v-if="message.role === 'agent' && message.status === 'failed'" type="button" @click="retry(message)"><AgentIcon name="regenerate" /><span>重试</span></button>
+            <button v-if="canRetryMessage(message)" type="button" :disabled="sending || loading" @click="retry(message)"><AgentIcon name="regenerate" /><span>重试</span></button>
             <template v-if="message.role === 'agent' && message.status === 'completed'"><button type="button" class="rating-action" :class="{ selected: message.rating === 'like' }" :aria-pressed="message.rating === 'like'" aria-label="点赞回答" @click="rate(message, 'like')"><AgentIcon name="like" /></button><button type="button" class="rating-action" :class="{ selected: message.rating === 'dislike' }" :aria-pressed="message.rating === 'dislike'" aria-label="点踩回答" @click="rate(message, 'dislike')"><AgentIcon name="dislike" /></button></template>
           </div>
           <div v-if="message.role === 'agent' && message.citations.length" class="citation-list" aria-label="回答来源">
@@ -377,7 +462,7 @@ onBeforeUnmount(removeNativeBack);
 .conversation-date { text-align: center; color: var(--muted); font-size: 10px; margin: 0 0 12px; letter-spacing: 2px; }.message { display: flex; gap: 6px; margin-bottom: 10px; }.message:last-child { margin-bottom: 0; }.message-user { flex-direction: row-reverse; }
 .message-avatar { width: 43px; height: 47px; flex: none; margin-top: 3px; }.message-user .message-avatar { width: 43px; height: 47px; margin-top: 3px; }
 .message-content { max-width: calc(100% - 49px); min-width: 0; }.message-user .message-content { max-width: calc(100% - 49px); }
-.message-bubble { padding: 11px 16px 12px; min-height: 49px; background: transparent; }.message-text { margin: 0; font-size: 14px; line-height: 1.85; overflow-wrap: anywhere; white-space: pre-wrap; }.message-text strong { font-weight: 400; -webkit-text-stroke: .35px var(--ink); text-decoration: underline; text-decoration-color: #20304b44; text-decoration-thickness: 3px; text-underline-offset: 3px; }
+.message-bubble { padding: 11px 16px 12px; min-height: 49px; background: transparent; }.message-text { margin: 0; font-size: 14px; line-height: 1.85; overflow-wrap: anywhere; white-space: pre-wrap; }.message-text strong { font-weight: 400; -webkit-text-stroke: .35px var(--ink); text-decoration: underline; text-decoration-color: #20304b44; text-decoration-thickness: 3px; text-underline-offset: 3px; }.message-status-note { margin: 0; font-size: 11px; line-height: 1.55; color: #8c3b32; }.message-text + .message-status-note { margin-top: 8px; padding-top: 6px; border-top: 1px dashed #20304b2b; }
 .message-actions { display: flex; align-items: center; gap: 0; margin: 1px 1px 0; min-height: 34px; }.message-user .message-actions { justify-content: flex-end; }.message-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 3px; padding: 7px 6px; min-height: 34px; border: 0; background: transparent; color: var(--muted); font-size: 10px; white-space: nowrap; }.message-actions .agent-icon { width: 14px; height: 14px; stroke-width: 1.8; }.message-actions .rating-action { min-width: 34px; }.message-actions .rating-action .agent-icon { width: 16px; height: 16px; }.message-actions .selected { color: #245888; }.message-actions .selected .agent-icon { fill: #9ac8f244; stroke-width: 2.2; }.message-actions button:disabled { opacity: .35; cursor: default; }
 .citation-list { display: grid; gap: 6px; margin: 6px 2px 2px; }.citation-link { display: flex; align-items: flex-start; gap: 7px; padding: 8px 10px; border: 1px solid #7c9eb433; border-radius: 10px; color: var(--ink); text-decoration: none; background: #fff8; }.citation-link .agent-icon { width: 16px; height: 16px; flex: none; margin-top: 1px; }.citation-link span { min-width: 0; }.citation-link strong,.citation-link small { display: block; }.citation-link strong { font-size: 11px; font-weight: 600; }.citation-link small { margin-top: 3px; color: var(--muted); font-size: 10px; line-height: 1.4; }.citation-link:hover { background: #fff; }
 .thinking-message { display: flex; align-items: center; gap: 8px; min-height: 24px; font-size: 13px; white-space: nowrap; }.thinking-orbit { position: relative; display: block; width: 22px; height: 22px; flex: none; }.thinking-orbit i { position: absolute; width: 5px; height: 5px; background: var(--ink); border-radius: 45% 55% 50% 48%; opacity: .6; }.thinking-orbit i:nth-child(1) { left: 8px; top: 1px; }.thinking-orbit i:nth-child(2) { left: 1px; top: 13px; }.thinking-orbit i:nth-child(3) { right: 1px; top: 13px; }.thinking-dots { display: inline-flex; margin-left: 2px; }.thinking-dots i { font-style: normal; margin: 0 1px; }

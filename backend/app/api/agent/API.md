@@ -56,7 +56,7 @@ API 前缀为 `/agent`。所有端点（包括创建）必须携带账户接口�
 | `done` | `message_id`, `status` | 正常完成 |
 | `error` | `code`, `retryable` | 模型流或服务异常 |
 
-同一 `client_request_id` 的已完成请求只重放已保存回答，不再次调用模型；尚未结束的请求返回 `409`。模型已配置时，即使本轮没有检索到来源，也会将问题和有限历史交给模型，以支持问候、能力介绍和澄清；校园事实仍必须由本轮新检索到的公开记录支撑。历史对话仅用于理解指代和上下文，不能作为事实证据或沿用旧来源。若模型未配置且没有检索来源，返回“我目前没有找到足够的公开资料来回答这个问题。”。
+同一 `client_request_id` 标识同一逻辑提问请求：若已完成（`status="completed"`），服务端直接流式重放已保存的回答、来源引用与用量，不再次调用上游模型、也不重复扣减额度；若仍在有效租约内运行（`status="pending"`），返回 `409 request_in_progress`；若前次请求处于 `failed` 或 `cancelled`（含过期租约自动回收为 `failed`），则在核验并发与额度后原地更新同一对用户/助手消息重新发起生成，不产生重复消息记录；若同一 `client_request_id` 提交不同问题文本，返回 `409 request_conflict`。上游模型流必须收到协议结束信号 `data: [DONE]` 且 `finish_reason` 为 `"stop"`（兼容省略 `finish_reason` 的网关）并产生非空文本才记为 `completed`；未收到 `[DONE]` 的异常 EOF（`model_incomplete_stream`）、达到输出上限 `finish_reason="length"`（`model_length_limit`）、内容过滤 `finish_reason="content_filter"`（`model_content_filtered`）、流内错误帧或超时均保留已收到的部分文本、持久化为 `failed`（消息响应含可选 `error_code`）并发送 `error` 终态事件，不会误标为完成。模型已配置时，即使本轮没有检索到来源，也会将问题和有限历史交给模型，以支持问候、能力介绍和澄清；校园事实仍必须由本轮新检索到的公开记录支撑。历史对话仅用于理解指代和上下文，不能作为事实证据或沿用旧来源。若模型未配置且没有检索来源，返回“我目前没有找到足够的公开资料来回答这个问题。”。
 
 ## `POST /agent/messages/{message_id}/rating`
 
@@ -94,4 +94,4 @@ API 前缀为 `/agent`。所有端点（包括创建）必须携带账户接口�
 
 `AGENT_MAX_CONTEXT_CHARS` 约束历史文本与公开记录文本的数据预算；有来源时历史最多占一半，剩余留给证据，防止长历史挤掉来源。系统提示和固定包装是额外的有界开销，用量预留及估算仍计入实际发送的全部消息。优先保留当前问题，再保留任务线索，最后填充近期对话；不无限拼接历史。服务端时间和有效定位随本轮问题计入同一历史文本预算。
 
-历史保留 completed/failed/cancelled/pending 原状态。仍在有效租约中的 pending 不由客户端改写；租约过期后读取详情会将该请求恢复为 failed、释放活动标记并保守结算预留，重复读取不重复扣费。#71 的上游异常终态与 #72 的失败重试语义仍由各自任务独立修复，不能把本功能视为这些问题已解决。
+历史保留 completed/failed/cancelled/pending 原状态及失败时的 `error_code`。仍在有效租约中的 pending 不由客户端改写；租约过期后读取详情或再次发起请求会将该请求恢复为 failed（`request_expired`）、释放活动标记并保守结算预留，重复读取不重复扣费。每个请求仅终结一次。

@@ -211,17 +211,22 @@ def begin_request(
     with factory() as session, session.begin():
         usage = _usage(session, user_id, now)
         row = _session(session, settings, token, now, user_id)
+        _expire_request(session, row, usage, now)
         if not _hit_ip_window(session, _ip_hash(settings, ip), now, settings.ip_requests_per_hour):
             raise AgentError("ip_rate_limited", 429, retry_after=3600)
 
         previous_row = session.scalar(
             select(AgentMessage).where(
                 AgentMessage.session_id == row.id,
+                AgentMessage.payload["role"].as_string() == "user",
                 AgentMessage.payload["client_request_id"].as_string() == str(client_request_id),
             )
         )
         previous = previous_row.payload if previous_row else None
+        assistant_row: AgentMessage | None = None
         if previous is not None:
+            if previous.get("content") != content:
+                raise AgentError("request_conflict", 409)
             assistant_row = session.scalar(
                 select(AgentMessage).where(
                     AgentMessage.session_id == row.id,
@@ -231,8 +236,12 @@ def begin_request(
             )
             assistant = assistant_row.payload if assistant_row else None
             if assistant and assistant.get("status") == "completed":
-                return {"duplicate": True, "messages": [previous, assistant]}
-            raise AgentError("request_in_progress", 409)
+                return {
+                    "duplicate": True,
+                    "messages": [_safe_message(previous), _safe_message(assistant)],
+                }
+            if assistant_row is None or assistant.get("status") not in {"failed", "cancelled"}:
+                raise AgentError("request_in_progress", 409)
 
         if usage.usage_day != now.date():
             usage.usage_day = now.date()
@@ -259,7 +268,12 @@ def begin_request(
 
         # Use prior dialogue only as a retrieval hint for explicit follow-ups. The
         # model still receives this turn's newly retrieved public records as evidence.
-        completed = _context_rows(session, row.id, content)
+        completed = _context_rows(
+            session,
+            row.id,
+            content,
+            before_sequence=previous_row.sequence if previous_row is not None else None,
+        )
         from app.services.agent.context import conversation_context
 
         history, retrieval_query, pinned = conversation_context(completed, content, now, location)
@@ -274,8 +288,8 @@ def begin_request(
             context_chars = sum(len(source.content) for source in sources)
 
         request_id = str(uuid4())
-        user_message_id = str(uuid4())
-        assistant_id = str(uuid4())
+        user_message_id = str(previous_row.id) if previous_row is not None else str(uuid4())
+        assistant_id = str(assistant_row.id) if assistant_row is not None else str(uuid4())
         estimate = (
             estimate_input_tokens(settings, history=history, sources=sources)
             + settings.max_output_tokens
@@ -295,14 +309,15 @@ def begin_request(
         row.active_request_expires_at = usage.active_request_expires_at
         row.last_seen_at = now
         row.expires_at = None
-        sequence = (
-            session.scalar(
-                select(func.max(AgentMessage.sequence)).where(AgentMessage.session_id == row.id)
-            )
-            or 0
+
+        user_created_at = (
+            previous.get("created_at", now.isoformat()) if previous is not None else now.isoformat()
         )
-        if sequence == 0:
-            row.title = content[:100]
+        assistant_created_at = (
+            assistant_row.payload.get("created_at", now.isoformat())
+            if assistant_row is not None
+            else now.isoformat()
+        )
         user_message = {
             "id": user_message_id,
             "role": "user",
@@ -311,7 +326,7 @@ def begin_request(
             "client_request_id": str(client_request_id),
             "request_id": request_id,
             "citations": [],
-            "created_at": now.isoformat(),
+            "created_at": user_created_at,
         }
         assistant_message = {
             "id": assistant_id,
@@ -320,28 +335,40 @@ def begin_request(
             "status": "pending",
             "request_id": request_id,
             "citations": [source.citation(index) for index, source in enumerate(sources, start=1)],
-            "created_at": now.isoformat(),
+            "created_at": assistant_created_at,
             "input_tokens": 0,
             "output_tokens": 0,
             "estimated_usage": True,
             "reserved_tokens": estimate,
         }
-        session.add_all(
-            [
-                AgentMessage(
-                    id=UUID(user_message_id),
-                    session_id=row.id,
-                    sequence=sequence + 1,
-                    payload=user_message,
-                ),
-                AgentMessage(
-                    id=UUID(assistant_id),
-                    session_id=row.id,
-                    sequence=sequence + 2,
-                    payload=assistant_message,
-                ),
-            ]
-        )
+        if previous_row is not None and assistant_row is not None:
+            previous_row.payload = user_message
+            assistant_row.payload = assistant_message
+        else:
+            sequence = (
+                session.scalar(
+                    select(func.max(AgentMessage.sequence)).where(AgentMessage.session_id == row.id)
+                )
+                or 0
+            )
+            if sequence == 0:
+                row.title = content[:100]
+            session.add_all(
+                [
+                    AgentMessage(
+                        id=UUID(user_message_id),
+                        session_id=row.id,
+                        sequence=sequence + 1,
+                        payload=user_message,
+                    ),
+                    AgentMessage(
+                        id=UUID(assistant_id),
+                        session_id=row.id,
+                        sequence=sequence + 2,
+                        payload=assistant_message,
+                    ),
+                ]
+            )
         return {
             "duplicate": False,
             "session_id": row.id,
@@ -393,6 +420,7 @@ def finish_request(
     input_tokens: int,
     output_tokens: int,
     estimated_usage: bool,
+    error_code: str | None = None,
 ) -> None:
     now = datetime.now(UTC)
     with factory() as session, session.begin():
@@ -434,6 +462,10 @@ def finish_request(
             output_tokens=output_tokens,
             estimated_usage=estimated_usage,
         )
+        if status != "completed" and error_code:
+            message["error_code"] = error_code
+        else:
+            message.pop("error_code", None)
         reserved = int(message.pop("reserved_tokens", 0))
         stored.payload = message
         if usage.active_request_id == request_id:
@@ -573,7 +605,12 @@ def _expire_request(db, row, usage, now):
         )
     )
     if message and message.payload.get("status") == "pending":
-        message.payload = {**message.payload, "status": "failed", "completed_at": now.isoformat()}
+        message.payload = {
+            **message.payload,
+            "status": "failed",
+            "error_code": "request_expired",
+            "completed_at": now.isoformat(),
+        }
     if usage.active_request_id == row.active_request_id:
         usage.tokens_used += usage.tokens_reserved
         usage.tokens_reserved = 0
@@ -583,7 +620,7 @@ def _expire_request(db, row, usage, now):
     row.active_request_expires_at = None
 
 
-def _context_rows(db, session_id, question):
+def _context_rows(db, session_id, question, *, before_sequence: int | None = None):
     """Bound DB materialization too: recent messages + source anchor + term matches."""
     from app.services.agent.retrieval import _terms
 
@@ -591,6 +628,8 @@ def _context_rows(db, session_id, question):
         AgentMessage.session_id == session_id,
         AgentMessage.payload["status"].as_string() == "completed",
     )
+    if before_sequence is not None:
+        completed = completed.where(AgentMessage.sequence < before_sequence)
     rows = db.scalars(completed.order_by(AgentMessage.sequence.desc()).limit(8)).all()
     anchor = db.scalar(
         completed.where(func.json_array_length(AgentMessage.payload["citations"]) > 0)

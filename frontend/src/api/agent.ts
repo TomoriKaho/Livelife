@@ -26,6 +26,7 @@ export interface AgentMessage {
   role: 'user' | 'assistant';
   content: string;
   status: 'pending' | 'completed' | 'failed' | 'cancelled';
+  error_code?: string | null;
   citations: AgentCitation[];
   created_at: string;
   client_request_id?: string;
