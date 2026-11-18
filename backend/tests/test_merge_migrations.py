@@ -49,10 +49,10 @@ def test_upgrade_from_either_branch_preserves_data(tmp_path, start):
             with db.engine.begin() as connection:
                 config.attributes["connection"] = connection
                 command.upgrade(config, "head")
-                assert MigrationContext.configure(connection).get_current_heads() == (
-                    "0008_merge_history_favorites",
+                assert set(MigrationContext.configure(connection).get_current_heads()) == set(
+                    ScriptDirectory.from_config(config).get_heads()
                 )
-        assert ScriptDirectory.from_config(config).get_heads() == ["0008_merge_history_favorites"]
+        assert len(ScriptDirectory.from_config(config).get_heads()) == 1
         with db.session_factory() as session:
             assert session.get(User, owner) is not None
             if sid:

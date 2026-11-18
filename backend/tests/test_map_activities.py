@@ -249,3 +249,62 @@ def test_catalog_backfill_is_idempotent_and_preserves_manual_coordinates(databas
         )
         assert record.place_id == "pku:yanyuan:library"
         assert record.location_resolution["room"] == "208"
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("二体网球场（静园西南侧）", "pku:yanyuan:tennis-2"),
+        ("北京大学二体网球场", "pku:yanyuan:tennis-2"),
+        ("第二体育馆网球场", "pku:yanyuan:tennis-2"),
+        ("第二体育馆", "pku:yanyuan:osm:226703041"),
+        ("北京大学红楼（北京市东城区五四大街29号）", "pku:offcampus:red-building"),
+        ("北大红楼", "pku:offcampus:red-building"),
+        ("红楼", None),
+        ("网球场", None),
+        ("二体篮球场", None),
+        ("第二体育馆篮球场", None),
+        ("第二体育馆网球场馆", None),
+        ("二体网球场馆", None),
+        ("北大红楼分馆", None),
+        ("清华大学二体网球场", None),
+        ("清华大学红楼", None),
+        ("北京大学红楼（海淀区）", None),
+        ("北大红楼（五四大街30号）", None),
+    ],
+)
+def test_curated_venues_do_not_match_nearby_names(database, text, expected):
+    from app.services.content.locations import LocationResolver
+
+    with database.session_factory() as s:
+        result = LocationResolver(s).resolve(text)
+        assert result.place_id == expected
+        assert result.status == ("matched" if expected else "unmatched")
+        if expected in {"pku:yanyuan:tennis-2", "pku:offcampus:red-building"}:
+            assert result.precision == "site"
+
+
+def test_curated_coordinates_and_cross_venue_ambiguity(database):
+    from app.services.content.locations import LocationResolver
+
+    with database.session_factory() as s:
+        r = LocationResolver(s)
+        tennis = r.place("pku:yanyuan:tennis-2")
+        red = r.place("pku:offcampus:red-building")
+        gym = r.place("pku:yanyuan:osm:226703041")
+        assert tennis.building_id is None and red.building_id is None
+        assert tennis.longitude < gym.longitude  # separate western court, not gym center
+        assert red.campus == "北京东城（校外）"
+        assert 116.398 < red.longitude < 116.400 and 39.923 < red.latitude < 39.924
+        assert r.resolve("二体网球场；北大红楼").status == "ambiguous"
+
+
+@pytest.mark.parametrize("separator", ["或", "或者", "和", "及", "与"])
+@pytest.mark.parametrize("venues", [("英杰交流中心", "百周年纪念讲堂"), ("北大红楼", "二体网球场")])
+def test_alternative_venues_never_choose_first(database, separator, venues):
+    from app.services.content.locations import LocationResolver
+
+    with database.session_factory() as session:
+        result = LocationResolver(session).resolve(separator.join(venues))
+        assert result.status == "ambiguous"
+        assert result.place_id is None and len(result.candidates) == 2

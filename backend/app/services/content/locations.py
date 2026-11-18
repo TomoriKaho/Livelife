@@ -49,10 +49,25 @@ class LocationResolver:
                 # Match extracted locations or delimited mentions, not suffixes of other
                 # institutions (e.g. 清华图书馆 must not resolve to 北大图书馆).
                 if prefix and not (
-                    prefix[-1] in " ,，:：;；、/+(（和及在于"
-                    or prefix.endswith(("北京大学", "北大"))
+                    prefix[-1] in " ,，:：;；、/+(（和及或与在于"
+                    or prefix.endswith(("北京大学", "北大", "或者"))
                 ):
                     continue
+                if place_id == "pku:yanyuan:osm:226703041" and re.match(
+                    r"(?:网球|篮球|足球|排球)", normalized[match.end() :]
+                ):
+                    # A named outdoor court is not the gym building itself.
+                    continue
+                if place_id in {"pku:yanyuan:tennis-2", "pku:offcampus:red-building"}:
+                    # These narrowly curated venues must not swallow a longer place name.
+                    suffix = normalized[match.end() :]
+                    if suffix and suffix[0] not in "(（,，;；、/+和及或与":
+                        continue
+                    if place_id == "pku:offcampus:red-building":
+                        districts = re.findall(r"(东城|西城|海淀|朝阳)区", normalized)
+                        numbers = re.findall(r"五四大街(\d+)号", normalized)
+                        if any(d != "东城" for d in districts) or any(n != "29" for n in numbers):
+                            continue
                 matches.append((match.start(), match.end(), alias, place_id))
         # Prefer a full building name over shorter aliases contained in that name.
         matches = [
@@ -92,7 +107,7 @@ class LocationResolver:
             place_id=place_id,
             room=room,
             floor=floor,
-            precision="building",
+            precision="building" if self.places[place_id].building_id else "site",
             method=method,
             matched_alias=alias,
             evidence=text,
