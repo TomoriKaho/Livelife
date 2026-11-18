@@ -147,17 +147,25 @@ class RetrievalDeploymentTests(unittest.TestCase):
                   patch.object(installer.socket, "socket"),
                   patch.object(installer, "probe", side_effect=probe) as check,
                   patch.dict(os.environ, {"AGENT_LLM_API_KEY": "private", "DATABASE_URL": "private"})):
-                first = installer.install(root, REPO, "b" * 40, 19073, ["topic"])
+                first = installer.install(root, REPO, "b" * 40, 19073, ["topic"],
+                                          download_proxy="http://127.0.0.1:18080")
                 self.assertEqual(run.call_count, 2)
                 for call in run.call_args_list:
                     self.assertNotIn("AGENT_LLM_API_KEY", call.kwargs["env"])
                     self.assertNotIn("DATABASE_URL", call.kwargs["env"])
+                    self.assertEqual(call.kwargs["env"]["HTTPS_PROXY"], "http://127.0.0.1:18080")
                 key = config.load(root, "topic")["EMBEDDING_API_KEY"]
                 check.side_effect = None
                 second = installer.install(root, REPO, "b" * 40, 19073, ["main", "topic"])
                 self.assertEqual(first["service"], second["service"])
                 self.assertEqual(run.call_count, 2)
                 self.assertEqual(config.load(root, "main")["EMBEDDING_API_KEY"], key)
+                self.assertNotIn("HTTPS_PROXY", environment(root, first["service"],
+                                                           config.service_settings(root, first["service"])))
+            for proxy in ("https://127.0.0.1:8080", "http://remote.example:8080",
+                          "http://user:secret@localhost:8080", "http://localhost/path"):
+                with self.assertRaises(ValueError):
+                    installer.download_environment({}, proxy)
 
 
 @unittest.skipUnless(os.environ.get("LIVELIFE_RAG_INTEGRATION") == "1", "opt-in real RAG PostgreSQL")

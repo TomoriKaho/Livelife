@@ -11,6 +11,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 from pathlib import Path
 
 from livelife.branch_database import branch_name, locked
@@ -47,9 +48,22 @@ def probe(settings):
         raise RuntimeError("embedding probe returned an invalid vector")
 
 
-def install(root, source, commit, port, branches, threads=4):
+def download_environment(env, proxy):
+    env = dict(env)
+    if proxy:
+        parsed = urlsplit(proxy)
+        if (parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}
+                or not parsed.port or parsed.username or parsed.password
+                or parsed.path not in {"", "/"} or parsed.query or parsed.fragment):
+            raise ValueError("download proxy must be a credential-free loopback HTTP URL")
+        env.update(HTTP_PROXY=proxy, HTTPS_PROXY=proxy, NO_PROXY="localhost,127.0.0.1,::1")
+    return env
+
+
+def install(root, source, commit, port, branches, threads=4, download_proxy=None):
     root, source = Path(root).resolve(), Path(source).resolve()
     sha(commit)
+    download_environment({}, download_proxy)  # Validate before creating installation state.
     for branch in branches:
         branch_name(branch)
     if type(port) is not int or not 19000 <= port < 20000 or not 1 <= threads <= 8:
@@ -93,6 +107,7 @@ def install(root, source, commit, port, branches, threads=4):
                 raise ValueError("reviewed source has no embedding service")
             env = environment(root, service, settings)
             env.pop("HF_HUB_OFFLINE")
+            env = download_environment(env, download_proxy)
             env["UV_PROJECT_ENVIRONMENT"] = str(backend / ".venv")
             # Dedicated venv/cache, no deployment/chat/SMTP secrets in installation.
             with (directory / "install.log").open("w") as log:
@@ -144,10 +159,11 @@ def main():
     parser.add_argument("--port", type=int, default=19073)
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--branch", action="append", default=[])
+    parser.add_argument("--download-proxy", help="optional loopback HTTP proxy for installation only")
     args = parser.parse_args()
     try:
         print(json.dumps(install(args.root, args.source, args.sha, args.port,
-                                 args.branch, args.threads)))
+                                 args.branch, args.threads, args.download_proxy)))
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
         print("Embedding installation failed; inspect the private installation/service logs.",
               file=sys.stderr)
