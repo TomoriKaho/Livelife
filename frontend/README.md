@@ -131,6 +131,8 @@ npm run preview
 
 ## 目录与模块
 
+兴趣广场的真实内容查询和原文阅读见[页面说明](src/pages/interests/README.md)，API 调用见[请求模块](src/api/README.md#兴趣广场内容)。
+
 客户端迁移基线为 design 分支 `4d95af0`，后续业务实现维护在 frontend；design 保留为原型参考。
 
 | 位置 | 用途 |
