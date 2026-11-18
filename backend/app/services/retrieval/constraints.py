@@ -3,7 +3,7 @@
 import re
 import unicodedata
 from dataclasses import dataclass
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, func, or_, true
@@ -21,6 +21,31 @@ class QueryConstraints:
     structured: bool = False
 
 
+def _event_day(text: str, local: datetime) -> tuple[date | None, bool]:
+    """Resolve one supported day; reject invalid or ambiguous date anchors."""
+    days = set()
+    for pattern in (
+        r"(?<![\d年])(?:(\d{4})年)?(\d{1,2})月(\d{1,2})(?:日|号)",
+        r"(?<![\d-])(\d{4})-(\d{1,2})-(\d{1,2})(?![\d-])",
+    ):
+        for year, month, day in re.findall(pattern, text):
+            try:
+                days.add(date(int(year) if year else local.year, int(month), int(day)))
+            except ValueError:
+                return None, True
+    for word, shift in (
+        ("今天", 0),
+        ("今日", 0),
+        ("今晚", 0),
+        ("明天", 1),
+        ("明日", 1),
+        ("昨天", -1),
+    ):
+        if word in text:
+            days.add(local.date() + timedelta(days=shift))
+    return (next(iter(days)) if len(days) == 1 else None), len(days) > 1
+
+
 def constraints(session, question: str, now: datetime | None = None) -> QueryConstraints:
     now = now or datetime.now(UTC)
     if now.tzinfo is None:
@@ -28,17 +53,22 @@ def constraints(session, question: str, now: datetime | None = None) -> QueryCon
     local = now.astimezone(ZONE)
     normalized = normalize_location(question)
     clauses = []
-    if any(word in normalized for word in ("现在", "此刻", "正在")):
-        clauses.append(and_(I.activity_start_at <= now, I.activity_end_at > now))
-    elif any(word in normalized for word in ("今天", "今日", "今晚", "明天", "明日", "昨天")):
-        shift = (
-            1
-            if any(w in normalized for w in ("明天", "明日"))
-            else -1
-            if "昨天" in normalized
-            else 0
+    day, invalid_day = _event_day(normalized, local)
+    time_text = normalized
+    if day is not None or invalid_day:
+        # A dated event plus a participation question needs the event notice first.
+        # Only consume this bounded intent; another ongoing request stays strict.
+        time_text = re.sub(
+            r"(?:现在|此刻)(?:还)?(?:能否|能不能|可不可以|可以|能|来得及)"
+            r"(?:再)?(?:参加|报名|入场|赶上)",
+            "",
+            time_text,
         )
-        day = local.date() + timedelta(days=shift)
+    if any(word in time_text for word in ("现在", "此刻", "正在")):
+        clauses.append(and_(I.activity_start_at <= now, I.activity_end_at > now))
+    elif invalid_day:
+        clauses.append(I.id.is_(None))
+    elif day is not None:
         evening = "今晚" in normalized or "晚上" in normalized
         start = datetime.combine(day, time(18 if evening else 0), ZONE)
         end = datetime.combine(day + timedelta(days=1), time.min, ZONE)

@@ -97,6 +97,73 @@ def test_full_corpus_and_structured_filters(database):
         assert {row.source_id for row in rows} == {"math-101"}
 
 
+def test_dated_event_with_current_participation_question(database):
+    # Same title on adjacent days/years: semantic similarity cannot choose the date.
+    days = {
+        "past": "2026-11-17",
+        "today": "2026-11-18",
+        "future": "2026-11-19",
+        "last-year": "2025-11-17",
+        "new-year": "2027-01-01",
+    }
+    documents = [
+        {
+            "id": key,
+            "title": "文献管理软件讲座",
+            "content": "文献管理软件的功能与使用。",
+            "location": "图书馆培训教室208",
+            "start": day + "T14:00:00+08:00",
+            "end": day + "T16:00:00+08:00",
+        }
+        for key, day in days.items()
+    ]
+    with database() as session:
+        seed(session, {"now": NOW.isoformat(), "documents": documents, "distractor_count": 0})
+    cases = {
+        "11月17日文献管理软件讲座在哪里举办？现在还能参加吗？": {"past"},
+        "１１月１７日文献管理软件讲座在哪里？此刻还可以参加吗？": {"past"},
+        "昨天文献管理软件讲座在哪里？现在还能报名吗？": {"past"},
+        "明天文献管理软件讲座在哪里？现在能报名吗？": {"future"},
+        "2025年11月17日文献管理软件讲座在哪里？现在还能参加吗？": {"last-year"},
+        "2026-11-17文献管理软件讲座在哪里举办？现在还能参加吗？": {"past"},
+        "11月17号文献管理软件讲座在哪里举办？": {"past"},
+        "文献管理软件讲座现在还能参加吗？": {"today"},
+        "文献管理软件讲座现在正在进行吗？": {"today"},
+        "昨天报名的文献管理软件讲座现在正在进行吗？": {"today"},
+        "11月17日文献管理软件讲座现在还能参加吗？哪些正在进行？": {"today"},
+        "11月31日文献管理软件讲座在哪里？现在还能参加吗？": set(),
+        "11月17日和11月19日文献管理软件讲座在哪里？现在还能参加吗？": set(),
+    }
+    modes = ["keyword"]
+    if database.kw["bind"].dialect.name == "postgresql":
+        modes.append("hybrid")
+        process_batch(database, RetrievalSettings(dimensions=3), client=FakeEncoder())
+    with database() as session:
+        for mode in modes:
+            settings = RetrievalSettings(mode=mode, dimensions=3)
+            for question, expected in cases.items():
+                diagnostics = {}
+                rows = search_information(
+                    session,
+                    question,
+                    now=NOW,
+                    settings=settings,
+                    embedding_client=FakeEncoder(),
+                    diagnostics=diagnostics,
+                )
+                assert {row.source_id for row in rows} == expected, (mode, question)
+                assert diagnostics["mode"] == mode
+            # Relative dates use Beijing time across both UTC midnight and the year boundary.
+            rows = search_information(
+                session,
+                "昨天文献管理软件讲座在哪里？现在还能参加吗？",
+                now=datetime.fromisoformat("2027-01-01T16:30:00+00:00"),
+                settings=settings,
+                embedding_client=FakeEncoder(),
+            )
+            assert {row.source_id for row in rows} == {"new-year"}
+
+
 def test_index_updates_deletes_retries_and_rebuild(database):
     corpus(database)
     settings = RetrievalSettings(dimensions=3)
