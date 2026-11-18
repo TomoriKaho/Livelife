@@ -47,11 +47,11 @@ class LocationResolution(BaseModel):
     candidates: tuple[str, ...] = ()
     room: str | None = None
     floor: str | None = None
-    precision: Literal["building"] | None = None
+    precision: Literal["building", "site"] | None = None
     method: Literal["alias", "explicit", "none"] = "none"
     matched_alias: str | None = None
     evidence: str | None = None
-    resolver_version: str = "campus-alias-v1"
+    resolver_version: str = "campus-alias-v3"
 
 
 class InformationFields(BaseModel):

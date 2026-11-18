@@ -2,6 +2,8 @@
 
 标准后端 `app.main:app` 注册本接口，只读、无需登录。地图和日历共用本接口和活动 ID。HTTP 层调用信息系统 `content.map_query`；活动入库时统一解析地点，查询时统一完成时间、关键词、半径过滤和排序。地图客户端不再通过地点文本猜测建筑。
 
+地点可以是校内建筑、室外场地或校外地点。`place.building_id` 可为 null；没有校园建筑关联时不得按邻近建筑高亮。信息记录的 `location_resolution.precision` 支持 `building`（关联校园建筑）和 `site`（场地/校外参考点），均不表示入口或室内精度。补充目录及来源见[地点维护](../../services/content/README.md#补充场地与校外地点)。
+
 ## GET /locations/activities
 
 | 查询参数 | 类型与默认值 | 含义 |

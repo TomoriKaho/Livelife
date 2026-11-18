@@ -116,6 +116,9 @@ FROM pg_available_extensions WHERE name = 'vector';
 ```
 
 先核对目标数据库，备份后按既有部署流程运行 `alembic upgrade head` 和 `alembic current`。
+`0011_merge_processing_retrieval` 将检索与信息处理的两条迁移链合为单一 head，
+本身不修改数据或已有迁移；已升级至 `0009_hybrid_retrieval` 或 `0010_processing_diagnostics`
+的数据库均继续执行 `upgrade head`，补齐另一条链后合流，无需重建数据库。
 扩展不可用/权限不足时迁移失败，应安装匹配 PostgreSQL 版本的扩展或安排管理员启用，
 不得跳过迁移后伪报就绪。现有 API 不能只更新源码而不迁移。
 
@@ -144,7 +147,8 @@ uv run --locked python -m app.retrieval status
 
 `rebuild` 使全库索引版本失效，不删除原始信息；重建期间采用关键词兜底，未重新编码的旧片段不参与向量召回。
 切回 `RETRIEVAL_MODE=keyword` 并重启 API 可停用模型调用。数据库回退至 `0008_merge_history_favorites`
-会删除全部检索状态、片段及触发器，原信息表保留；先停 worker 并切换兼容代码，不自动删除可能共享的 vector 扩展。
+会删除全部检索状态、片段及触发器；合流后的数据库还会删除信息处理任务、尝试及审核依据。
+原信息表保留；先停 worker、备份两模块数据并切换兼容代码，不自动删除可能共享的 vector 扩展。
 正式/共享数据库的安装、迁移和服务启停须按已授权目标执行；本任务没有自动修改共享部署。
 
 ## 验证与性能边界
