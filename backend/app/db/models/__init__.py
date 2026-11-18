@@ -5,6 +5,7 @@ from app.db.models.agent import AgentIpWindow, AgentMessage, AgentSession, Agent
 from app.db.models.base import Base
 from app.db.models.favorite import ActivityFavorite
 from app.db.models.information import InformationRecord, MapPlaceRecord, PlaceAliasRecord
+from app.db.models.processing import ProcessingAttempt, ProcessingGate, ProcessingJob
 from app.db.models.profile import UserInterest, UserProfile
 
 __all__ = [
@@ -14,6 +15,9 @@ __all__ = [
     "AgentSession",
     "AgentUserUsage",
     "Base",
+    "ProcessingAttempt",
+    "ProcessingGate",
+    "ProcessingJob",
     "EmailVerificationCode",
     "InformationRecord",
     "MapPlaceRecord",

@@ -190,7 +190,7 @@ Agent 路由位于 `app/api/agent/`，会话和模型服务位于 `app/services/
 | --- | --- |
 | `accounts/` | 账户、登录凭据校验、会话生命周期和身份查询 |
 | `preferences/` | 用户资料、兴趣标签、个性化设置及通知偏好 |
-| `content/` | 已实现通用信息汇总、持久化和查询；分类及摘要后续接入 |
+| `content/` | 通用信息保存与查询；`processing/` 提供独立模型提取候选、原文证据校验和人工确认新增 |
 | `locations/` | 地点查询及附近活动检索 |
 | `favorites/` | 活动收藏、取消收藏和列表查询 |
 | `reactions/` | 表情表态、表情与分数映射及聚合结果 |
@@ -214,3 +214,7 @@ Agent 路由位于 `app/api/agent/`，会话和模型服务位于 `app/services/
 专项测试：`uv run pytest tests/test_agent.py tests/test_agent_auth.py tests/test_agent_history.py tests/test_migrations.py`；`uv run --locked --group local-db pytest tests/test_agent_history.py --local-postgres` 在独立临时 PostgreSQL 验证新表、分页与历史检索。测试使用合成账号和模型替身，不需要真实模型凭据。完整联调真实模型、跨设备及 Android 输入法需另记验收结果。接口、上下文预算和位置隐私以 [Agent API](app/api/agent/API.md) 为准。
 
 Agent 会话置顶需升级至 `0007_agent_pins`：只添加默认未置顶字段，保留会话与消息；降级只丢失置顶状态。临时新对话和置顶排序/接口见[Agent 契约](app/api/agent/API.md#临时新对话与置顶)。
+
+## 系统内部信息处理
+
+已提供 #101 的显式原文导入、模型提取、失败筛选/诊断、显式重试、有界批量执行、缺失/冲突区分、可追溯人工回退和人工确认新增命令。它与用户聊天会话和额度隔离，复用服务端模型连接配置，不自动抓取或调度。内部契约、`CONTENT_PROCESSING_*` 配置、开发库迁移、冷启动 JSON 和重试步骤集中在[信息处理说明](app/services/content/README.md#内部-agent-信息处理101)。真实模型效果及目标环境启用情况以实际验证记录为准。

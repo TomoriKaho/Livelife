@@ -1321,5 +1321,28 @@
     "longitude": 116.30502477899326,
     "latitude": 39.99225952209846,
     "aliases": []
+  },
+  {
+    "id": "pku:yanyuan:tennis-2",
+    "name": "二体网球场",
+    "building_id": null,
+    "longitude": 116.301119875,
+    "latitude": 39.98943555,
+    "aliases": [
+      "第二体育馆网球场",
+      "北京大学二体网球场"
+    ],
+    "campus": "北京大学燕园"
+  },
+  {
+    "id": "pku:offcampus:red-building",
+    "name": "北京大学红楼",
+    "building_id": null,
+    "longitude": 116.39914353846153,
+    "latitude": 39.92331917692308,
+    "aliases": [
+      "北大红楼"
+    ],
+    "campus": "北京东城（校外）"
   }
 ]
