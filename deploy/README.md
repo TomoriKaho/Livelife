@@ -123,9 +123,10 @@ RAG 复用课程机的后端发布链路。模型是独立的项目 Supervisor �
 ```bash
 task_root=/home/group5/livelife
 task_sha=替换为已评审的完整40位提交SHA
+PATH="$task_root/build-tools/venv/bin:$PATH" \
 "$task_root/control-venv/bin/python" deploy/install-retrieval.py \
   --root "$task_root" --source "$PWD" --sha "$task_sha" \
-  --port 19073 --threads 4 --branch main --branch 73-hybrid-retrieval
+  --port 19073 --threads 4 --branch 73-hybrid-retrieval
 ```
 
 安装器只从指定 Git 提交提取 backend，不复制工作区 `.env`。独立目录为 `embedding/embedding-<摘要>/`，包含固定源码、模型 venv、私有 `service.json`、下载缓存和安装日志。模型固定为 Qwen3-Embedding-0.6B、revision `97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3`、1024 维、CPU，线程数可选 1–8。首次安装需要公开依赖及模型下载网络，依赖准备和模型下载分别最多 30 分钟；正常运行只读取本目录缓存，不联网下载。安装期间不向子进程提供聊天、SMTP 或部署凭证。
@@ -135,7 +136,7 @@ task_sha=替换为已评审的完整40位提交SHA
 模型身份健康检查和一次实际编码均通过后，安装器才原子更新 `credentials/retrieval.json`：
 
 ```json
-{"branches":["main","73-hybrid-retrieval"],"service":"embedding-替换为安装器返回的16位摘要"}
+{"branches":["73-hybrid-retrieval"],"service":"embedding-替换为安装器返回的16位摘要"}
 ```
 
 目录 0700、文件 0600；服务元数据也须为私有普通文件。`--branch` 列表会整体替换已启用列表；未列出的分支、legacy 实例以及没有 `retrieval_checks=true` 能力标记的历史 release 保持原行为。名单按完整分支名称匹配，命名分支后续具备能力标记的 SHA 自动注入同一套 Embedding/profile 配置，API 与 worker 一致。不读取控制进程中继承的 `EMBEDDING_*`，也不通过聊天模型配置通道传递它们。此名单只启用本地测试检索服务，不扩大 `model.json` 对聊天模型密钥的 SHA 授权。配置缺失表示未启用，损坏或权限错误会阻止支持 RAG 的候选启动。
