@@ -89,6 +89,7 @@ def _public_message(message: dict) -> dict:
         "role": message["role"],
         "content": message["content"],
         "status": message["status"],
+        "error_code": message.get("error_code"),
         "citations": message.get("citations", []),
         "rating": message.get("rating"),
         "created_at": message["created_at"],
@@ -264,6 +265,7 @@ async def send_message(
             )
             yield _sse("done", {"message_id": assistant["id"], "status": "completed"})
         except AgentModelError as error:
+            code = str(error)
             finish_request(
                 factory,
                 settings,
@@ -272,12 +274,13 @@ async def send_message(
                 request_id=request_id,
                 answer=answer,
                 status="failed",
-                input_tokens=0,
-                output_tokens=0,
-                estimated_usage=True,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                estimated_usage=estimated,
+                error_code=code,
             )
             finalized = True
-            yield _sse("error", {"code": str(error), "retryable": True})
+            yield _sse("error", {"code": code, "retryable": True})
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -289,9 +292,10 @@ async def send_message(
                 request_id=request_id,
                 answer=answer,
                 status="failed",
-                input_tokens=0,
-                output_tokens=0,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
                 estimated_usage=True,
+                error_code="agent_internal_error",
             )
             finalized = True
             yield _sse("error", {"code": "agent_internal_error", "retryable": True})
@@ -306,9 +310,10 @@ async def send_message(
                         request_id=request_id,
                         answer=answer,
                         status="failed" if timed_out else "cancelled",
-                        input_tokens=0,
-                        output_tokens=0,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
                         estimated_usage=True,
+                        error_code="model_timeout" if timed_out else None,
                     )
                 except Exception:
                     pass
@@ -339,6 +344,7 @@ async def send_message(
                     input_tokens=0,
                     output_tokens=0,
                     estimated_usage=True,
+                    error_code="model_timeout" if timed_out else None,
                 )
 
         async def deadline_watchdog() -> None:

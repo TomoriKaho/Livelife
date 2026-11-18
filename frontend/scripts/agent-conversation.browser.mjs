@@ -79,14 +79,22 @@ export async function verifyAgentConversation() {
     editor().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }));
     await waitFor(() => requests.length === 2 && users().length === 2, 'Keyboard send did not append a user message');
     assert(editor().value === '' && requests[1].body.content === '快捷键发送的问题', 'Ctrl+Enter clears draft and sends exactly one question');
-    emit(1, 'error', { code: 'model_timeout', retryable: true }); requests[1].controller.close();
-    await waitFor(() => [...document.querySelectorAll('#app .message-actions button')].some(button => button.textContent.includes('重试')), 'Failure did not expose retry');
+    emit(1, 'delta', { text: '半截回答' });
+    requests[1].controller.close();
+    await waitFor(() => [...document.querySelectorAll('#app .message-actions button')].some(button => button.textContent.includes('重试')), 'EOF without done did not expose retry');
+    assert(bubbles()[1]?.textContent.includes('半截回答') && bubbles()[1]?.textContent.includes('未完整生成'), 'partial EOF retains partial text with explicit incomplete notice');
+    assert(document.querySelectorAll('#app .rating-action').length === 2, 'incomplete reply does not expose feedback actions');
     const retry = [...document.querySelectorAll('#app .message-actions button')].find(button => button.textContent.includes('重试'));
     retry.click();
     await waitFor(() => requests.length === 3, 'Retry did not send a request');
-    assert(users().length === 2 && requests[2].body.content === '快捷键发送的问题', 'retry resends the question without duplicating the user message');
+    assert(
+      users().length === 2
+      && requests[2].body.content === '快捷键发送的问题'
+      && requests[2].body.client_request_id === requests[1].body.client_request_id,
+      'retry reuses the logical client_request_id without duplicating the user message',
+    );
     emit(2, 'delta', { text: '重试成功' }); complete(2);
-    await waitFor(() => bubbles()[2]?.textContent === '重试成功', 'Retry response did not render');
+    await waitFor(() => bubbles().length === 2 && bubbles()[1]?.textContent === '重试成功', 'Retry response did not update the bubble in place');
 
     await input('滚动定位测试 '.repeat(180)); sendButton().click();
     await waitFor(() => requests.length === 4 && users().length === 3, 'Long message did not send');
@@ -94,12 +102,12 @@ export async function verifyAgentConversation() {
     conversation().focus(); conversation().dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
     await waitFor(() => position().atTop, 'Home did not move the conversation away from the bottom');
     emit(3, 'delta', { text: '用户正在阅读历史时不应跳回底部。'.repeat(80) });
-    await waitFor(() => bubbles()[3]?.textContent.includes('不应跳回底部'), 'Long streaming delta did not render');
+    await waitFor(() => bubbles()[2]?.textContent.includes('不应跳回底部'), 'Long streaming delta did not render');
     assert(position().atTop, 'streaming preserves a reader who has scrolled up');
     conversation().dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
     await waitFor(() => position().atBottom, 'End did not move the conversation to the bottom');
     emit(3, 'delta', { text: '继续跟随底部。'.repeat(40) });
-    await waitFor(() => bubbles()[3]?.textContent.includes('继续跟随底部'), 'Second streaming delta did not render');
+    await waitFor(() => bubbles()[2]?.textContent.includes('继续跟随底部'), 'Second streaming delta did not render');
     await waitFor(() => position().atBottom, 'Streaming content did not keep a bottom reader at the bottom');
     await paint();
     const viewport = conversation().getBoundingClientRect(), x = viewport.left + viewport.width / 2;
@@ -111,7 +119,7 @@ export async function verifyAgentConversation() {
       const readingTop = position().top;
       assert(!position().atBottom, 'drag leaves the bottom before release');
       emit(3, 'delta', { text: '拖动未松手时收到的内容。'.repeat(40) });
-      await waitFor(() => bubbles()[3]?.textContent.includes('拖动未松手'), 'Delta during dragging did not render');
+      await waitFor(() => bubbles()[2]?.textContent.includes('拖动未松手'), 'Delta during dragging did not render');
       await paint();
       assert(Math.abs(position().top - readingTop) < 3, 'streaming preserves the reading position during an active drag');
     } finally {

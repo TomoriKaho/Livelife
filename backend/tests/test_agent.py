@@ -673,3 +673,277 @@ def test_reasoning_configuration_rejects_invalid_value(monkeypatch):
     monkeypatch.setenv("AGENT_LLM_REASONING_EFFORT", "invalid-secret-value")
     with pytest.raises(RuntimeError, match="^AGENT_LLM_REASONING_EFFORT is invalid$"):
         get_agent_settings()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("lines", "expected_chunks", "expected_code"),
+    [
+        (
+            [
+                'data: {"choices":[{"delta":{"content":"前半句"},"finish_reason":null}]}',
+                'data: {"choices":[{"delta":{"content":"但未正常结束"}}]}',
+            ],
+            [("前半句", None), ("但未正常结束", None)],
+            "model_incomplete_stream",
+        ),
+        (
+            [
+                'data: {"choices":[{"delta":{"content":"达到长度上限"},"finish_reason":"length"}]}',
+                'data: {"choices":[],"usage":{"prompt_tokens":14,"completion_tokens":8}}',
+                "data: [DONE]",
+            ],
+            [("达到长度上限", None), (None, {"input_tokens": 14, "output_tokens": 8})],
+            "model_length_limit",
+        ),
+        (
+            [
+                'data: {"choices":[{"delta":{"content":"部分输出"},'
+                '"finish_reason":"content_filter"}]}',
+                "data: [DONE]",
+            ],
+            [("部分输出", None)],
+            "model_content_filtered",
+        ),
+        (
+            [
+                'data: {"choices":[{"delta":{"content":"先发一点"}}]}',
+                'data: {"error":{"message":"upstream aborted"}}',
+                "data: [DONE]",
+            ],
+            [("先发一点", None)],
+            "model_unavailable",
+        ),
+    ],
+)
+async def test_model_stream_rejects_eof_and_abnormal_finish_reasons(
+    monkeypatch, lines, expected_chunks, expected_code
+):
+    fake = _FakeAsyncClient(_FakeStreamResponse(lines))
+    monkeypatch.setattr("app.services.agent.llm.httpx.AsyncClient", lambda **_kwargs: fake)
+
+    seen = []
+    with pytest.raises(AgentModelError, match=f"^{expected_code}$"):
+        async for item in stream_completion(
+            settings(
+                llm_base_url="https://llm.example.test/v1",
+                llm_api_key="test-key",
+                llm_model="test-model",
+            ),
+            history=[],
+            sources=(),
+        ):
+            seen.append(item)
+
+    assert seen == expected_chunks
+
+
+@pytest.mark.anyio
+async def test_http_partial_eof_and_length_truncation_never_mark_completed(tmp_path, monkeypatch):
+    from app.db.models import AgentUserUsage
+
+    app, database = make_api_app(tmp_path, monkeypatch, model=True)
+    try:
+        with database.session_factory() as session, session.begin():
+            make_information(session, title="百讲活动安排", content="今晚七点有交响音乐会。")
+
+        scripted_streams = [
+            [
+                'data: {"choices":[{"delta":{"content":"今晚七点有"}}]}',
+                # Fault injection: EOF without [DONE] and without network exception.
+            ],
+            [
+                'data: {"choices":[{"delta":{"content":"音乐会曲目包括"},'
+                '"finish_reason":"length"}]}',
+                'data: {"choices":[],"usage":{"prompt_tokens":40,"completion_tokens":16}}',
+                "data: [DONE]",
+            ],
+        ]
+
+        def fake_client(**_kwargs):
+            return _FakeAsyncClient(_FakeStreamResponse(scripted_streams.pop(0)))
+
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://test",
+            headers={"Authorization": "Bearer account-test-token"},
+        ) as client:
+            monkeypatch.setattr("app.services.agent.llm.httpx.AsyncClient", fake_client)
+            created = (await client.post("/agent/sessions")).json()
+            sid = created["session_id"]
+
+            eof_res = await client.post(
+                f"/agent/sessions/{sid}/messages/stream",
+                json={"content": "百讲活动", "client_request_id": str(uuid4())},
+            )
+            assert eof_res.status_code == 200
+            assert '"text":"今晚七点有"' in eof_res.text
+            assert '"code":"model_incomplete_stream"' in eof_res.text
+            assert "event: done" not in eof_res.text
+
+            restored = (await client.get(f"/agent/sessions/{sid}")).json()
+            eof_msg = restored["messages"][-1]
+            assert eof_msg["status"] == "failed"
+            assert eof_msg["error_code"] == "model_incomplete_stream"
+            assert eof_msg["content"] == "今晚七点有"
+            assert eof_msg["citations"][0]["title"] == "百讲活动安排"
+            rate_res = await client.post(
+                f"/agent/sessions/{sid}/messages/{eof_msg['id']}/rating",
+                json={"rating": "like"},
+            )
+            assert rate_res.status_code == 404
+
+            length_res = await client.post(
+                f"/agent/sessions/{sid}/messages/stream",
+                json={"content": "百讲活动", "client_request_id": str(uuid4())},
+            )
+            assert length_res.status_code == 200
+            assert '"code":"model_length_limit"' in length_res.text
+            assert "event: done" not in length_res.text
+
+            restored_after = (await client.get(f"/agent/sessions/{sid}")).json()
+            length_msg = restored_after["messages"][-1]
+            assert length_msg["status"] == "failed"
+            assert length_msg["error_code"] == "model_length_limit"
+            assert length_msg["content"] == "音乐会曲目包括"
+
+        with database.session_factory() as db:
+            usage = db.get(AgentUserUsage, ACCOUNT_ID)
+            assert usage is not None
+            assert usage.active_request_id is None
+            assert usage.tokens_reserved == 0
+            assert usage.tokens_used > 0
+    finally:
+        database.close()
+
+
+@pytest.mark.anyio
+async def test_retry_replays_completed_once_and_recovers_failed_or_cancelled_in_place(
+    tmp_path, monkeypatch
+):
+    from app.db.models import AgentMessage, AgentUserUsage
+
+    app, database = make_api_app(tmp_path, monkeypatch, model=True)
+    try:
+        with database.session_factory() as session, session.begin():
+            make_information(session, title="图书馆讲座", content="周五下午有古籍修复讲座。")
+
+        upstream_calls = 0
+        fail_first_attempt = False
+
+        def fake_client(**_kwargs):
+            nonlocal upstream_calls, fail_first_attempt
+            upstream_calls += 1
+            if fail_first_attempt:
+                fail_first_attempt = False
+                return _FakeAsyncClient(
+                    _FakeStreamResponse(['data: {"choices":[{"delta":{"content":"半截断流"}}]}'])
+                )
+            return _FakeAsyncClient(
+                _FakeStreamResponse(
+                    [
+                        'data: {"choices":[{"delta":{"content":"周五下午有古籍修复讲座 [S1]。"},'
+                        '"finish_reason":"stop"}]}',
+                        'data: {"choices":[],"usage":{"prompt_tokens":20,"completion_tokens":10}}',
+                        "data: [DONE]",
+                    ]
+                )
+            )
+
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://test",
+            headers={"Authorization": "Bearer account-test-token"},
+        ) as client:
+            monkeypatch.setattr("app.services.agent.llm.httpx.AsyncClient", fake_client)
+            created = (await client.post("/agent/sessions")).json()
+            sid = created["session_id"]
+
+            # 1) Backend completed, client lost terminal event and retries with same ID.
+            cid_completed = str(uuid4())
+            first = await client.post(
+                f"/agent/sessions/{sid}/messages/stream",
+                json={"content": "图书馆讲座", "client_request_id": cid_completed},
+            )
+            assert "event: done" in first.text
+            assert upstream_calls == 1
+            with database.session_factory() as db:
+                tokens_after_first = db.get(AgentUserUsage, ACCOUNT_ID).tokens_used
+                assert tokens_after_first == 30
+
+            replayed = await client.post(
+                f"/agent/sessions/{sid}/messages/stream",
+                json={"content": "图书馆讲座", "client_request_id": cid_completed},
+            )
+            assert replayed.status_code == 200
+            assert "event: citation" in replayed.text
+            assert "周五下午有古籍修复讲座 [S1]。" in replayed.text
+            assert "event: done" in replayed.text
+            assert upstream_calls == 1  # Zero extra model calls on replay!
+            with database.session_factory() as db:
+                assert db.get(AgentUserUsage, ACCOUNT_ID).tokens_used == tokens_after_first
+
+            conflict = await client.post(
+                f"/agent/sessions/{sid}/messages/stream",
+                json={"content": "篡改后的不同问题", "client_request_id": cid_completed},
+            )
+            assert conflict.status_code == 409
+            assert conflict.json()["detail"]["code"] == "request_conflict"
+
+            # 2) Failed attempt followed by retry with same client_request_id recovers in place.
+            cid_failed = str(uuid4())
+            fail_first_attempt = True
+            broken = await client.post(
+                f"/agent/sessions/{sid}/messages/stream",
+                json={"content": "图书馆讲座几点", "client_request_id": cid_failed},
+            )
+            assert '"code":"model_incomplete_stream"' in broken.text
+            assert upstream_calls == 2
+
+            before_retry = (await client.get(f"/agent/sessions/{sid}")).json()["messages"]
+            assert len(before_retry) == 4
+            assert before_retry[-1]["status"] == "failed"
+            failed_user_id = before_retry[-2]["id"]
+            failed_assistant_id = before_retry[-1]["id"]
+
+            recovered = await client.post(
+                f"/agent/sessions/{sid}/messages/stream",
+                json={"content": "图书馆讲座几点", "client_request_id": cid_failed},
+            )
+            assert recovered.status_code == 200
+            assert "event: done" in recovered.text
+            assert upstream_calls == 3
+
+            after_retry = (await client.get(f"/agent/sessions/{sid}")).json()["messages"]
+            assert len(after_retry) == 4  # Updated in place, no duplicate messages!
+            assert after_retry[-2]["id"] == failed_user_id
+            assert after_retry[-2]["client_request_id"] == cid_failed
+            assert after_retry[-1]["id"] == failed_assistant_id
+            assert after_retry[-1]["status"] == "completed"
+            assert after_retry[-1]["error_code"] is None
+            assert after_retry[-1]["content"] == "周五下午有古籍修复讲座 [S1]。"
+
+            # 3) Pending returns 409; cancelled also recovers in place.
+            with database.session_factory() as db, db.begin():
+                assistant_row = db.get(AgentMessage, UUID(failed_assistant_id))
+                assistant_row.payload = {**assistant_row.payload, "status": "pending"}
+            in_flight = await client.post(
+                f"/agent/sessions/{sid}/messages/stream",
+                json={"content": "图书馆讲座几点", "client_request_id": cid_failed},
+            )
+            assert in_flight.status_code == 409
+            assert in_flight.json()["detail"]["code"] == "request_in_progress"
+            assert upstream_calls == 3
+
+            with database.session_factory() as db, db.begin():
+                assistant_row = db.get(AgentMessage, UUID(failed_assistant_id))
+                assistant_row.payload = {**assistant_row.payload, "status": "cancelled"}
+            from_cancelled = await client.post(
+                f"/agent/sessions/{sid}/messages/stream",
+                json={"content": "图书馆讲座几点", "client_request_id": cid_failed},
+            )
+            assert from_cancelled.status_code == 200
+            assert "event: done" in from_cancelled.text
+            assert upstream_calls == 4
+    finally:
+        database.close()
