@@ -273,7 +273,8 @@ def test_chinese_information_retrieval_prefers_title_matches(sessions):
         make_information(session, title="其他校园消息", content="百讲附近的校园信息。")
     with sessions() as session:
         results = search_information(session, "百讲活动")
-    assert len(results) == 2
+    # A nearby mention without activity evidence no longer passes lexical coverage.
+    assert len(results) == 1
     assert results[0].title == "百讲活动安排"
     assert results[0].citation(1)["source_url"] == "https://example.test/source"
 
@@ -305,7 +306,7 @@ def test_follow_up_retrieval_uses_history_as_query_hint(sessions, monkeypatch):
     )
     captured = {}
 
-    def fake_search(_session, query):
+    def fake_search(_session, query, **kwargs):
         captured["query"] = query
         return ()
 

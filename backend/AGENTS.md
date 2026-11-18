@@ -3,7 +3,7 @@
 遵循根目录 AGENTS.md 和 CONTRIBUTING.md 的文档结构、拆分及分工约定，并阅读 docs/architecture.md、backend/README.md、docs/testing.md。接口任务同时阅读 docs/api.md 和对应模块契约；部署时从 docs/deployment.md 进入 deploy 的相关说明。
 
 - 已确定 Python + FastAPI + Pydantic，采用模块化单体；当前能力、运行时和检查命令见 backend/README.md 及 API 契约，按已授权任务扩展模块。
-- 持久化采用 PostgreSQL + SQLAlchemy + Alembic，当前配置与迁移限制以 backend/README.md 为准；采集与推荐使用独立 Python worker，Redis + Celery 和 pgvector 待专项确认。目标目录按需创建，不为未来模块生成空工程。
+- 持久化采用 PostgreSQL + SQLAlchemy + Alembic，当前配置与迁移限制以 backend/README.md 为准；混合检索使用已确认的独立 Embedding 服务和 pgvector，安装与版本同步遵循 app/services/retrieval/README.md。采集与推荐使用独立 Python worker，Redis + Celery 待专项确认。目标目录按需创建，不为未来模块生成空工程。
 - 校验身份、资源权限和输入，不依赖客户端进行权限控制。
 - 使用已确认的接口契约和错误结构；不兼容变更需说明迁移和客户端影响。
 - 新接口先确认契约，再实现路由、模型与客户端 Mock；没有确定契约时不创建空业务路由或 501 占位接口；不自行引入未确认的认证、响应包裹或错误码。资源权限和错误状态须验证实际行为。

@@ -14,6 +14,8 @@ from app.core.config import AgentSettings
 from app.db.models import AgentIpWindow, AgentMessage, AgentSession, AgentUserUsage, User
 from app.services.agent.llm import estimate_input_tokens
 from app.services.agent.retrieval import RetrievedInformation, search_information
+from app.services.retrieval.config import get_retrieval_settings
+from app.services.retrieval.embeddings import EmbeddingClient, PreparedQuery
 
 SESSION_TTL = timedelta(hours=24)
 REQUEST_WINDOW = timedelta(minutes=1)
@@ -190,6 +192,59 @@ def _usage(session: Session, user_id: UUID, now: datetime) -> AgentUserUsage:
     )
 
 
+def _prepare_embedding(
+    factory, settings, retrieval_settings, token, user_id, content, client_request_id, now
+):
+    if retrieval_settings.mode != "hybrid":
+        return None
+    with factory() as session:
+        row = _session(session, settings, token, now, user_id)
+        previous = session.scalar(
+            select(AgentMessage).where(
+                AgentMessage.session_id == row.id,
+                AgentMessage.payload["role"].as_string() == "user",
+                AgentMessage.payload["client_request_id"].as_string() == str(client_request_id),
+            )
+        )
+        if previous:
+            assistant = session.scalar(
+                select(AgentMessage).where(
+                    AgentMessage.session_id == row.id,
+                    AgentMessage.payload["request_id"].as_string()
+                    == previous.payload.get("request_id"),
+                    AgentMessage.payload["role"].as_string() == "assistant",
+                )
+            )
+            if (
+                previous.payload.get("content") != content
+                or not assistant
+                or assistant.payload.get("status") not in {"failed", "cancelled"}
+            ):
+                # Let admission handle idempotent replay/conflict without encoding.
+                return PreparedQuery.skipped()
+        usage = session.get(AgentUserUsage, user_id)
+        if usage:
+            if (
+                usage.usage_day == now.date()
+                and usage.tokens_used + usage.tokens_reserved >= settings.daily_token_quota
+            ):
+                raise AgentError("token_quota_exceeded", 429, retry_after=86400)
+            if usage.active_request_expires_at and usage.active_request_expires_at > now:
+                raise AgentError("user_request_in_progress", 429, retry_after=10)
+            if (
+                usage.request_window_start == _window_start(now, REQUEST_WINDOW)
+                and usage.request_count >= settings.requests_per_minute
+            ):
+                raise AgentError("user_rate_limited", 429, retry_after=60)
+        completed = _context_rows(
+            session, row.id, content, before_sequence=previous.sequence if previous else None
+        )
+        from app.services.agent.context import conversation_context
+
+        _, query, _ = conversation_context(completed, content, now)
+    return PreparedQuery(query, EmbeddingClient(retrieval_settings))
+
+
 def begin_request(
     factory: sessionmaker[Session],
     settings: AgentSettings,
@@ -208,6 +263,10 @@ def begin_request(
         raise AgentError("message_too_long", 413)
 
     now = datetime.now(UTC)
+    retrieval_settings = get_retrieval_settings()
+    prepared = _prepare_embedding(
+        factory, settings, retrieval_settings, token, user_id, content, client_request_id, now
+    )
     with factory() as session, session.begin():
         usage = _usage(session, user_id, now)
         row = _session(session, settings, token, now, user_id)
@@ -277,10 +336,14 @@ def begin_request(
         from app.services.agent.context import conversation_context
 
         history, retrieval_query, pinned = conversation_context(completed, content, now, location)
-        sources = (
-            search_information(session, retrieval_query, pinned_ids=pinned)
-            if pinned
-            else search_information(session, retrieval_query)
+        sources = search_information(
+            session,
+            retrieval_query,
+            pinned_ids=pinned,
+            now=now,
+            constraint_question=content,
+            settings=retrieval_settings,
+            embedding_client=prepared,
         )
         context_chars = sum(len(source.content) for source in sources)
         if context_chars > settings.max_context_chars:

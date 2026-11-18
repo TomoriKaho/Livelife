@@ -11,7 +11,7 @@ from alembic.script import ScriptDirectory
 from test_agent import settings
 from test_favorites import account, activity
 
-from app.db.models import ActivityFavorite, AgentSession, AgentUserUsage, User
+from app.db.models import ActivityFavorite, AgentSession, AgentUserUsage, RetrievalState, User
 from app.db.session import Database
 from app.services.agent.service import create_session, get_conversation, pin_session
 from app.services.favorites.service import save_favorite
@@ -50,11 +50,12 @@ def test_upgrade_from_either_branch_preserves_data(tmp_path, start):
                 config.attributes["connection"] = connection
                 command.upgrade(config, "head")
                 assert MigrationContext.configure(connection).get_current_heads() == (
-                    "0008_merge_history_favorites",
+                    "0009_hybrid_retrieval",
                 )
-        assert ScriptDirectory.from_config(config).get_heads() == ["0008_merge_history_favorites"]
+        assert ScriptDirectory.from_config(config).get_heads() == ["0009_hybrid_retrieval"]
         with db.session_factory() as session:
             assert session.get(User, owner) is not None
+            assert session.get(RetrievalState, target).revision == 1
             if sid:
                 row = session.get(AgentSession, sid)
                 assert row.is_pinned and row.messages[0]["content"] == "保留已有对话"

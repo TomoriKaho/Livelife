@@ -1,0 +1,385 @@
+from dataclasses import replace
+from datetime import datetime, timedelta
+from pathlib import Path
+
+import httpx
+import pytest
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import create_engine, delete, func, select, text, update
+from sqlalchemy.orm import sessionmaker
+
+from app.db.models import InformationRecord, RetrievalChunk, RetrievalState
+from app.services.agent.retrieval import search_information
+from app.services.retrieval.chunks import split_record
+from app.services.retrieval.config import RetrievalSettings
+from app.services.retrieval.embeddings import EmbeddingClient, EmbeddingError
+from app.services.retrieval.indexing import process_batch, rebuild
+from evaluation.retrieval import DATASET, load_dataset, seed
+
+BACKEND = Path(__file__).resolve().parents[1]
+NOW = datetime.fromisoformat("2026-11-18T14:30:00+08:00")
+
+
+@pytest.fixture(params=["sqlite", "postgresql"])
+def database(request, tmp_path):
+    if request.param == "postgresql":
+        if not request.config.getoption("--local-postgres"):
+            pytest.skip("requires --local-postgres")
+        from app.db.local import local_database
+
+        with local_database(tmp_path / "retrieval-postgres") as url:
+            engine = create_engine(url)
+            try:
+                yield sessionmaker(engine, expire_on_commit=False)
+            finally:
+                engine.dispose()
+    else:
+        engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'retrieval.db'}")
+        config = Config(str(BACKEND / "alembic.ini"))
+        with engine.begin() as connection:
+            config.attributes["connection"] = connection
+            command.upgrade(config, "head")
+        try:
+            yield sessionmaker(engine, expire_on_commit=False)
+        finally:
+            engine.dispose()
+
+
+def corpus(factory, *, distractors=0):
+    data = load_dataset(DATASET)
+    data["distractor_count"] = distractors
+    with factory() as session:
+        seed(session, data)
+    return data
+
+
+class FakeEncoder:
+    def __init__(self, *, failure=False, callback=None):
+        self.failure = failure
+        self.callback = callback
+        self.calls = 0
+
+    def encode(self, texts, *, query=False):
+        self.calls += 1
+        if self.callback:
+            callback, self.callback = self.callback, None
+            callback()
+        if self.failure:
+            raise EmbeddingError("embedding_unavailable")
+        # A controlled direction for exercising SQL, not a semantic-quality model.
+        return [[1.0, 0.0, 0.0] for _ in texts]
+
+
+def test_full_corpus_and_structured_filters(database):
+    corpus(database, distractors=501)
+    cases = {
+        "图书续借办理指引": {"library-renewal"},
+        "MATH101 的授课老师是谁": {"math-101"},
+        "想问MATH101的老师是谁": {"math-101"},
+        "想问MATH1010的老师是谁": set(),
+        "二教101现在上什么课": {"math-101"},
+        "第二教学楼1101现在上什么课": {"math-1101"},
+        "三教101现在上什么课": {"physics-101"},
+        "今天图书馆有什么古籍修复讲座": {"repair-today"},
+        "明天二教101上什么课": {"math-tomorrow"},
+        "二教999现在上什么课": set(),
+        "明天图书馆古籍修复讲座几点开始": set(),
+    }
+    with database() as session:
+        for question, expected in cases.items():
+            rows = search_information(session, question, now=NOW, settings=RetrievalSettings())
+            assert {row.source_id for row in rows} == expected, question
+        pinned = session.scalar(
+            select(InformationRecord.id).where(InformationRecord.source_id == "math-1101")
+        )
+        rows = search_information(session, "二教101现在上什么课", now=NOW, pinned_ids=(pinned,))
+        assert {row.source_id for row in rows} == {"math-101"}
+
+
+def test_index_updates_deletes_retries_and_rebuild(database):
+    corpus(database)
+    settings = RetrievalSettings(dimensions=3)
+    failing = FakeEncoder(failure=True)
+    first = process_batch(database, settings, client=failing, now=NOW)
+    assert first["failed"] == 18
+    assert process_batch(database, settings, client=failing, now=NOW)["selected"] == 0
+    working = FakeEncoder()
+    assert (
+        process_batch(database, settings, client=working, now=NOW + timedelta(seconds=3))["indexed"]
+        == 18
+    )
+    assert process_batch(database, settings, client=working)["selected"] == 0
+    with database.begin() as session:
+        row = session.scalar(
+            select(InformationRecord).where(InformationRecord.source_id == "math-101")
+        )
+        identity = row.id
+        row.content = "课程变更后的公开资料。"
+    with database() as session:
+        state = session.get(RetrievalState, identity)
+        assert state.revision == 2 and state.indexed_revision == 1
+    assert process_batch(database, settings, client=working)["indexed"] == 1
+    with database() as session:
+        assert session.get(RetrievalChunk, (identity, 0)).body == "课程变更后的公开资料。"
+    with database.begin() as session:
+        session.execute(delete(InformationRecord).where(InformationRecord.id == identity))
+    with database() as session:
+        assert session.get(RetrievalState, identity) is None
+        assert session.get(RetrievalChunk, (identity, 0)) is None
+    assert rebuild(database) == 17
+    assert process_batch(database, settings, client=working)["indexed"] == 17
+    with database() as session:
+        assert session.scalar(select(func.count()).select_from(RetrievalChunk)) == 17
+
+
+def test_late_encoding_and_failed_information_transaction(database):
+    corpus(database)
+    with database() as session:
+        identity = session.scalar(
+            select(RetrievalState.information_id).order_by(RetrievalState.information_id)
+        )
+
+    def change_while_encoding():
+        with database.begin() as session:
+            session.execute(
+                update(InformationRecord)
+                .where(InformationRecord.id == identity)
+                .values(content="新的正文")
+            )
+
+    result = process_batch(
+        database,
+        RetrievalSettings(dimensions=3),
+        client=FakeEncoder(callback=change_while_encoding),
+        batch_size=1,
+    )
+    assert result["superseded"] == 1
+    with database() as session:
+        assert session.get(RetrievalChunk, (identity, 0)) is None
+    with pytest.raises(RuntimeError), database.begin() as session:
+        session.execute(
+            update(InformationRecord)
+            .where(InformationRecord.id == identity)
+            .values(content="应当回滚")
+        )
+        raise RuntimeError("rollback")
+    with database() as session:
+        assert session.get(RetrievalState, identity).revision == 2
+        assert session.get(InformationRecord, identity).content == "新的正文"
+
+
+def test_hybrid_failure_keeps_keywords_and_transaction_usable(database, caplog):
+    corpus(database)
+    config = RetrievalSettings(mode="hybrid", dimensions=3)
+    with database() as session:
+        rows = search_information(
+            session, "图书续借办理指引", settings=config, embedding_client=FakeEncoder(failure=True)
+        )
+        assert rows[0].source_id == "library-renewal"
+        assert "embedding_unavailable" in caplog.text
+        assert session.scalar(select(func.count()).select_from(InformationRecord)) == 18
+
+
+def test_vector_sql_error_falls_back_without_aborting_caller(database, monkeypatch):
+    corpus(database)
+
+    def broken_query(session, *args):
+        session.execute(text("SELECT livelife_nonexistent_function()"))
+
+    monkeypatch.setattr("app.services.agent.retrieval._vector_candidates", broken_query)
+    diagnostics = {}
+    with database.begin() as session:
+        rows = search_information(
+            session,
+            "图书续借办理指引",
+            settings=RetrievalSettings(mode="hybrid", dimensions=3),
+            embedding_client=FakeEncoder(),
+            diagnostics=diagnostics,
+        )
+        assert rows[0].source_id == "library-renewal"
+        assert diagnostics["reason"] == "vector_query_failed"
+        assert session.scalar(text("SELECT 1")) == 1
+
+
+def test_real_vector_query_deduplicates_and_excludes_stale_profiles(database):
+    if database.kw["bind"].dialect.name != "postgresql":
+        pytest.skip("native pgvector query")
+    corpus(database)
+    config = RetrievalSettings(mode="hybrid", dimensions=3, min_similarity=0.9)
+    encoder = FakeEncoder()
+    process_batch(database, config, client=encoder)
+    with database() as session:
+        rows = search_information(
+            session, "二教101现在上什么课", now=NOW, settings=config, embedding_client=encoder
+        )
+        assert [row.source_id for row in rows] == ["math-101"]
+        citation = rows[0].citation(1)
+        assert citation["activity_location"] == "第二教学楼101"
+        assert citation["source_url"].endswith("math-101")
+        assert citation["activity_start_at"] is not None
+        rows = search_information(
+            session,
+            "不存在的语义测试",
+            settings=replace(config, model_revision="new"),
+            embedding_client=encoder,
+        )
+        assert rows == ()
+    with database.begin() as session:
+        session.execute(
+            update(InformationRecord)
+            .where(InformationRecord.source_id == "math-101")
+            .values(content="替换")
+        )
+    with database() as session:
+        from app.services.agent.retrieval import _vector_candidates
+        from app.services.retrieval.constraints import constraints
+
+        rows = _vector_candidates(
+            session, constraints(session, "二教101现在上什么课", NOW), [1, 0, 0], config
+        )
+        assert rows == []
+        # Roll back a real PostgreSQL failure to a savepoint, preserving caller state.
+        with pytest.raises(Exception), session.begin_nested():
+            session.execute(text("SELECT 'invalid'::vector"))
+        assert session.scalar(text("SELECT 1")) == 1
+
+
+def test_chunk_offsets_and_context(database):
+    corpus(database)
+    with database() as session:
+        row = session.scalar(
+            select(InformationRecord).where(InformationRecord.source_id == "math-101")
+        )
+        row.content = "第一段。\n" * 40 + "教室和时间仍需参考条目元数据。\n" * 40
+        chunks = split_record(row, RetrievalSettings(chunk_chars=120, overlap_chars=20))
+        assert len(chunks) > 2
+        covered = set()
+        for chunk in chunks:
+            covered.update(range(chunk.start, chunk.end))
+            assert chunk.body == row.content[chunk.start : chunk.end]
+            assert chunk.information_id == row.id and chunk.source_url == row.source_url
+            assert "第二教学楼101" in chunk.text and "2026-11-18" in chunk.text
+            assert str(row.id) not in chunk.text and row.source_url not in chunk.text
+        assert covered == set(range(len(row.content)))
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        [],
+        {"model": "wrong-model", "data": [{"index": 0, "embedding": [1, 0, 0]}]},
+        {"data": []},
+        {"data": [{"index": 0, "embedding": [0, 0, 0]}]},
+        {"data": [{"index": 1, "embedding": [1, 0, 0]}]},
+        {"data": [{"index": 0, "embedding": [1, 0]}]},
+        {"data": [{"index": 0, "embedding": [True, 0, 0]}]},
+    ],
+)
+def test_embedding_contract_rejects_invalid_vectors(payload):
+    client = EmbeddingClient(
+        RetrievalSettings(base_url="https://embedding.example.test/v1", dimensions=3),
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json=payload)),
+    )
+    with pytest.raises(EmbeddingError):
+        client.encode(["公开资料"])
+
+
+def test_embedding_indices_and_query_instruction():
+    import json
+
+    requests = []
+
+    def respond(request):
+        requests.append(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {"index": 1, "embedding": [0, 3, 0]},
+                    {"index": 0, "embedding": [2, 0, 0]},
+                ]
+            },
+        )
+
+    client = EmbeddingClient(
+        RetrievalSettings(base_url="https://embedding.example.test/v1", dimensions=3),
+        transport=httpx.MockTransport(respond),
+    )
+    assert client.encode(["甲", "乙"], query=True) == [[1, 0, 0], [0, 1, 0]]
+    assert requests[0]["input"][0].startswith("Instruct:")
+    client.encode(["甲", "乙"])
+    assert requests[1]["input"] == ["甲", "乙"]
+
+
+@pytest.mark.parametrize("vector", [[float("nan"), 0, 0], [float("inf"), 0, 0], [10**400, 0, 0]])
+def test_embedding_rejects_nonfinite_and_overflow(vector):
+    from app.services.retrieval.embeddings import validate_vector
+
+    with pytest.raises(EmbeddingError):
+        validate_vector(vector, 3)
+
+
+def test_embedding_preflight_releases_locks_and_duplicate_skips_model(database, monkeypatch):
+    from uuid import uuid4
+
+    from sqlalchemy import event
+    from test_agent import ACCOUNT_ID, seed_account, settings
+
+    from app.services.agent.service import begin_request, create_session, finish_request
+
+    seed_account(database)
+    corpus(database)
+    config = settings(requests_per_minute=1)
+    created = create_session(database, config, "retrieval", user_id=ACCOUNT_ID)
+    connections = 0
+    engine = database.kw["bind"]
+
+    def checked_out(*args):
+        nonlocal connections
+        connections += 1
+
+    def checked_in(*args):
+        nonlocal connections
+        connections -= 1
+
+    def outside_transaction():
+        assert connections == 0
+
+    encoder = FakeEncoder(callback=outside_transaction)
+    monkeypatch.setattr("app.services.agent.service.EmbeddingClient", lambda settings: encoder)
+    monkeypatch.setattr(
+        "app.services.agent.service.get_retrieval_settings",
+        lambda: RetrievalSettings(mode="hybrid", dimensions=3),
+    )
+    event.listen(engine, "checkout", checked_out)
+    event.listen(engine, "checkin", checked_in)
+    request_id = uuid4()
+    arguments = dict(
+        token=created["session_token"],
+        user_id=ACCOUNT_ID,
+        content="图书续借办理指引",
+        client_request_id=request_id,
+        ip="retrieval",
+    )
+    try:
+        result = begin_request(database, config, **arguments)
+        assert encoder.calls == 1
+        finish_request(
+            database,
+            config,
+            token=created["session_token"],
+            user_id=ACCOUNT_ID,
+            request_id=result["assistant_message"]["request_id"],
+            answer="请参考续借说明",
+            status="completed",
+            input_tokens=0,
+            output_tokens=0,
+            estimated_usage=False,
+        )
+        repeated = begin_request(database, config, **arguments)
+        assert repeated["duplicate"]
+        assert encoder.calls == 1
+    finally:
+        event.remove(engine, "checkout", checked_out)
+        event.remove(engine, "checkin", checked_in)

@@ -2,6 +2,8 @@
 
 为活动列表、日历、地图、推荐和 Agent 等后端模块提供共同的信息来源。[#60](https://github.com/TomoriKaho/Livelife/issues/60) 的 Python 服务负责采集契约、SQL 持久化和统一查询。[#63](https://github.com/TomoriKaho/Livelife/issues/63) 本地 Demo 用独立 HTTP 入口验证公众号原文导入、[#61](https://github.com/TomoriKaho/Livelife/issues/61) 所需的附近活动筛选，以及 Agent 可读取的检索文本。
 
+信息变更通过迁移 `0009_hybrid_retrieval` 的数据库触发器同步索引版本，涵盖新增、更新和删除；任务状态与信息写入同事务，原有快照幂等规则不变。采集入库不调用模型，独立 worker 负责分块和编码；索引未就绪或服务失败时仍可关键词查询。配置、迁移前提、失败重试和重建统一见[检索模块](../retrieval/README.md)。
+
 ## 地点目录导入与旧数据回填
 
 标准地图接口见[地图活动查询 API](../../api/locations/API.md)。`content.map_query` 负责时间、关键词、半径与建筑排序；`InformationAggregator` 在写入时调用 `LocationResolver`。前端只展示结构化地点，不重复匹配原文。`InformationQuery.order_by` 默认仍为采集时间倒序，地图显式选择 `activity`，按开始时间和 UUID 升序。
@@ -208,9 +210,9 @@ uv run --locked python -m app.content_demo --wechat-json /tmp/wechat-article.jso
 
 ## Agent 读取与向量检索
 
-[`retrieval_document()`](retrieval.py) 输出统一条目和按序号排列的正文块。`chars-v1` 每块正文最多 480 字符，相邻块重叠 60 字符，块前附标题，`text_sha256` 对实际用于检索的文本取哈希。Agent 可以先用结构化条件缩小候选范围，再取分块并引用 `source_url`。
+[`retrieval_document()`](retrieval.py) 保留 Demo 已有的条目预览契约：`chars-v1` 每块正文最多 480 字符，相邻块重叠 60 字符，块前附标题，`text_sha256` 对实际用于预览的文本取哈希。该预览不代表向量已入库。
 
-后续可独立存储 `information_id`、`chunking_version`、`ordinal`、`model_version`、`text_sha256` 与 `embedding`。前四项组合标识向量记录，文章更新后用内容哈希复用未变更的块，清理过期块。向量存储和相似度排序待接入，可复用同一地点与时间查询契约。[pgvector](https://github.com/pgvector/pgvector)
+Agent 实际使用[检索模块](../retrieval/README.md)的 `paragraph-v2` 分块，保留原记录、偏移和时间/地点背景。片段按原记录与序号存储，信息事务版本和模型/分块 profile 隔离过期索引；更新时重建该记录全部片段，暂不按单块哈希复用。索引 worker、pgvector 查询、关键词降级与重建步骤集中维护在该模块，采集服务不用接触模型凭证。
 
 ## 本地准备与调用
 
