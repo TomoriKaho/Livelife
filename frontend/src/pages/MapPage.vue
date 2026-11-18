@@ -97,6 +97,7 @@ function liveTimeRange(item) { return item.start_at ? `${liveTime(item.start_at)
 const locationState = computed(() => locationTrackingState.value === 'located' && outsideCampus.value ? 'outside-campus' : locationTrackingState.value);
 const locationHint = computed(() => ({
   locating: '正在获取当前位置…',
+  disabled: '应用定位已关闭；请在“我的 → 账户与隐私”开启。',
   'permission-denied': '未获得位置权限；点击定位按钮可再次尝试。',
   unavailable: '系统定位未开启或暂不可用；请检查系统定位开关后重试。',
   timeout: '定位超时；请确认系统定位已开启，在信号较好处点击定位按钮重试。',
@@ -281,6 +282,7 @@ async function centerOnDeviceLocation() {
   return true;
 }
 async function locate({ requestHeading = false } = {}) {
+  if (locationTrackingState.value === 'disabled') return;
   if (locationState.value === 'locating') return;
   if (requestHeading) await requestDeviceHeadingPermission();
   // The last foreground fix is already suitable for an immediate, predictable

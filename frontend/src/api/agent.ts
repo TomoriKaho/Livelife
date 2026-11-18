@@ -1,7 +1,7 @@
 import { authState, readAuthToken, clearSession, onAuthSessionChange } from './auth';
 import { checkAndroidStatus } from '../platform/android-config';
 import { getApiBaseUrl } from '../platform/web';
-import { currentLocation, locationTrackingState } from '../platform/location-tracker';
+import { usableCurrentLocation } from '../platform/location-tracker';
 import { readAgentEvents } from './agent-stream.mjs';
 
 const STORAGE_KEY = 'livelife.agent.session.v3';
@@ -169,9 +169,8 @@ export async function sendAgentMessage(
   try {
     await checkAndroidStatus();
     assertIdentity(captured);
-    const point = currentLocation.value;
-    const age = point ? Date.now() - point.timestamp : Infinity;
-    const location = point && locationTrackingState.value === 'located' && age >= -10000 && age <= 120000
+    const point = usableCurrentLocation();
+    const location = point
       ? {latitude:point.latitude, longitude:point.longitude, accuracy:point.accuracy, timestamp:point.timestamp} : undefined;
     const response = await fetch(`${base()}/agent/sessions/${encodeURIComponent(sessionId)}/messages/stream`, {
       method: 'POST',

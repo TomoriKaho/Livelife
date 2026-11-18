@@ -23,6 +23,7 @@ export function useNearbyActivities() {
   let alive = true;
 
   function unavailable() {
+    if (locationTrackingState.value === 'disabled') return '应用定位已关闭；开启后可查看附近活动。';
     if (locationTrackingState.value !== 'located') {
       return locationTrackingState.value === 'permission-denied' ? '未获得位置权限，请允许定位后重试。' : '等待有效定位，请检查设备定位服务。';
     }
@@ -68,7 +69,7 @@ export function useNearbyActivities() {
     if (!lastPosition || state.value === 'waiting' || distanceMeters(lastPosition, position) >= 25
       || Date.now() - lastRequestedAt >= 30000) void load();
   }
-  watch([currentLocation, locationTrackingState], locationChanged, { immediate: true });
+  watch([currentLocation, locationTrackingState], locationChanged, { immediate: true, flush: 'sync' });
   watch([radius, keyword, today], () => {
     invalidate(); state.value = 'loading'; message.value = '正在更新筛选…';
     timer = setTimeout(() => void load(), 350);
