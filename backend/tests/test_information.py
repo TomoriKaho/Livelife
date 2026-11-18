@@ -396,6 +396,7 @@ def test_information_service_has_only_registered_business_adapters():
         "/favorites/activities",
         "/favorites/activities/status",
         "/favorites/activities/{target}",
+        "/feedback",
     }
 
 
