@@ -112,6 +112,62 @@ task_instance=be-替换为目标的完整40位SHA
 
 重启命令沿用[测试邮箱配置](#自动部署的测试邮箱配置)，仅重启选中实例。验收至少包括：hello/ready 成功、空白登录和匿名 Agent 请求被拒绝、普通账号登录后流式返回非空文本与真实 usage、令牌注销后不再可调用。回退时移除对应 SHA 并重启，确认模型未配置；回退启动器须同时恢复配套模块，保留数据。服务器启用证据见[部署状态](../docs/deployment.md#当前实施状态)。
 
+### RAG 模型与分支索引部署
+
+RAG 复用课程机的后端发布链路。模型是独立的项目 Supervisor 程序，API 启动器负责该分支的索引准备和 worker 子进程；公网机不运行模型。启用记录统一见[部署状态](../docs/deployment.md#当前实施状态)。以下安装步骤需要在确认项目目录、可用端口和目标分支后执行；Git push 不会更新服务器已安装的控制程序。
+
+首次安装使用已评审 checkout，以课程机 `group5` 用户操作。先备份现有控制文件，保留测试账号初始化、SMTP、聊天模型等本机定制。核对差异后安装 `backend_runtime.py`、`retrieval_runtime.py`、`retrieval_config.py`、`embedding_runtime.py`、`build_runner.py` 到 `/home/group5/livelife/control/livelife/`，并更新 `/home/group5/livelife/control/prepare-backend.py`。后两项使课程机构建安装 `local-db` 测试依赖并执行真实 PostgreSQL 检查；需在构建队列空闲时重启本项目 `build-worker`，不能在构建中途替换运行代码。既有 pgembed、Supervisor、uv 及数据库启动器须已按上节安装。
+
+在同一已评审 checkout 的根目录运行：
+
+```bash
+task_root=/home/group5/livelife
+task_sha=替换为已评审的完整40位提交SHA
+"$task_root/control-venv/bin/python" deploy/install-retrieval.py \
+  --root "$task_root" --source "$PWD" --sha "$task_sha" \
+  --port 19073 --threads 4 --branch main --branch 73-hybrid-retrieval
+```
+
+安装器只从指定 Git 提交提取 backend，不复制工作区 `.env`。独立目录为 `embedding/embedding-<摘要>/`，包含固定源码、模型 venv、私有 `service.json`、下载缓存和安装日志。模型固定为 Qwen3-Embedding-0.6B、revision `97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3`、1024 维、CPU，线程数可选 1–8。首次安装需要公开依赖及模型下载网络，依赖准备和模型下载分别最多 30 分钟；正常运行只读取本目录缓存，不联网下载。安装期间不向子进程提供聊天、SMTP 或部署凭证。
+
+端口只允许 19000–19999，默认 19073，仅监听 `127.0.0.1`；与 API 的 18000–18063 分开，但仍须确认没有其他服务占用。安装器生成独立的本地模型访问密钥，不显示在命令行或输出中。Supervisor 程序名就是输出的 `embedding-<摘要>`，程序日志位于项目 `supervisor/`；不修改系统 Supervisor 或其他项目。
+
+模型身份健康检查和一次实际编码均通过后，安装器才原子更新 `credentials/retrieval.json`：
+
+```json
+{"branches":["main","73-hybrid-retrieval"],"service":"embedding-替换为安装器返回的16位摘要"}
+```
+
+目录 0700、文件 0600；服务元数据也须为私有普通文件。`--branch` 列表会整体替换已启用列表；未列出的分支、legacy 实例以及没有 `retrieval_checks=true` 能力标记的历史 release 保持原行为。名单按完整分支名称匹配，命名分支后续具备能力标记的 SHA 自动注入同一套 Embedding/profile 配置，API 与 worker 一致。不读取控制进程中继承的 `EMBEDDING_*`，也不通过聊天模型配置通道传递它们。此名单只启用本地测试检索服务，不扩大 `model.json` 对聊天模型密钥的 SHA 授权。配置缺失表示未启用，损坏或权限错误会阻止支持 RAG 的候选启动。
+
+安装完成后触发该分支的 Backend build request；已有运行实例需按前文方法只重启选中的目标。新候选的顺序为：
+
+1. 准备/复用分支 PostgreSQL，执行 Alembic 迁移及 ORM 表检查。即使 keyword 模式，检索迁移也需要匹配 PostgreSQL 的 pgvector 扩展文件和启用权限；安装器不会替数据库安装系统扩展。
+2. 补回原始信息有、索引状态没有的记录。新分支公开快照仍排除账号、聊天和索引数据，不扩大复制白名单；已应用迁移不会重跑，因此必须显式回填。该操作幂等，不覆盖已有索引版本。
+3. 执行首轮 `sync`（最多 420 秒），再执行 `check`：实际模型编码、pgvector 距离 SQL，以及缺失状态、待处理、失败和缺失片段检查全部通过。空数据库报告 `records=0`，只能证明组件可用，不代表有可回答资料。
+4. 启动索引 worker，再启动 API，通过既有 hello/数据库探针后切换入口。失败不发布候选，原成功入口保留；日志中的 `retrieval_operation_failed` 指明失败步骤，`retrieval_ready` 记录无正文的计数与 profile。
+
+worker 为独立子进程，与 API 共用分支数据库但没有聊天、SMTP 或会话签名密钥。每个版本的启动器维护一个 worker 候选，同分支用 `retrieval/worker.lock` 选出一个活跃者，其余等待；旧实例停止后自动接管。worker 进程异常退出时启动器退出，由 Supervisor 重启整个候选；普通编码失败则按既有指数退避重试，API 可关键词降级。停止/回收 API 会终止其 worker，但保留数据库和独立模型服务。
+
+同分支 `retrieval/profile.json` 固定索引 profile，防止同时保留的旧、新 API 用不同模型/分块规则反复覆盖同一索引。更改 profile 前须停止该分支所有 API/worker，备份数据和标记，核对旧固定引用的处理方式，再移走标记、使用兼容代码重新建立索引；不能在仍有旧版本运行时清标记。单纯更换同一模型版本的地址/密钥不改变向量 profile。
+
+维护者可检查已初始化实例，不需要打印或复制数据库连接串：
+
+```bash
+cd /home/group5/livelife/control
+task_instance=替换为注册表中的完整be实例ID
+../control-venv/bin/python -m livelife.retrieval_runtime \
+  --root /home/group5/livelife --instance "$task_instance" --operation status
+../control-venv/bin/python -m livelife.retrieval_runtime \
+  --root /home/group5/livelife --instance "$task_instance" --operation check
+```
+
+`status` 包括原始记录数、状态数、缺失状态、待处理、失败、片段数和缺失片段；`check` 还调用模型并执行向量 SQL，不满足就绪时退出非零。这两个命令不执行迁移，按需打开该已有分支的 pgembed handle。正常运行中新资料短暂 pending 属于异步索引延迟，不能宣称始终全量就绪；监控时记录积压和重试。若初次资料量导致发布窗口不足，可使用同一命令的 `--operation sync` 在后台预热（最多 30 分钟）后重试发布。失败记录有退避时间，需排除模型/资源故障后重试，不清空原始资料。
+
+发布后的模型故障仍沿用关键词降级；既有 `/health/ready` 只查数据库，不冒充 RAG 实时健康。上述 `check` 是 RAG 运维检查入口，发布门禁只是当时快照，不能替代真实回答、引用质量及目标硬件验收。
+
+回退为关键词：从名单移除目标分支并重启其所有目标 API，确认检索模式；保留索引与数据库，不做 downgrade。更换模型服务源码时安装到新摘要目录和空闲端口，验证后更新配置并逐一重启目标；旧进程继续使用旧环境，必须保留旧模型直到全部引用退出。失败安装不会切换配置；新建但失败的候选模型程序可由维护者在确认无人使用后单独停止。不要自动清理共享模型目录、数据库或其他服务。
+
 ### 首次启用与现有服务器升级
 
 新增安装由下节 `bootstrap-course.sh` 安装 Supervisor 与固定 pgembed。已有服务器需要维护者从**已评审版本**更新课程机 `/home/group5/livelife/control/livelife/` 下的 `backend_runtime.py`、`branch_database.py`、`common.py`、`course.py`、`supervisor.py`，以及公网机 `/opt/livelife/control/livelife/` 下的 `branch_database.py`、`common.py`、`registry.py`、`manager.py`、`course.py`、`runtime.py`、`web.py`、`android_build.py`。课程机另执行：

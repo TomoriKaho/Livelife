@@ -137,6 +137,22 @@ worker 先读快照，释放事务，再生成向量。提交前按“原记录 
 `retrieval_degraded mode=keyword reason=...` 并使用关键词；查询 savepoint 失败不会破坏对话事务。
 API 的查询向量在账户/IP 锁之外生成；历史在两次读取间变化时改用新关键词，不拿旧向量匹配新问题。
 
+`status` 的 `records` 从原始信息表计数，并单独报告 `states`、`missing_states` 和 `missing_chunks`，
+避免状态表缺失时误报已全量索引。`reconcile` 幂等补回缺失状态；`sync` 和 `watch` 启动时也会补回，
+适用于只复制公开资料且已有迁移版本的分支数据库。它不重新生成向量或重置已有版本。
+`check` 要求 hybrid 模式，真实调用模型并执行 pgvector 查询，存在缺失状态、待处理、失败或
+有效版本缺失片段时退出非零。空库会明确报告零条资料。
+
+```bash
+uv run --locked python -m app.retrieval reconcile
+uv run --locked python -m app.retrieval check
+```
+
+CI/CD 的模型安装、分支名单、配置注入、发布门禁及 worker 生命周期统一见
+[RAG 部署](../../../../deploy/README.md#rag-模型与分支索引部署)。受信启动器使用可选的 Unix
+`watch --lock-file <分支状态目录>/retrieval/worker.lock`，使同分支旧、新 API 共存时只有一个
+活跃 worker；普通本机调用无需该参数。配置变更及组件启用不能仅靠推送业务源码完成。
+
 修改模型/版本/分块参数时，先停止旧 profile 的 worker，再设置新配置，执行：
 
 ```bash

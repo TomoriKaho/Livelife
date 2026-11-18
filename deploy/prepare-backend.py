@@ -50,15 +50,23 @@ def main():
         return
     requirements = out.resolve() / "runtime-requirements.txt"
     if mode == "uv":
+        marker = Path("backend/preview-runtime.json")
+        retrieval_checks = marker.is_file() and json.loads(marker.read_text()).get("retrieval_checks") is True
+        groups = ["--group", "local-db"] if retrieval_checks else []
         if os.environ.get("LIVELIFE_REMOTE_BACKEND_DEPENDENCIES_READY") != "true":
-            subprocess.run(["uv", "sync", "--locked", "--python", sys.executable], cwd="backend", check=True)
+            subprocess.run(["uv", "sync", "--locked", "--python", sys.executable, *groups], cwd="backend", check=True)
         subprocess.run(["uv", "export", "--locked", "--no-dev", "--no-emit-project",
                         "--format", "requirements.txt", "--output-file", str(requirements)],
                        cwd="backend", check=True, stdout=subprocess.DEVNULL)
         # Preserve the venv symlink: resolving it would execute base Python.
         python = str(Path("backend/.venv/bin/python").absolute())
         if Path("backend/tests").is_dir():
-            subprocess.run(["uv", "run", "--no-sync", "pytest"], cwd="backend", check=True)
+            subprocess.run(["uv", "run", "--no-sync", "pytest",
+                            *(["--local-postgres"] if retrieval_checks else [])], cwd="backend", check=True)
+        if retrieval_checks:
+            subprocess.run([python, "-m", "unittest", "discover", "-s", "deploy/tests",
+                            "-p", "test_retrieval_deployment.py", "-v"], check=True,
+                           env={**os.environ, "LIVELIFE_RAG_INTEGRATION": "1"})
         subprocess.run(["uv", "run", "--no-sync", "ruff", "check", "."], cwd="backend", check=True)
         subprocess.run(["uv", "run", "--no-sync", "ruff", "format", "--check", "."], cwd="backend", check=True)
     else:

@@ -14,6 +14,8 @@ from .common import atomic_json, instance
 from .branch_database import prepared_database
 from .mail_config import load as mail_environment
 from .model_config import load as model_environment
+from .retrieval_config import load as retrieval_environment
+from . import retrieval_runtime
 
 # Run using the tested release interpreter, never import branch code into the
 # control interpreter. Validate both the revision and actual mapped columns.
@@ -125,6 +127,9 @@ def run(root, ident, port, *, server_factory=None):
         server_factory = get_server
     metadata = release / "release.json"
     database = json.loads(metadata.read_text()).get("database") if metadata.exists() else None
+    marker = backend / "preview-runtime.json"
+    supports_retrieval = marker.is_file() and json.loads(marker.read_text()).get("retrieval_checks") is True
+    retrieval = retrieval_environment(root, database["branch"] if database else None) if supports_retrieval else {}
     state = None if database else state_directory(root, ident)
     process = None
     previous_handlers = {}
@@ -152,6 +157,15 @@ def run(root, ident, port, *, server_factory=None):
             env = runtime_environment(url, ident, state)
             if not database:
                 prepare_schema(python, backend, env)
+            indexer = None
+            if retrieval:
+                worker_env = {**env, **retrieval}
+                # Chat/SMTP credentials never enter indexing or embedding processes.
+                worker_env.pop("AGENT_SESSION_SECRET", None)
+                retrieval_runtime.prepare(python, backend, worker_env, state)
+                indexer = stack.enter_context(
+                    retrieval_runtime.worker(python, backend, worker_env, state)
+                )
             process = subprocess.Popen(
                 [
                     str(python),
@@ -168,10 +182,10 @@ def run(root, ident, port, *, server_factory=None):
                 cwd=backend,
                 # SMTP/model are explicitly opted in, only for the API.
                 # Migration/schema subprocesses keep the credential-free env.
-                env={**env, **mail, **model},
+                env={**env, **mail, **model, **retrieval},
             )
             try:
-                return process.wait()
+                return retrieval_runtime.wait(process, indexer) if indexer else process.wait()
             finally:
                 if process.poll() is None:
                     process.terminate()

@@ -4,20 +4,26 @@ import argparse
 import json
 import logging
 import time
+from contextlib import ExitStack
+from pathlib import Path
 
-from sqlalchemy import create_engine, func, or_, select
+from sqlalchemy import create_engine, or_, select
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import get_database_url
-from app.db.models import RetrievalChunk, RetrievalState
+from app.db.models import RetrievalState
 from app.services.retrieval.config import get_retrieval_settings
 from app.services.retrieval.indexing import process_batch, rebuild
+from app.services.retrieval.maintenance import check, reconcile, status
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("status", "sync", "rebuild", "watch"))
+    parser.add_argument(
+        "command", choices=("status", "sync", "rebuild", "watch", "reconcile", "check")
+    )
     parser.add_argument("--batch-size", type=int, default=50)
+    parser.add_argument("--lock-file", type=Path, help="Unix deployment worker election lock")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)
     settings = get_retrieval_settings()
@@ -30,40 +36,31 @@ def main():
         parser.error("--batch-size must be between 1 and 1000")
     engine = create_engine(url)
     factory = sessionmaker(engine, expire_on_commit=False)
+    resources = ExitStack()
     try:
+        if args.lock_file:
+            if args.command != "watch":
+                parser.error("--lock-file is only supported by watch")
+            import fcntl
+
+            lock = resources.enter_context(args.lock_file.open("a"))
+            # All API versions on one branch share this lock. Standby workers
+            # take over after the active runtime exits; no stale PID files.
+            fcntl.flock(lock, fcntl.LOCK_EX)
+        if args.command == "reconcile":
+            print(json.dumps({"created": reconcile(factory)}))
+            return
+        if args.command == "check":
+            result = check(factory, settings)
+            print(json.dumps(result))
+            raise SystemExit(0 if result["ready"] else 1)
         if args.command == "rebuild":
             print(json.dumps({"invalidated": rebuild(factory)}))
             return
         if args.command == "status":
-            with factory() as session:
-                stale = or_(
-                    RetrievalState.indexed_revision.is_(None),
-                    RetrievalState.indexed_revision != RetrievalState.revision,
-                    RetrievalState.profile.is_(None),
-                    RetrievalState.profile != settings.profile,
-                )
-                print(
-                    json.dumps(
-                        {
-                            "profile": settings.profile,
-                            "records": session.scalar(
-                                select(func.count()).select_from(RetrievalState)
-                            ),
-                            "pending": session.scalar(
-                                select(func.count()).select_from(RetrievalState).where(stale)
-                            ),
-                            "failed": session.scalar(
-                                select(func.count())
-                                .select_from(RetrievalState)
-                                .where(RetrievalState.last_error.is_not(None))
-                            ),
-                            "chunks": session.scalar(
-                                select(func.count()).select_from(RetrievalChunk)
-                            ),
-                        }
-                    )
-                )
+            print(json.dumps(status(factory, settings)))
             return
+        reconcile(factory)
         failed = False
         while True:
             result = process_batch(factory, settings, batch_size=args.batch_size)
@@ -93,6 +90,7 @@ def main():
     except KeyboardInterrupt:
         return
     finally:
+        resources.close()
         engine.dispose()
 
 

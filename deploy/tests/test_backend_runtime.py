@@ -90,12 +90,17 @@ class PreviewRuntimeTests(unittest.TestCase):
                     runtime.prepare_schema("python", backend, {})
                 self.assertEqual(run.call_count, 1)
 
-    def exercise_runtime(self, failure=None, interrupted=False, mail=None, model=None):
+    def exercise_runtime(self, failure=None, interrupted=False, mail=None, model=None,
+                         retrieval=None, rag_failure=None, supports_retrieval=True):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             release = root / "releases" / A
             (release / "backend/app").mkdir(parents=True)
             (release / "backend/app/main.py").touch()
+            if retrieval and supports_retrieval:
+                (release / "backend/preview-runtime.json").write_text(
+                    json.dumps({"runtime_mode": "postgres-v1", "retrieval_checks": True})
+                )
             python = (
                 release
                 / ".venv"
@@ -124,13 +129,18 @@ class PreviewRuntimeTests(unittest.TestCase):
             child.poll.return_value = None if interrupted else 9
             with (
                 patch.object(runtime, "model_environment", return_value=model or {}),
+                patch.object(runtime, "retrieval_environment", return_value=retrieval or {}),
+                patch.object(runtime.retrieval_runtime, "prepare", side_effect=rag_failure) as rag_prepare,
+                patch.object(runtime.retrieval_runtime, "worker") as rag_worker,
+                patch.object(runtime.retrieval_runtime, "wait", return_value=9),
                 patch.object(runtime, "prepare_schema", side_effect=failure) as schema,
                 patch.object(runtime.subprocess, "Popen", return_value=child) as launch,
             ):
-                if failure:
+                if failure or rag_failure:
                     with self.assertRaises(RuntimeError):
                         runtime.run(root, A, 18000, server_factory=server_factory)
                     launch.assert_not_called()
+                    rag_worker.assert_not_called()
                 else:
                     self.assertEqual(
                         runtime.run(root, A, 18000, server_factory=server_factory),
@@ -141,6 +151,19 @@ class PreviewRuntimeTests(unittest.TestCase):
                         "postgresql+psycopg://postgres@/postgres",
                     )
                     schema.assert_called_once()
+                    if retrieval and supports_retrieval:
+                        rag_prepare.assert_called_once()
+                        rag_worker.assert_called_once()
+                        for key in ("SMTP_PASSWORD", "AGENT_LLM_API_KEY", "AGENT_SESSION_SECRET"):
+                            self.assertNotIn(key, rag_prepare.call_args.args[2])
+                            self.assertNotIn(key, rag_worker.call_args.args[2])
+                        for key, value in retrieval.items():
+                            self.assertEqual(rag_worker.call_args.args[2][key], value)
+                            self.assertEqual(launch.call_args.kwargs["env"][key], value)
+                            self.assertNotIn(key, schema.call_args.args[2])
+                    else:
+                        rag_prepare.assert_not_called()
+                        rag_worker.assert_not_called()
                     for key, value in (model or {}).items():
                         self.assertNotIn(key, schema.call_args.args[2])
                         self.assertEqual(launch.call_args.kwargs["env"][key], value)
@@ -156,6 +179,19 @@ class PreviewRuntimeTests(unittest.TestCase):
                 self.assertTrue((root / "databases" / A / "runtime.json").exists())
                 if interrupted:
                     child.terminate.assert_called_once()
+
+    def test_retrieval_worker_only_receives_its_own_credentials(self):
+        self.exercise_runtime(
+            model={"AGENT_LLM_API_KEY": "chat-secret"},
+            retrieval={"EMBEDDING_API_KEY": "retrieval-secret", "RETRIEVAL_MODE": "hybrid"},
+        )
+
+    def test_failed_rag_gate_does_not_launch_api_or_worker(self):
+        self.exercise_runtime(retrieval={"RETRIEVAL_MODE": "hybrid"},
+                              rag_failure=RuntimeError("model not ready"))
+
+    def test_historical_release_without_rag_marker_keeps_its_original_runtime(self):
+        self.exercise_runtime(retrieval={"RETRIEVAL_MODE": "hybrid"}, supports_retrieval=False)
 
     def test_model_credentials_only_reach_api(self):
         self.exercise_runtime(
