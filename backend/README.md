@@ -4,6 +4,8 @@
 
 ## 后端安装、启动与检查
 
+兴趣广场公开内容列表提供 [`GET /content/articles`](app/api/content_feed/API.md)，复用信息库的分页、关键词、平台与来源筛选，不依赖模型或推荐配置。
+
 后端使用 Python 3.12（`>=3.12,<3.13`）和 uv 管理依赖，精确依赖版本由 `backend/uv.lock` 锁定。先按 [uv 官方安装说明](https://docs.astral.sh/uv/getting-started/installation/) 安装 uv；macOS 已有 Homebrew 时可执行 `brew install uv`。仓库固定 Python 3.12 系列，补丁版本不限定。
 
 从仓库根目录，在独立终端执行：

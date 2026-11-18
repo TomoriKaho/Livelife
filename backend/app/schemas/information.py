@@ -120,6 +120,7 @@ class InformationQuery(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     platform: Platform | None = None
+    source_name: ShortText | None = None
     fetched_after: AwareDatetime | None = None
     fetched_before: AwareDatetime | None = None
     activity_after: AwareDatetime | None = None

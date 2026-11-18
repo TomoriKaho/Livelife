@@ -4,6 +4,8 @@
 
 信息变更通过迁移 `0009_hybrid_retrieval` 的数据库触发器同步索引版本，涵盖新增、更新和删除；任务状态与信息写入同事务，原有快照幂等规则不变。采集入库不调用模型，独立 worker 负责分块和编码；索引未就绪或服务失败时仍可关键词查询。配置、迁移前提、失败重试和重建统一见[检索模块](../retrieval/README.md)。
 
+兴趣广场的标准公开 HTTP 适配为 [`GET /content/articles`](../../api/content_feed/API.md)，`feed.py` 复用统一查询并生成纯文本正文摘录，不需要模型配置。内部 `InformationQuery.source_name` 支持完整来源名称精确匹配，可与平台及关键词组合，不改变其他查询默认行为。
+
 ## 地点目录导入与旧数据回填
 
 标准地图接口见[地图活动查询 API](../../api/locations/API.md)。`content.map_query` 负责时间、关键词、半径与建筑排序；`InformationAggregator` 在写入时调用 `LocationResolver`。前端只展示结构化地点，不重复匹配原文。`InformationQuery.order_by` 默认仍为采集时间倒序，地图显式选择 `activity`，按开始时间和 UUID 升序。
