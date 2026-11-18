@@ -11,7 +11,10 @@ export type LocationTrackingState = 'disabled' | 'idle' | 'locating' | 'located'
 
 const PREFERENCE_KEY = 'livelife.location.enabled';
 function readPreference() {
-  try { return globalThis.localStorage?.getItem(PREFERENCE_KEY) === 'true'; }
+  try {
+    const saved = globalThis.localStorage?.getItem(PREFERENCE_KEY);
+    return saved == null || saved === 'true';
+  }
   catch { return false; }
 }
 export const locationEnabled = ref(readPreference());

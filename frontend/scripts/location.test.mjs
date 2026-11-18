@@ -86,6 +86,24 @@ test('preference is saved per device and restored by a fresh tracker instance', 
     getItem: key => saved.get(key) ?? null, setItem: (key,value) => saved.set(key,value),
   }});
   try {
+    const firstUse = await import('../src/platform/location-tracker.ts?first-use');
+    assert.equal(firstUse.locationEnabled.value, true);
+    assert.equal(firstUse.locationTrackingState.value, 'idle');
+    const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+    let requests = 0;
+    Object.defineProperty(globalThis, 'navigator', {configurable:true, value:{geolocation:{
+      watchPosition(success, failure) { requests++; failure({code:1}); return 1; },
+      clearWatch() {},
+    }}});
+    try {
+      await firstUse.startLocationTracking();
+      assert.equal(requests, 1);
+      assert.equal(firstUse.locationTrackingState.value, 'permission-denied');
+      await firstUse.stopLocationTracking();
+    } finally {
+      if (originalNavigator) Object.defineProperty(globalThis, 'navigator', originalNavigator);
+      else delete globalThis.navigator;
+    }
     await setLocationEnabled(true);
     assert.equal(saved.get('livelife.location.enabled'), 'true');
     const restored = await import('../src/platform/location-tracker.ts?restore-enabled');
