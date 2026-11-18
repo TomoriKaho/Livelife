@@ -264,6 +264,43 @@ def test_chunk_offsets_and_context(database):
         assert covered == set(range(len(row.content)))
 
 
+@pytest.mark.parametrize("mode", ["keyword", "hybrid"])
+def test_deep_match_keeps_introductory_facts_without_duplicate_sources(database, monkeypatch, mode):
+    corpus(database)
+    settings = RetrievalSettings(mode=mode, dimensions=3, chunk_chars=120, overlap_chars=20)
+    with database.begin() as session:
+        row = session.scalar(
+            select(InformationRecord).where(InformationRecord.source_id == "library-renewal")
+        )
+        row.content = (
+            "主讲人：测试讲者。\n" + "讲座背景介绍。\n" * 40 + "专题：贝叶斯劝说与信号博弈。\n"
+        )
+        identity = row.id
+
+    def deep_match(session, *args):
+        row = session.get(InformationRecord, identity)
+        return [(row, split_record(row, settings)[-1].body, 0.1)]
+
+    monkeypatch.setattr("app.services.agent.retrieval._vector_candidates", deep_match)
+    with database() as session:
+        rows = search_information(
+            session,
+            "贝叶斯劝说与信号博弈",
+            settings=settings,
+            embedding_client=FakeEncoder(),
+        )
+        assert len(rows) == 1
+        assert rows[0].id == identity
+        assert "主讲人：测试讲者" in rows[0].content
+        assert "专题：贝叶斯劝说与信号博弈" in rows[0].content
+        assert rows[0].content.count("主讲人：测试讲者") == 1
+
+        rows = search_information(
+            session, "主讲人测试讲者", settings=replace(settings, mode="keyword")
+        )
+        assert rows[0].content.count("主讲人：测试讲者") == 1
+
+
 @pytest.mark.parametrize(
     "payload",
     [

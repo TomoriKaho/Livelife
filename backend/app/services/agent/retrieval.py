@@ -196,6 +196,15 @@ def _vector_candidates(session, query, vector, settings):
     ).all()
 
 
+def _evidence_body(record, selected: str, settings: RetrievalSettings) -> str:
+    """Keep introductory facts when the best semantic match is deep in an article."""
+    chunks = split_record(record, settings)
+    opening = chunks[0].body if chunks else ""
+    if opening and opening != selected:
+        return opening + "\n\n相关片段：\n" + selected
+    return selected
+
+
 def search_information(
     session: Session,
     question: str,
@@ -266,7 +275,7 @@ def search_information(
             activity_start_at=row.activity_start_at,
             activity_end_at=row.activity_end_at,
             registration_deadline_at=row.registration_deadline_at,
-            content=body + "\n资料背景:\n" + context_header(row),
+            content=_evidence_body(row, body, settings) + "\n资料背景:\n" + context_header(row),
             score=score,
         )
         for row, body, score, _ in ordered[:limit]
