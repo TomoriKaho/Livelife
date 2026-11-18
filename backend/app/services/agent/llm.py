@@ -12,6 +12,20 @@ class AgentModelError(RuntimeError):
     """Sanitized error raised for provider failures."""
 
 
+_FINISH_REASON_ERRORS: dict[str, str] = {
+    "length": "model_length_limit",
+    "content_filter": "model_content_filtered",
+}
+
+
+def _validate_stream_termination(*, saw_done: bool, finish_reason: str | None) -> None:
+    """Require protocol [DONE] and reject non-stop finish reasons (e.g. length truncation)."""
+    if finish_reason is not None and finish_reason != "stop":
+        raise AgentModelError(_FINISH_REASON_ERRORS.get(finish_reason, "model_incomplete_stream"))
+    if not saw_done:
+        raise AgentModelError("model_incomplete_stream")
+
+
 def _bounded_history(history: list[dict[str, str]], max_chars: int) -> list[dict[str, str]]:
     selected = {}
     remaining = max(0, max_chars)
@@ -123,21 +137,32 @@ async def stream_completion(
         ) as response:
             if response.status_code < 200 or response.status_code >= 300:
                 raise AgentModelError("model_unavailable")
+            saw_done = False
+            finish_reason: str | None = None
             async for line in response.aiter_lines():
                 if not line.startswith("data:"):
                     continue
                 data = line[5:].strip()
                 if data == "[DONE]":
+                    saw_done = True
                     break
                 try:
                     chunk = json.loads(data)
                 except json.JSONDecodeError:
                     continue
+                if not isinstance(chunk, dict):
+                    continue
+                if chunk.get("error"):
+                    raise AgentModelError("model_unavailable")
                 choices = chunk.get("choices") or []
-                if choices:
-                    text = choices[0].get("delta", {}).get("content")
+                if choices and isinstance(choices[0], dict):
+                    delta = choices[0].get("delta") or {}
+                    text = delta.get("content") if isinstance(delta, dict) else None
                     if isinstance(text, str) and text:
                         yield text, None
+                    reason = choices[0].get("finish_reason")
+                    if isinstance(reason, str) and reason:
+                        finish_reason = reason
                 usage = chunk.get("usage")
                 if isinstance(usage, dict):
                     input_tokens = usage.get("prompt_tokens", usage.get("input_tokens"))
@@ -147,6 +172,7 @@ async def stream_completion(
                             None,
                             {"input_tokens": input_tokens, "output_tokens": output_tokens},
                         )
+            _validate_stream_termination(saw_done=saw_done, finish_reason=finish_reason)
     except AgentModelError:
         raise
     except httpx.TimeoutException as error:

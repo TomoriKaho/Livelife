@@ -36,6 +36,7 @@ class MessageResponse(BaseModel):
     role: str
     content: str
     status: str
+    error_code: str | None = None
     citations: list[CitationResponse] = Field(default_factory=list)
     rating: str | None = None
     created_at: datetime
