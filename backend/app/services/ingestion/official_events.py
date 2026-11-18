@@ -24,33 +24,51 @@ SOURCES = {
     "math": ("math.pku.edu.cn", "北京大学数学科学学院"),
 }
 MANIFEST = Path(__file__).with_name("official_events.json")
-VERSION = "pku-official-v1"
+VERSION = "pku-official-v2"
+ARTICLE_CLASSES = {
+    "library": {"info_box", "article"},
+    "math": {"capusList"},
+    "hall": {"infoBox", "tabListBox"},
+}
 
 
 class ArticleHTML(HTMLParser):
-    def __init__(self):
+    def __init__(self, classes: set[str] | None = None):
         super().__init__()
         self.parts = []
         self.meta = {}
         self.skip = 0
+        self.classes = classes
+        self.depth = 0
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
+        if tag == "div" and self.classes is not None:
+            if self.depth:
+                self.depth += 1
+            elif self.classes.intersection(attrs.get("class", "").split()):
+                self.depth = 1
         if tag in {"script", "style"}:
             self.skip += 1
         if tag == "meta":
             self.meta[attrs.get("name", "")] = attrs.get("content", "")
-        if tag in {"p", "div", "br", "h2", "li"}:
+        if self.active and tag in {"p", "div", "br", "h2", "li"}:
             self.parts.append("\n")
+
+    @property
+    def active(self):
+        return self.classes is None or self.depth > 0
 
     def handle_endtag(self, tag):
         if tag in {"script", "style"}:
             self.skip = max(0, self.skip - 1)
-        if tag in {"p", "div", "h2", "li"}:
+        if self.active and tag in {"p", "div", "h2", "li"}:
             self.parts.append("\n")
+        if tag == "div" and self.depth:
+            self.depth -= 1
 
     def handle_data(self, data):
-        if not self.skip:
+        if self.active and not self.skip:
             self.parts.append(data)
 
     @property
@@ -83,7 +101,13 @@ def parse_article(source: str, url: str, html: str, fetched_at: datetime) -> Inf
         )
         start, end = (datetime.fromisoformat(v + "+08:00") for v in evidence.groups())
         # Prefer the complete address in the body, rather than a context-free room name.
-        location = required(r"地点：\s*([^\n]*图书馆[^\n]*)", text).group(1)
+        # Prefer the full body address; otherwise accept the spaced metadata label.
+        full_address = re.search(r"地点：\s*([^\n]*图书馆[^\n]*)", text)
+        location = (
+            full_address.group(1)
+            if full_address
+            else required(r"地\s*点：\s*([^\n]*图书馆[^\n]*)", text).group(1)
+        )
     elif source == "math":
         evidence = required(
             r"时间：\s*(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})", text
@@ -99,8 +123,14 @@ def parse_article(source: str, url: str, html: str, fetched_at: datetime) -> Inf
         year, month, day, hour, minute = map(int, evidence.groups())
         start = datetime.fromisoformat(f"{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}+08:00")
         location = required(r"地点：\s*([^\n]+)", text).group(1)
-    # Keep the factual event excerpt in searchable content; complete HTML stays in local snapshots.
+    # Capture publisher article containers, excluding navigation/footer text. Keep
+    # the fact excerpt for older layouts without these containers; never pretend
+    # images/QR codes were read. Complete HTML stays in the collection snapshots.
+    body = ArticleHTML(ARTICLE_CLASSES[source])
+    body.feed(html)
     content = f"{title}\n{evidence.group(0)}\n地点：{location}"
+    if body.text:
+        content += "\n\n" + body.text
     return InformationInput(
         platform=f"pku_{source}",
         source_id=Path(urlsplit(url).path).stem + ":event:1",
@@ -117,6 +147,7 @@ def parse_article(source: str, url: str, html: str, fetched_at: datetime) -> Inf
             "article_url": url,
             "event_key": "1",
             "parser_version": VERSION,
+            "text_scope": "article_containers" if body.text else "event_excerpt",
             "html_sha256": hashlib.sha256(html.encode()).hexdigest(),
             "time_evidence": evidence.group(0),
             "location_evidence": location,
