@@ -163,9 +163,19 @@ class RetrievalDeploymentTests(unittest.TestCase):
                 self.assertNotIn("HTTPS_PROXY", environment(root, first["service"],
                                                            config.service_settings(root, first["service"])))
             for proxy in ("https://127.0.0.1:8080", "http://remote.example:8080",
-                          "http://user:secret@localhost:8080", "http://localhost/path"):
+                          "http://localhost/path"):
                 with self.assertRaises(ValueError):
                     installer.download_environment({}, proxy)
+            authenticated = "http://user:test-secret@localhost:8080"
+            with self.assertRaises(ValueError):
+                installer.load_download_proxy(authenticated)
+            proxy_file = root / "download-proxy.json"
+            proxy_file.write_text(json.dumps({"url": authenticated}))
+            proxy_file.chmod(0o600)
+            self.assertEqual(installer.load_download_proxy(path=proxy_file), authenticated)
+            proxy_file.chmod(0o644)
+            with self.assertRaises(ValueError):
+                installer.load_download_proxy(path=proxy_file)
 
 
 @unittest.skipUnless(os.environ.get("LIVELIFE_RAG_INTEGRATION") == "1", "opt-in real RAG PostgreSQL")

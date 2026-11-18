@@ -338,6 +338,12 @@ class RunnerBoundaryTests(unittest.TestCase):
             self.assertNotIn(str(root / "credentials"), command)
             self.assertIn("/runner", command)
             self.assertIn("--ro-bind", command)
+            postgres = sandbox_command(root, root / "workspace", ["python", "test.py"],
+                                       process_view=True)
+            self.assertIn("--unshare-all", postgres)
+            self.assertEqual(postgres[postgres.index("/proc") - 1], "--proc")
+            self.assertEqual(postgres.count("/proc"), 1)
+            self.assertNotIn(str(root / "credentials"), postgres)
 
     def test_git_source_archive_cannot_extract_links_or_traversal(self):
         for name, kind in [

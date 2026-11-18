@@ -48,14 +48,26 @@ def probe(settings):
         raise RuntimeError("embedding probe returned an invalid vector")
 
 
+def load_download_proxy(value=None, path=None):
+    if path:
+        private_path(path)
+        config = json.loads(Path(path).read_text())
+        if not isinstance(config, dict) or set(config) != {"url"}:
+            raise ValueError("download proxy file requires only a url field")
+        return config["url"]
+    if value and (urlsplit(value).username or urlsplit(value).password):
+        raise ValueError("proxy credentials require a private --download-proxy-file")
+    return value
+
+
 def download_environment(env, proxy):
     env = dict(env)
     if proxy:
         parsed = urlsplit(proxy)
         if (parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}
-                or not parsed.port or parsed.username or parsed.password
+                or not parsed.port
                 or parsed.path not in {"", "/"} or parsed.query or parsed.fragment):
-            raise ValueError("download proxy must be a credential-free loopback HTTP URL")
+            raise ValueError("download proxy must be a loopback HTTP URL")
         env.update(HTTP_PROXY=proxy, HTTPS_PROXY=proxy, NO_PROXY="localhost,127.0.0.1,::1")
     return env
 
@@ -159,11 +171,15 @@ def main():
     parser.add_argument("--port", type=int, default=19073)
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--branch", action="append", default=[])
-    parser.add_argument("--download-proxy", help="optional loopback HTTP proxy for installation only")
+    proxy = parser.add_mutually_exclusive_group()
+    proxy.add_argument("--download-proxy", help="credential-free loopback HTTP proxy for installation only")
+    proxy.add_argument("--download-proxy-file", type=Path,
+                       help="private JSON file with a url field; may contain proxy authentication")
     args = parser.parse_args()
     try:
         print(json.dumps(install(args.root, args.source, args.sha, args.port,
-                                 args.branch, args.threads, args.download_proxy)))
+                                 args.branch, args.threads,
+                                 load_download_proxy(args.download_proxy, args.download_proxy_file))))
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
         print("Embedding installation failed; inspect the private installation/service logs.",
               file=sys.stderr)
