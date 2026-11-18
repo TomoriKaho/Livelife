@@ -2,6 +2,8 @@
 
 为活动列表、日历、地图、推荐和 Agent 等后端模块提供共同的信息来源。[#60](https://github.com/TomoriKaho/Livelife/issues/60) 的 Python 服务负责采集契约、SQL 持久化和统一查询。[#63](https://github.com/TomoriKaho/Livelife/issues/63) 本地 Demo 用独立 HTTP 入口验证公众号原文导入、[#61](https://github.com/TomoriKaho/Livelife/issues/61) 所需的附近活动筛选，以及 Agent 可读取的检索文本。
 
+兴趣广场的标准公开 HTTP 适配为 [`GET /content/articles`](../../api/content_feed/API.md)，`feed.py` 复用统一查询并生成纯文本正文摘录，不需要模型配置。内部 `InformationQuery.source_name` 支持完整来源名称精确匹配，可与平台及关键词组合，不改变其他查询默认行为。
+
 ## 地点目录导入与旧数据回填
 
 标准地图接口见[地图活动查询 API](../../api/locations/API.md)。`content.map_query` 负责时间、关键词、半径与建筑排序；`InformationAggregator` 在写入时调用 `LocationResolver`。前端只展示结构化地点，不重复匹配原文。`InformationQuery.order_by` 默认仍为采集时间倒序，地图显式选择 `activity`，按开始时间和 UUID 升序。

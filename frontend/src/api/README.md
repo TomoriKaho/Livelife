@@ -34,6 +34,10 @@
 
 Agent 的临时新对话只保存绑定账号与 API 地址的选中提示，空历史不自动创建；首次发送才调用创建。`pinAgentSession` 调用账号所有权保护的 PATCH 保存置顶，列表统一由服务端排序，细节见[Agent 契约](../../../backend/app/api/agent/API.md#临时新对话与置顶)。
 
+## 兴趣广场内容
+
+[`content.ts`](content.ts) 调用公开的 [`GET /content/articles`](../../../backend/app/api/content_feed/API.md)，使用平台 API 基地址、Android 状态和预览后端 SHA 校验。响应校验拒绝不安全的外链和非法分页；不发送账号令牌。搜索、平台和完整来源名称传给服务端，分页按 ID 去重；十秒超时、取消及迟到响应由 [`useContentFeed.ts`](../pages/interests/useContentFeed.ts) 管理。空列表和网络失败不回退演示内容。原文以 HTTP(S) 链接打开，缺失字段文案及验证步骤见[页面说明](../pages/interests/README.md)。
+
 ## 新增业务请求
 
 按已确认的模块契约实现请求和类型，复用平台地址配置；后端未完成时明确标识 Mock。接口变化同步受影响的调用方、错误处理和测试，不将部署私钥或其他服务端秘密打包进客户端。

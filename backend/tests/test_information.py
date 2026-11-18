@@ -364,16 +364,17 @@ def test_invalid_queries_are_rejected(query):
         InformationQuery(**query)
 
 
-def test_information_service_stays_internal_while_map_has_its_own_route():
+def test_information_service_has_only_registered_business_adapters():
     from app.main import app
 
     paths = set(app.openapi()["paths"])
     # 期望集合只列已确认契约的对外路由（账户见 backend/app/api/accounts/API.md，
     # Agent 见 backend/app/api/agent/API.md，个人资料见
-    # backend/app/api/profile/API.md，地图见 backend/app/api/locations/API.md）；
-    # 信息系统本身仍无独立 HTTP 路由。
+    # backend/app/api/profile/API.md，地图见 backend/app/api/locations/API.md，
+    # 兴趣广场见 backend/app/api/content_feed/API.md）；内部采集接口不对外注册。
     assert paths == {
         "/test/hello",
+        "/content/articles",
         "/health/live",
         "/health/ready",
         "/agent/sessions",

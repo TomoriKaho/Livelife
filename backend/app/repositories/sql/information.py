@@ -111,6 +111,8 @@ class InformationRepository:
             )
         if query.platform is not None:
             statement = statement.where(InformationRecord.platform == query.platform)
+        if query.source_name is not None:
+            statement = statement.where(InformationRecord.source_name == query.source_name)
         if query.fetched_after is not None:
             statement = statement.where(InformationRecord.fetched_at >= query.fetched_after)
         if query.fetched_before is not None:
