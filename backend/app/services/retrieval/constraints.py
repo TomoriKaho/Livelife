@@ -30,9 +30,12 @@ def _event_day(text: str, local: datetime) -> tuple[date | None, bool]:
     ):
         for year, month, day in re.findall(pattern, text):
             try:
-                days.add(date(int(year) if year else local.year, int(month), int(day)))
+                candidate = date(int(year) if year else local.year, int(month), int(day))
             except ValueError:
                 return None, True
+            if candidate == date.max:  # No representable next-day exclusive bound.
+                return None, True
+            days.add(candidate)
     for word, shift in (
         ("今天", 0),
         ("今日", 0),
