@@ -116,9 +116,9 @@ task_instance=be-替换为目标的完整40位SHA
 
 RAG 复用课程机的后端发布链路。模型是独立的项目 Supervisor 程序，API 启动器负责该分支的索引准备和 worker 子进程；公网机不运行模型。启用记录统一见[部署状态](../docs/deployment.md#当前实施状态)。以下安装步骤需要在确认项目目录、可用端口和目标分支后执行；Git push 不会更新服务器已安装的控制程序。
 
-首次安装使用已评审 checkout，以课程机 `group5` 用户操作。先备份现有控制文件，保留测试账号初始化、SMTP、聊天模型等本机定制。核对差异后安装 `backend_runtime.py`、`retrieval_runtime.py`、`retrieval_config.py`、`embedding_runtime.py`、`build_runner.py` 到 `/home/group5/livelife/control/livelife/`，并更新 `/home/group5/livelife/control/prepare-backend.py`。后两项使课程机构建安装 `local-db` 测试依赖并执行真实 PostgreSQL 检查；需在构建队列空闲时重启本项目 `build-worker`，不能在构建中途替换运行代码。既有 pgembed、Supervisor、uv 及数据库启动器须已按上节安装。
+首次安装使用已评审 checkout，以课程机 `group5` 用户操作。先备份现有控制文件，保留测试账号初始化、SMTP、聊天模型等本机定制。核对差异后安装 `backend_runtime.py`、`retrieval_runtime.py`、`retrieval_config.py`、`embedding_runtime.py`、`build_runner.py` 到 `/home/group5/livelife/control/livelife/`，并更新 `/home/group5/livelife/control/prepare-backend.py`。后两项识别 RAG 检查能力和执行位置；需在构建队列空闲时重启本项目 `build-worker`，不能在构建中途替换运行代码。既有 pgembed、Supervisor、uv 及数据库启动器须已按上节安装。
 
-真实 PostgreSQL 检查要求测试进程能使用自己的进程视图。当前课程机容器禁止在构建沙箱挂载隔离 `/proc`，因此这组检查仍会阻止新提交自动发布，详见[构建限制](BUILDING.md)。模型服务与已部署 API 在项目 Supervisor 下运行，不依赖构建沙箱；不能将它们的线上检查成功记作 CI 已通过。
+真实 PostgreSQL 检查要求测试进程能使用自己的进程视图。课程机容器禁止在构建沙箱挂载隔离 `/proc`，因此专项先在无部署凭证的 GitHub Runner 执行，通过后再进入课程机的常规检查、构建和部署，详见[检查分工](BUILDING.md)。模型服务与已部署 API 在项目 Supervisor 下运行，不依赖构建沙箱；不能将它们的线上检查成功记作 CI 已通过。
 
 在同一已评审 checkout 的根目录运行：
 
@@ -314,7 +314,7 @@ sudo systemctl status livelife-gateway.service --no-pager
 | LIVELIFE_FRONTEND_ENABLED | Variable | 网页自动部署开关，启用见[网页维护](WEB_PREVIEW.md#维护者启用顺序) |
 | LIVELIFE_ANDROID_ENABLED | Variable | Android 自动分发开关，启用见[分发维护](ANDROID.md#android-启用和排查) |
 
-第二把私钥不进入 GitHub。请求 job 无部署秘密、无 checkout、无构建；特权控制程序只从 main 的 deploy/ 检出。课程机在命名空间沙箱中执行检查与构建，产物作为数据由公网机校验发布。fork 不提交到课程机；课程机仅持测试权限，不接正式数据库/凭证。venv 是依赖隔离，构建的文件/进程隔离由 bubblewrap 提供。
+第二把私钥不进入 GitHub。请求工作流不接收部署秘密、不构建发布产物；后端请求的 PostgreSQL/RAG 专项可检出固定 head SHA，checkout 不保留凭证。特权控制程序仍只从 main 的 deploy/ 检出。课程机在命名空间沙箱中执行常规检查与构建，产物作为数据由公网机校验发布。fork 不提交到课程机；课程机仅持测试权限，不接正式数据库/凭证。venv 是依赖隔离，构建的文件/进程隔离由 bubblewrap 提供。
 
 控制工作流的 GitHub token 权限由 `.github/workflows/backend-control.yml` 明确声明：
 

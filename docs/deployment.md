@@ -13,7 +13,7 @@
 | 分支持久 PostgreSQL、首次快照及迁移发布门禁 | 仓库已提供；服务器控制程序升级、依赖安装与线上验收尚待完成 | [启用与恢复教程](../deploy/README.md#预览数据库与启动门禁) |
 | 账户与 Agent 权限收紧 | 新代码默认及启动器关闭空白登录；需合并配套前后端、更新课程机启动器并重启，不能据本地检查认定线上已启用 | [账户/Agent 迁移](../backend/app/api/agent/API.md#登录失效与迁移)、[启动器操作](../deploy/README.md#预览数据库与启动门禁) |
 | GPT 测试模型 | 支持高推理参数及私有配置的固定 SHA 启用；具体已启用版本及真实调用结果记录在接入 PR | [测试模型配置](../deploy/README.md#测试模型配置) |
-| Agent 混合检索 | 课程机已安装固定版本 Qwen，仅 `73-hybrid-retrieval` 启用；PR #119 的 `e8ced30` API 已验证真实索引、增量 worker 和带引用回答。当前入库 11 条全部完成向量化；真实 PostgreSQL 的 CI 专项仍受课程机沙箱 `/proc` 限制，后续控制工具提交尚未通过自动发布 | [服务器验收与剩余项](https://github.com/TomoriKaho/Livelife/pull/119)、[RAG 部署与回退](../deploy/README.md#rag-模型与分支索引部署)、[构建限制](../deploy/BUILDING.md) |
+| Agent 混合检索 | 课程机已安装固定版本 Qwen，仅 `73-hybrid-retrieval` 启用；PR #119 已验证当前入库资料全量向量化、增量 worker 和带引用回答。真实 PostgreSQL/RAG 专项在无部署凭证的 GitHub Runner 执行，通过后才发起课程机构建；逐提交的发布结果及未完成验收见 PR/Actions | [服务器验收与剩余项](https://github.com/TomoriKaho/Livelife/pull/119)、[RAG 部署与回退](../deploy/README.md#rag-模型与分支索引部署)、[检查分工](../deploy/BUILDING.md) |
 | 正式发布与 iOS | 正式发布工作流和 iOS 工程尚未提供 | [正式发布约定](#客户端模式与后续正式发布约定) |
 
 上述证据覆盖后端、网页及测试包发布，不代表完整成员验收。Android main 首次自动发布、完整关闭/重开清理和最新 APK 返回键真机回归仍需核对，历史证据见[验证记录索引](#验证记录索引)。业务接口、数据库及登录的范围由[架构说明](architecture.md)维护。
@@ -84,7 +84,7 @@ https://192.144.253.40/api/versions/be-<完整40位SHA>/   不可变版本
 
 ## 构建结果怎么判断
 
-Backend build request / Frontend build request 的成功只证明通知已发出，不证明检查通过。验收应查看被测试提交 SHA 的 Backend checks / Frontend checks commit 状态、Preview environments 实际日志及 course-build-logs 附件。任务排队显示 pending；测试/构建失败显示 failure，原预览可能仍可访问，必须核对其版本。检查成功后发布失败是部署故障，不伪称测试失败或新页面已上线。
+Frontend build request 的成功只证明通知已发出；新版 Backend build request 还证明无部署凭证的 Runner 上 PostgreSQL/RAG 专项通过，两者均不代表课程机构建或发布成功。验收应查看被测试提交 SHA 的 Backend checks / Frontend checks commit 状态、Preview environments 实际日志及 course-build-logs 附件，检查分工见[构建说明](../deploy/BUILDING.md)。任务排队显示 pending；测试/构建失败显示 failure，原预览可能仍可访问，必须核对其版本。检查成功后发布失败是部署故障，不伪称测试失败或新页面已上线。
 
 ## 合并前的分支预览
 

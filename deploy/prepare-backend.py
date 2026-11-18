@@ -22,6 +22,16 @@ def dependency_format(root):
     return None
 
 
+def retrieval_check_policy(marker):
+    settings = json.loads(Path(marker).read_text()) if Path(marker).is_file() else {}
+    enabled = settings.get("retrieval_checks") is True
+    runner = settings.get("retrieval_checks_runner", "local")
+    if runner not in {"local", "github"}:
+        raise ValueError("unsupported retrieval checks runner")
+    delegated = enabled and runner == "github" and os.environ.get("LIVELIFE_REMOTE_BACKEND") == "true"
+    return enabled, enabled and not delegated
+
+
 def package(commit, destination, requirements, wheels):
     source = subprocess.check_output(["git", "archive", "--format=tar", commit, "backend"])
     with tarfile.open(destination, "w:gz") as bundle:
@@ -51,7 +61,10 @@ def main():
     requirements = out.resolve() / "runtime-requirements.txt"
     if mode == "uv":
         marker = Path("backend/preview-runtime.json")
-        retrieval_checks = marker.is_file() and json.loads(marker.read_text()).get("retrieval_checks") is True
+        retrieval_checks, local_postgres = retrieval_check_policy(marker)
+        if retrieval_checks and not local_postgres:
+            print("PostgreSQL/RAG integration is gated by Backend build request on GitHub; "
+                  "course-host sandbox runs ordinary checks and publication probes.", flush=True)
         groups = ["--group", "local-db"] if retrieval_checks else []
         if os.environ.get("LIVELIFE_REMOTE_BACKEND_DEPENDENCIES_READY") != "true":
             subprocess.run(["uv", "sync", "--locked", "--python", sys.executable, *groups], cwd="backend", check=True)
@@ -62,11 +75,11 @@ def main():
         python = str(Path("backend/.venv/bin/python").absolute())
         if Path("backend/tests").is_dir():
             subprocess.run(["uv", "run", "--no-sync", "pytest",
-                            *(["--local-postgres"] if retrieval_checks else [])], cwd="backend", check=True)
+                            *(["--local-postgres"] if local_postgres else [])], cwd="backend", check=True)
         if retrieval_checks:
             subprocess.run([python, "-m", "unittest", "discover", "-s", "deploy/tests",
                             "-p", "test_retrieval_deployment.py", "-v"], check=True,
-                           env={**os.environ, "LIVELIFE_RAG_INTEGRATION": "1"})
+                           env={**os.environ, "LIVELIFE_RAG_INTEGRATION": "1" if local_postgres else "0"})
         subprocess.run(["uv", "run", "--no-sync", "ruff", "check", "."], cwd="backend", check=True)
         subprocess.run(["uv", "run", "--no-sync", "ruff", "format", "--check", "."], cwd="backend", check=True)
     else:
