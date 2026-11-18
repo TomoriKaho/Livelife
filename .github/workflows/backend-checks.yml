@@ -35,7 +35,18 @@ jobs:
       - name: Test RAG snapshot, publication gate and worker lifecycle
         env:
           LIVELIFE_RAG_INTEGRATION: "1"
+          # setup-python's library search path must not override native PG tools.
+          LD_LIBRARY_PATH: ""
         run: backend/.venv/bin/python -m unittest discover -s deploy/tests -p test_retrieval_deployment.py -v
+      - name: Diagnose native PostgreSQL tools on failure
+        if: failure()
+        run: |
+          backend/.venv/bin/python - <<'PY'
+          import subprocess
+          from pgembed.postgres_server import POSTGRES_BIN_PATH
+          for name in ('psql', 'pg_dump', 'pg_restore'):
+              subprocess.run(['ldd', str(POSTGRES_BIN_PATH / name)], check=False)
+          PY
   request:
     needs: postgres-checks
     runs-on: ubuntu-24.04
