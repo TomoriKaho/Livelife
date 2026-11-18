@@ -13,7 +13,7 @@
 | 分支持久 PostgreSQL、首次快照及迁移发布门禁 | 仓库已提供；服务器控制程序升级、依赖安装与线上验收尚待完成 | [启用与恢复教程](../deploy/README.md#预览数据库与启动门禁) |
 | 账户与 Agent 权限收紧 | 新代码默认及启动器关闭空白登录；需合并配套前后端、更新课程机启动器并重启，不能据本地检查认定线上已启用 | [账户/Agent 迁移](../backend/app/api/agent/API.md#登录失效与迁移)、[启动器操作](../deploy/README.md#预览数据库与启动门禁) |
 | GPT 测试模型 | 支持高推理参数及私有配置的固定 SHA 启用；具体已启用版本及真实调用结果记录在接入 PR | [测试模型配置](../deploy/README.md#测试模型配置) |
-| Agent 混合检索 | 已提供独立模型安装器、分支配置注入、复制后索引回填、发布前真实查询检查与 worker 管理；受信控制工具更新、服务器安装和线上验收未完成，未启用分支仍用关键词 | [RAG 部署与回退](../deploy/README.md#rag-模型与分支索引部署)、[索引维护](../backend/app/services/retrieval/README.md) |
+| Agent 混合检索 | 课程机已安装固定版本 Qwen，仅 `73-hybrid-retrieval` 启用；PR #119 的 `e8ced30` API 已验证真实索引、增量 worker 和带引用回答。当前入库 11 条全部完成向量化；真实 PostgreSQL 的 CI 专项仍受课程机沙箱 `/proc` 限制，后续控制工具提交尚未通过自动发布 | [服务器验收与剩余项](https://github.com/TomoriKaho/Livelife/pull/119)、[RAG 部署与回退](../deploy/README.md#rag-模型与分支索引部署)、[构建限制](../deploy/BUILDING.md) |
 | 正式发布与 iOS | 正式发布工作流和 iOS 工程尚未提供 | [正式发布约定](#客户端模式与后续正式发布约定) |
 
 上述证据覆盖后端、网页及测试包发布，不代表完整成员验收。Android main 首次自动发布、完整关闭/重开清理和最新 APK 返回键真机回归仍需核对，历史证据见[验证记录索引](#验证记录索引)。业务接口、数据库及登录的范围由[架构说明](architecture.md)维护。

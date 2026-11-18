@@ -118,6 +118,8 @@ RAG 复用课程机的后端发布链路。模型是独立的项目 Supervisor �
 
 首次安装使用已评审 checkout，以课程机 `group5` 用户操作。先备份现有控制文件，保留测试账号初始化、SMTP、聊天模型等本机定制。核对差异后安装 `backend_runtime.py`、`retrieval_runtime.py`、`retrieval_config.py`、`embedding_runtime.py`、`build_runner.py` 到 `/home/group5/livelife/control/livelife/`，并更新 `/home/group5/livelife/control/prepare-backend.py`。后两项使课程机构建安装 `local-db` 测试依赖并执行真实 PostgreSQL 检查；需在构建队列空闲时重启本项目 `build-worker`，不能在构建中途替换运行代码。既有 pgembed、Supervisor、uv 及数据库启动器须已按上节安装。
 
+真实 PostgreSQL 检查要求测试进程能使用自己的进程视图。当前课程机容器禁止在构建沙箱挂载隔离 `/proc`，因此这组检查仍会阻止新提交自动发布，详见[构建限制](BUILDING.md)。模型服务与已部署 API 在项目 Supervisor 下运行，不依赖构建沙箱；不能将它们的线上检查成功记作 CI 已通过。
+
 在同一已评审 checkout 的根目录运行：
 
 ```bash

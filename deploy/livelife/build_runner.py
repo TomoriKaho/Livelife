@@ -72,7 +72,7 @@ def backend_check_groups(workspace):
     return ["--group", "local-db"] if enabled else []
 
 
-def sandbox_command(root, workspace, command, *, process_view=False):
+def sandbox_command(root, workspace, command):
     root = Path(root).resolve()
     workspace = Path(workspace).resolve()
     tools = root / "build-tools"
@@ -84,9 +84,7 @@ def sandbox_command(root, workspace, command, *, process_view=False):
         "--share-net",
         "--die-with-parent",
         "--new-session",
-        # pgembed/psutil need to observe their own database processes. A new
-        # procfs under --unshare-all sees only this sandbox's PID namespace.
-        "--proc" if process_view else "--tmpfs",
+        "--tmpfs",
         "/proc",
         "--dev",
         "/dev",
@@ -366,9 +364,7 @@ class Runner:
             "taskset",
             "--cpu-list",
             cpus,
-            *sandbox_command(self.root, workspace, command,
-                             process_view=job["component"] == "backend"
-                             and bool(backend_check_groups(workspace))),
+            *sandbox_command(self.root, workspace, command),
         ]
         process = subprocess.Popen(
             command,

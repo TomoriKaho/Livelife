@@ -51,7 +51,7 @@ pgvector 的近似索引过滤可能导致候选不足，必须同时核对结�
 选型资料核对日期为 2026-11-18：[Qwen 模型卡](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B)、
 [BGE 模型卡](https://huggingface.co/BAAI/bge-small-zh-v1.5)、
 [pgvector 安装、精确/近似检索与过滤](https://github.com/pgvector/pgvector)。
-服务器上的安装目录、服务名称、端口、资源限制及扩展兼容性尚未验证，确认部署方案时需要明确。
+课程机已验证独立模型服务与目标分支的 pgvector；启用范围、安装位置和实际验收以[部署状态](deployment.md#当前实施状态)及其关联记录为准，不能据单次冒烟测试认定大规模吞吐或并发能力。
 
 ### 客户端选择依据
 
