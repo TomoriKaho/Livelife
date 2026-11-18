@@ -632,7 +632,10 @@ async def test_usage_matches_sent_context_not_discarded_history(monkeypatch, pro
     assert payloads[0] == payloads[1]
     usages = [u for u in usages if u["status"] == "completed"]
     expected = sum(len(m["content"]) for m in payloads[0]["messages"]) // 4
-    assert sum(len(m["content"]) for m in payloads[0]["messages"][2:]) == 350
+    history_messages = [
+        m for m in payloads[0]["messages"][1:] if not m["content"].startswith("<public_records>")
+    ]
+    assert sum(len(m["content"]) for m in history_messages) == 350
     assert [u["input_tokens"] for u in usages] == [17 if provider_usage else expected] * 2
     assert all(u["estimated_usage"] is not provider_usage for u in usages)
 

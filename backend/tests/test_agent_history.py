@@ -42,6 +42,61 @@ def anyio_backend():
     return "asyncio"
 
 
+@pytest.mark.parametrize(
+    "question",
+    [
+        "那现在还能参加吗？",
+        "后一个要带啥？几点开始？",
+        "需要提前报名吗？",
+        "有回放吗？",
+        "这个活动明天晚上能去吗？",
+        "前者呢？",
+    ],
+)
+def test_follow_up_reuses_cited_originals_not_unused_candidates(question):
+    target, unused = uuid4(), uuid4()
+    messages = [
+        {"role": "user", "content": "古琴讲座在哪里？"},
+        {
+            "role": "assistant",
+            "content": "图书馆艺术鉴赏厅。[S1]",
+            "citations": [
+                {"rank": 1, "information_id": str(target), "title": "古琴传承讲座"},
+                {"rank": 2, "information_id": str(unused), "title": "无关音乐会"},
+            ],
+        },
+    ]
+    history, query, pinned = conversation_context(messages, question, datetime.now(UTC))
+    assert pinned == (target,)
+    assert "古琴传承讲座" in query and question in query
+    assert "无关音乐会" not in query
+    assert "古琴讲座在哪里" in history[0]["content"]
+
+
+def test_new_topic_and_independent_question_do_not_reuse_old_sources():
+    messages = [
+        {"role": "user", "content": "古琴讲座在哪里？"},
+        {
+            "role": "assistant",
+            "content": "图书馆。[S1]",
+            "citations": [
+                {"rank": 1, "information_id": str(uuid4()), "title": "古琴讲座"},
+            ],
+        },
+    ]
+    now = datetime.now(UTC)
+    for question in ("换个话题，明天智华楼414有什么报告？", "明天智华楼413有什么报告？"):
+        _, query, pinned = conversation_context(messages, question, now)
+        assert not pinned and query.strip() == question
+    messages += [
+        {"role": "user", "content": "换个话题，明天智华楼414有什么报告？"},
+        {"role": "assistant", "content": "目前未找到资料。", "citations": []},
+    ]
+    history, query, pinned = conversation_context(messages, "需要提前报名吗？", now)
+    assert not pinned
+    assert "古琴" not in query and "古琴" not in str(history)
+
+
 def test_pin_is_durable_idempotent_and_owner_scoped(sessions):
     config = settings()
     a = create_session(sessions, config, "local", user_id=ACCOUNT_ID)
@@ -188,10 +243,13 @@ def test_context_recalls_source_task_after_many_messages_and_never_persists_loca
     assert info.id in [s.id for s in state["sources"]]
     payload = completion_messages(config, history=state["history"], sources=state["sources"])
     assert any("二教101" in m["content"] for m in payload)
-    assert "主讲老师" in payload[1]["content"]
+    assert "主讲老师" in payload[-2]["content"]
+    assert payload[-2]["content"].startswith("<public_records>")
     assert "<current_context>" in payload[-1]["content"]
     assert "received_at" in payload[-1]["content"]
-    assert sum(len(m["content"]) for m in payload[2:]) <= config.max_context_chars // 2
+    assert sum(len(m["content"]) for m in [*payload[1:-2], payload[-1]]) <= (
+        config.max_context_chars // 2
+    )
     saved = get_history(sessions, config, str(created["session_id"]), user_id=ACCOUNT_ID)
     assert "latitude" not in json.dumps(saved["messages"])
     stale = {**location, "timestamp": (now - timedelta(minutes=3)).timestamp() * 1000}

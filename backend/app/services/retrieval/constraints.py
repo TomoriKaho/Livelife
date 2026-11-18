@@ -49,7 +49,9 @@ def _event_day(text: str, local: datetime) -> tuple[date | None, bool]:
     return (next(iter(days)) if len(days) == 1 else None), len(days) > 1
 
 
-def constraints(session, question: str, now: datetime | None = None) -> QueryConstraints:
+def constraints(
+    session, question: str, now: datetime | None = None, *, reference_ids: tuple = ()
+) -> QueryConstraints:
     now = now or datetime.now(UTC)
     if now.tzinfo is None:
         raise ValueError("retrieval clock must include a timezone")
@@ -58,15 +60,21 @@ def constraints(session, question: str, now: datetime | None = None) -> QueryCon
     clauses = []
     day, invalid_day = _event_day(normalized, local)
     time_text = normalized
-    if day is not None or invalid_day:
+    participation = False
+    if day is not None or invalid_day or reference_ids:
         # A dated event plus a participation question needs the event notice first.
         # Only consume this bounded intent; another ongoing request stays strict.
-        time_text = re.sub(
-            r"(?:现在|此刻)(?:还)?(?:能否|能不能|可不可以|可以|能|来得及)"
-            r"(?:再)?(?:参加|报名|入场|赶上)",
+        time_text, count = re.subn(
+            r"(?:现在|此刻)(?:还)?(?:能否|能不能|可不可以|可以|能|来得及|有机会)"
+            r"(?:再|去)?(?:参加|报名|入场|赶上|听)",
             "",
             time_text,
         )
+        participation = bool(count)
+    if participation and reference_ids:
+        # Only re-read the referenced events; never broaden a current-state question
+        # to arbitrary old notices. Room/date constraints still apply below.
+        clauses.append(I.id.in_(reference_ids))
     if any(word in time_text for word in ("现在", "此刻", "正在")):
         clauses.append(and_(I.activity_start_at <= now, I.activity_end_at > now))
     elif invalid_day:

@@ -223,7 +223,10 @@ def search_information(
     diagnostics = diagnostics if diagnostics is not None else {}
     diagnostics.update(mode="keyword", reason="configured_keyword")
     query = constraints(
-        session, constraint_question if constraint_question is not None else question, now
+        session,
+        constraint_question if constraint_question is not None else question,
+        now,
+        reference_ids=pinned_ids,
     )
     keyword, terms = _keyword_candidates(session, question, query, pinned_ids)
     vectors = []

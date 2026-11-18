@@ -10,6 +10,7 @@ from sqlalchemy import create_engine, delete, func, select, text, update
 from sqlalchemy.orm import sessionmaker
 
 from app.db.models import InformationRecord, RetrievalChunk, RetrievalState
+from app.services.agent.context import conversation_context
 from app.services.agent.retrieval import search_information
 from app.services.retrieval.chunks import split_record
 from app.services.retrieval.config import RetrievalSettings
@@ -163,6 +164,79 @@ def test_dated_event_with_current_participation_question(database):
                 embedding_client=FakeEncoder(),
             )
             assert {row.source_id for row in rows} == {"new-year"}
+
+
+def test_follow_up_rereads_past_notice_without_relaxing_new_time_or_room(database):
+    corpus(database)
+    with database() as session:
+        record = session.scalar(
+            select(InformationRecord).where(InformationRecord.source_id == "repair-yesterday")
+        )
+        identity = record.id
+    messages = [
+        {"role": "user", "content": "昨天的古籍修复讲座在哪？"},
+        {
+            "role": "assistant",
+            "content": "图书馆208。[S1]",
+            "citations": [
+                {"rank": 1, "information_id": str(identity), "title": "古籍修复讲座回顾"},
+            ],
+        },
+    ]
+    modes = ["keyword"]
+    if database.kw["bind"].dialect.name == "postgresql":
+        modes.append("hybrid")
+        process_batch(database, RetrievalSettings(dimensions=3), client=FakeEncoder())
+    for mode in modes:
+        config = RetrievalSettings(mode=mode, dimensions=3)
+        with database() as session:
+            for question in ("那现在还能参加吗？", "这个讲座现在还有机会参加吗？"):
+                _, query, pinned = conversation_context(messages, question, NOW)
+                diagnostics = {}
+                rows = search_information(
+                    session,
+                    query,
+                    pinned_ids=pinned,
+                    now=NOW,
+                    constraint_question=question,
+                    settings=config,
+                    embedding_client=FakeEncoder(),
+                    diagnostics=diagnostics,
+                )
+                assert [r.id for r in rows] == [identity]
+                assert diagnostics["mode"] == mode
+                assert "活动已经结束" in rows[0].content
+            for question in (
+                "这个讲座现在正在进行吗？",
+                "这个讲座明天几点开始？",
+                "这个讲座在图书馆999吗？",
+            ):
+                _, query, pinned = conversation_context(messages, question, NOW)
+                rows = search_information(
+                    session,
+                    query,
+                    pinned_ids=pinned,
+                    now=NOW,
+                    constraint_question=question,
+                    settings=config,
+                    embedding_client=FakeEncoder(),
+                )
+                assert identity not in [r.id for r in rows]
+    with database.begin() as session:
+        session.execute(delete(InformationRecord).where(InformationRecord.id == identity))
+    with database() as session:
+        _, query, pinned = conversation_context(messages, "那现在还能参加吗？", NOW)
+        rows = search_information(
+            session,
+            query,
+            pinned_ids=pinned,
+            now=NOW,
+            constraint_question="那现在还能参加吗？",
+            settings=config,
+            embedding_client=FakeEncoder(),
+        )
+        # History cannot revive deleted sources or substitute a different event.
+        assert not rows
 
 
 def test_index_updates_deletes_retries_and_rebuild(database):
