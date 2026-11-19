@@ -9,9 +9,11 @@ mkdir -p "$task_root/control" "$task_root/releases"
 cp -R "$task_source/livelife" "$task_root/control/"
 cp "$task_source/course-entry.py" "$task_source/prepare-backend.py" "$task_source/prepare-frontend.py" "$task_source/android-mirrors.gradle" "$task_root/control/"
 cp "$task_source/install-android-tools.py" "$task_source/install-build-tools.py" "$task_root/control/"
+cp "$task_source/install-retrieval.py" "$task_source/repair-pgembed-psql.py" "$task_root/control/"
 python3 -m venv "$task_root/control-venv"
 "$task_root/control-venv/bin/python" -m pip install --disable-pip-version-check --index-url https://mirrors.aliyun.com/pypi/simple 'supervisor==4.3.0' 'pgembed==0.2.0' || \
   "$task_root/control-venv/bin/python" -m pip install --disable-pip-version-check --index-url https://pypi.tuna.tsinghua.edu.cn/simple 'supervisor==4.3.0' 'pgembed==0.2.0'
+"$task_root/control-venv/bin/python" "$task_root/control/repair-pgembed-psql.py"
 printf 'Course control installed at %s; configure the dedicated authorized key next.\n' "$task_root"
 
 python3 "$task_root/control/install-build-tools.py" "$task_root"

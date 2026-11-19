@@ -66,6 +66,12 @@ def rewrite_mirrors(workspace, index=PYPI):
     rewrite_npm_registry(workspace)
 
 
+def backend_check_groups(workspace):
+    marker = workspace / "backend/preview-runtime.json"
+    enabled = marker.is_file() and json.loads(marker.read_text()).get("retrieval_checks") is True
+    return ["--group", "local-db"] if enabled else []
+
+
 def sandbox_command(root, workspace, command):
     root = Path(root).resolve()
     workspace = Path(workspace).resolve()
@@ -447,6 +453,7 @@ class Runner:
                                 "--locked",
                                 "--python",
                                 self.python,
+                                *backend_check_groups(workspace),
                             ],
                             log,
                         )
@@ -469,6 +476,7 @@ class Runner:
                                 "--locked",
                                 "--python",
                                 self.python,
+                                *backend_check_groups(workspace),
                             ],
                             log,
                         )

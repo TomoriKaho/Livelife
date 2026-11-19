@@ -12,13 +12,49 @@ permissions:
   contents: read
 
 jobs:
+  postgres-checks:
+    name: PostgreSQL and RAG integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      # This job has no deployment credentials and checks the exact branch head.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Install locked PostgreSQL test dependencies
+        run: |
+          python -m pip install --disable-pip-version-check uv==0.12.23
+          uv sync --project backend --locked --group local-db
+      - name: Verify bundled PostgreSQL client
+        run: backend/.venv/bin/python deploy/repair-pgembed-psql.py
+      - name: Test backend with real PostgreSQL
+        working-directory: backend
+        run: uv run --no-sync pytest --local-postgres
+      - name: Test RAG snapshot, publication gate and worker lifecycle
+        env:
+          LIVELIFE_RAG_INTEGRATION: "1"
+        run: backend/.venv/bin/python -m unittest discover -s deploy/tests -p test_retrieval_deployment.py -v
+      - name: Diagnose native PostgreSQL tools on failure
+        if: failure()
+        run: |
+          backend/.venv/bin/python - <<'PY'
+          import subprocess
+          from pgembed.postgres_server import POSTGRES_BIN_PATH
+          for name in ('psql', 'pg_dump', 'pg_restore'):
+              subprocess.run(['ldd', str(POSTGRES_BIN_PATH / name)], check=False)
+          PY
   request:
+    needs: postgres-checks
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
-      # No checkout, build or credentials. The default-branch workflow_run
-      # controller verifies this run before it submits any course-host task.
+      # A failed PostgreSQL job prevents a successful workflow_run notification.
+      # The main controller still verifies identity before course-host execution.
       - name: Request course-host checks
         run: |
-          echo "Course-host request recorded; this step does not certify that tests passed." >> "$GITHUB_STEP_SUMMARY"
+          echo "PostgreSQL/RAG integration passed; course-host checks requested." >> "$GITHUB_STEP_SUMMARY"
           echo "Follow the Backend checks commit status and Preview environments for the real result." >> "$GITHUB_STEP_SUMMARY"

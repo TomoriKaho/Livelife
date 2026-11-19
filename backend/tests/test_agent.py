@@ -273,7 +273,8 @@ def test_chinese_information_retrieval_prefers_title_matches(sessions):
         make_information(session, title="其他校园消息", content="百讲附近的校园信息。")
     with sessions() as session:
         results = search_information(session, "百讲活动")
-    assert len(results) == 2
+    # A nearby mention without activity evidence no longer passes lexical coverage.
+    assert len(results) == 1
     assert results[0].title == "百讲活动安排"
     assert results[0].citation(1)["source_url"] == "https://example.test/source"
 
@@ -305,7 +306,7 @@ def test_follow_up_retrieval_uses_history_as_query_hint(sessions, monkeypatch):
     )
     captured = {}
 
-    def fake_search(_session, query):
+    def fake_search(_session, query, **kwargs):
         captured["query"] = query
         return ()
 
@@ -631,7 +632,10 @@ async def test_usage_matches_sent_context_not_discarded_history(monkeypatch, pro
     assert payloads[0] == payloads[1]
     usages = [u for u in usages if u["status"] == "completed"]
     expected = sum(len(m["content"]) for m in payloads[0]["messages"]) // 4
-    assert sum(len(m["content"]) for m in payloads[0]["messages"][2:]) == 350
+    history_messages = [
+        m for m in payloads[0]["messages"][1:] if not m["content"].startswith("<public_records>")
+    ]
+    assert sum(len(m["content"]) for m in history_messages) == 350
     assert [u["input_tokens"] for u in usages] == [17 if provider_usage else expected] * 2
     assert all(u["estimated_usage"] is not provider_usage for u in usages)
 
