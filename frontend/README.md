@@ -153,6 +153,16 @@ npm run preview
 
 ## 手机网页与原生工程
 
+### 开屏动画与排查
+
+浏览器里，`index.html` 在 Vue 脚本加载前显示黄底 Logo。加载超过 1 秒才显示“加载中”，15 秒仍未就绪则显示重试。窄屏铺满视口；宽于 600px 时黄底只覆盖与 `.phone-shell` 相同的手机框，外围保持纸张底色。Android 安装包不使用这段网页开屏，气球由原生层绘制，见 [Android 启动配置](android/README.md#开屏与原生启动配置)。Logo 来源为 `src/pictures/logo4-main-ui-palette-v2.png`；`public/splash-logo.webp` 是由原图缩至 600×600、质量 90 导出的启动专用资源，修改品牌图时需重新生成并核对外观。右上三条彩线的显隐区域按原图 1254×1254 坐标绘制；更换构图时要重新核对遮罩。该图片与 Android 启动器图标、旧 `res/drawable*/splash.png` 分属不同资源。
+
+需要更新启动图片时，在 `frontend/` 执行 `cwebp -q 90 -m 6 -resize 600 600 src/pictures/logo4-main-ui-palette-v2.png -o public/splash-logo.webp`，再把同一文件复制为 `android/app/src/main/res/drawable-nodpi/startup_logo.webp`，并检查遮罩及 320–430px 的显示。普通构建只复制已提交的 WebP，不要求安装 `cwebp`。
+
+入口在运行配置、会话恢复、Vue 挂载和首次路由准备完成并绘制后移除开屏层；不会为播放完整动画增加固定等待。页面启动超过 15 秒或初始化异常会显示“重新加载”，Logo 图片加载失败也不阻止页面启动。系统开启“减少动态效果”时显示静态 Logo 和完整省略号。已在内存中的应用从后台返回不重新执行网页入口。
+
+若一直停在开屏，先看“重新加载”是否出现，再检查浏览器控制台、`splash-logo.webp` 请求、运行配置及会话请求。网页预览检查初次加载、缓存后刷新、无网络和减少动态效果；Android 原生启动衔接及真机记录见 [Android 启动配置](android/README.md#开屏与原生启动配置)。
+
 应用外壳 `.phone-shell` 在移动端全高铺满视口，使纸张底色 `#f8f4ea` 自然覆盖系统状态栏与底部导航条区域；系统安全区统一归一化为 `--safe-top` / `--safe-bottom`，仅在页眉 `.app-header`、底部导航 `.bottom-nav` 及无导航焦点页/浮层内部消费一次，不在 `body` 与子组件上重复扣除（避免 Android WebView 140+ 同时暴露 `env(safe-area-inset-*)` 与 `--safe-area-inset-*` 时产生双倍顶部留白或露出白底）。Capacitor `SystemBars` 与 Android `AppTheme.NoActionBar` 固定浅色栏样式（深色状态栏图标）与同色窗口背景，防止系统深色模式下状态栏文字隐身。页眉和底部导航位于内容滚动区域之外，页面在 `.page-main` 或各页面内部的滚动容器中滚动；根页面禁止滚动和越界回弹，桌面预览（`>= 600px`）仍保留外围留白并在外壳内归零安全区。
 
 布局回归：在 Vite 页面进入“我的”等显示底部导航的页面，在 Console 执行 `await (await import('/scripts/viewport-scroll.browser.mjs')).verifyViewportScroll()`，检查无安全区及上下 40/34px 安全区时外壳铺满视口、页眉仅单次偏移安全区高度、内容可滚动且导航位置不变。另在 Android 上反复上滑、下拉内容至边界，确认导航不移动、顶部不露白；切换页面、系统浅色/深色模式、横竖屏及键盘弹出收起后重复检查。
