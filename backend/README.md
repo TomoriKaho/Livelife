@@ -44,6 +44,8 @@ uv lock --check
 
 测试覆盖账号验证码、注册登录、会话撤销与有效期、Agent 账户鉴权、归属、用户额度、流式撤销、上游异常终态（无 `[DONE]` 的 EOF、长度截断等）与 `client_request_id` 幂等重放/原地重试、hello、CORS、健康检查、开发启动，以及信息系统的迁移和数据行为。默认测试使用独立 SQLite，不启动 PostgreSQL；另检查 PostgreSQL 离线迁移 SQL。可用 `uv run --locked --group local-db pytest --local-postgres` 验证真实本地 PostgreSQL 的迁移、写入、重启保留与进程停止。账号 SMTP 使用测试替身；真实 SMTP 投递需在目标环境配置并单独验收。
 
+进程停止检查捕获运行中的 PostgreSQL 进程对象，在退出数据库上下文后最多等待 10 秒，确认进程退出且 `postmaster.pid` 已清除；避免 `pg_ctl` 返回与操作系统回收进程之间的短暂时差造成偶发失败。超时仍使测试失败，不通过跳过停止检查或自动重试整个测试掩盖进程残留。
+
 ## CORS 与浏览器联调
 
 本地服务直接接受浏览器跨域请求，来源白名单在 `app/main.py`：

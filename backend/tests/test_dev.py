@@ -154,10 +154,16 @@ def test_real_local_postgresql_migrates_persists_and_stops(request, tmp_path):
                         )
                     ]
                 )[0]
-            pid = int((data_dir / "postmaster.pid").read_text().splitlines()[0])
+            postmaster = psutil.Process(
+                int((data_dir / "postmaster.pid").read_text().splitlines()[0])
+            )
         finally:
             database.close()
-    assert not psutil.pid_exists(pid)
+    # pg_ctl -w observes the shutdown lock file, which can disappear just before
+    # the OS reaps the process. Wait for the captured process, not a bare PID.
+    postmaster.wait(timeout=10)
+    assert not postmaster.is_running()
+    assert not (data_dir / "postmaster.pid").exists()
     assert (data_dir / "PG_VERSION").exists()
 
     with local.local_database(data_dir) as url:
@@ -198,7 +204,11 @@ def test_real_local_postgresql_migrates_persists_and_stops(request, tmp_path):
                 assert page.nearby_buildings[0].place.building_id == "hall-map"
                 assert page.nearby_buildings[0].first_activity_at == record.activity_start_at
 
-            pid = int((data_dir / "postmaster.pid").read_text().splitlines()[0])
+            postmaster = psutil.Process(
+                int((data_dir / "postmaster.pid").read_text().splitlines()[0])
+            )
         finally:
             database.close()
-    assert not psutil.pid_exists(pid)
+    postmaster.wait(timeout=10)
+    assert not postmaster.is_running()
+    assert not (data_dir / "postmaster.pid").exists()
