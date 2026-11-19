@@ -2,6 +2,10 @@
 
 此目录放网页与 Capacitor 原生包共用的能力适配；页面只调用其公开函数，不直接处理原生插件或平台权限差异。
 
+## 开屏
+
+[startup-splash.ts](startup-splash.ts) 只在 Android 容器里使用。浏览器继续显示 `index.html` 的开屏。Android 在页面脚本开始时移除该节点，避免原生层关掉后又露出一次网页气球；界面就绪后调用 `StartupSplash.dismiss()`，初始化失败时调用 `fail()`。原生绘制、1 秒文案、15 秒重试和资源文件见 [Android 启动配置](../../android/README.md#开屏与原生启动配置)。
+
 ## 前台定位
 
 [location.ts](location.ts) 提供按需的 `getCurrentLocation()` 和持续的 `watchCurrentLocation()`。后者只负责归一化平台回调，并返回停止函数；不保存任何位置。[location-tracker.ts](location-tracker.ts) 在 `App.vue` 挂载时建立全应用唯一的前台监听，并暴露响应式的最近位置 `currentLocation` 与状态 `locationTrackingState`。因此路由切换（包括离开地图）不会中断监听；根应用卸载时会清理监听。

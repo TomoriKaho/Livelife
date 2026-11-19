@@ -3,11 +3,65 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#ffdf32">
+  <meta name="theme-color" content="#fde554">
   <title>Livelife · 北大校园信息助手</title>
+  <style>
+    #startup-splash { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; background: #fde554; color: #20304b; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; opacity: 1; transition: opacity .18s ease; }
+    #startup-splash.is-leaving { opacity: 0; pointer-events: none; }
+    .startup-content { display: flex; flex-direction: column; align-items: center; transform: translateY(-10px); }
+    .startup-logo-entry { width: min(46vw, 210px); aspect-ratio: 1; }
+    .startup-logo-float { width: 100%; height: 100%; animation: startup-float 3.2s ease-in-out .55s infinite; }
+    .startup-logo { display: block; width: 100%; height: 100%; -webkit-mask-image: radial-gradient(ellipse closest-side at center, #000 83%, transparent 100%); mask-image: radial-gradient(ellipse closest-side at center, #000 83%, transparent 100%); }
+    .startup-strokes { animation: startup-vanish 2s ease-in-out .55s infinite; }
+    .startup-loading { display: flex; align-items: baseline; justify-content: center; margin-top: -2px; font-size: 23px; line-height: 1.4; letter-spacing: .05em; visibility: hidden; }
+    .startup-loading.is-visible { visibility: visible; }
+    .startup-dots { display: inline-flex; width: 1.5em; }
+    .startup-dots span { opacity: 0; animation-duration: 1.8s; animation-timing-function: steps(1,end); animation-iteration-count: infinite; }
+    .startup-dots span:nth-child(1) { animation-name: startup-dot-one; }
+    .startup-dots span:nth-child(2) { animation-name: startup-dot-two; }
+    .startup-dots span:nth-child(3) { animation-name: startup-dot-three; }
+    .startup-error { display: none; margin-top: 18px; text-align: center; font-size: 14px; }
+    .startup-error p { margin: 0 0 10px; }
+    .startup-error button { min-height: 44px; padding: 7px 18px; border: 1px solid #20304b; border-radius: 10px; background: #398def; color: #fff; font: inherit; appearance: none; }
+    #startup-splash.has-error .startup-loading { display: none; }
+    #startup-splash.has-error .startup-error { display: block; }
+    #startup-splash.has-error .startup-logo-float, #startup-splash.has-error .startup-strokes { animation-play-state: paused; }
+    @keyframes startup-float { 0%, 100% { transform: translateY(5px); } 50% { transform: translateY(-6px); } }
+    @keyframes startup-vanish { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+    @keyframes startup-dot-one { 0%, 14%, 85%, 100% { opacity: 0; } 15%, 84% { opacity: 1; } }
+    @keyframes startup-dot-two { 0%, 34%, 85%, 100% { opacity: 0; } 35%, 84% { opacity: 1; } }
+    @keyframes startup-dot-three { 0%, 54%, 85%, 100% { opacity: 0; } 55%, 84% { opacity: 1; } }
+    @media (min-width: 600px) {
+      html, body { background-color: #f8f4ea; }
+      #startup-splash { top: max(24px, env(safe-area-inset-top, 0px)); right: 24px; bottom: max(24px, env(safe-area-inset-bottom, 0px)); left: 24px; width: min(430px, calc(100vw - 48px)); height: min(880px, calc(100dvh - max(24px, env(safe-area-inset-top, 0px)) - max(24px, env(safe-area-inset-bottom, 0px)))); margin: auto; }
+    }
+    @media (prefers-reduced-motion: reduce) { .startup-logo-float, .startup-strokes, .startup-dots span { animation: none; } .startup-dots span { opacity: 1; } #startup-splash { transition: none; } }
+  </style>
 </head>
 <body>
   <div id="app"></div>
+  <div id="startup-splash" role="status" aria-label="Livelife 加载中">
+    <div class="startup-content">
+      <div class="startup-logo-entry"><div class="startup-logo-float">
+        <svg class="startup-logo" viewBox="0 0 1254 1254" role="img" aria-label="Livelife 标志">
+          <defs>
+            <path id="startup-stroke-area" d="M859 142 874 149 888 169 891 200 884 234 852 298 813 297 795 286 775 258 784 203 813 152 838 141Z M1006 248 1022 271 1024 290 1004 328 954 364 908 388 887 388 868 372 852 331 895 277 952 242 981 239Z M898 396 918 387 942 388 977 397 1010 414 1031 448 1022 485 1001 501 973 504 907 474 892 461 886 420Z" />
+            <mask id="startup-without-strokes" maskUnits="userSpaceOnUse"><rect width="1254" height="1254" fill="white" /><use href="#startup-stroke-area" fill="black" /></mask>
+            <mask id="startup-only-strokes" maskUnits="userSpaceOnUse"><rect width="1254" height="1254" fill="black" /><use href="#startup-stroke-area" fill="white" /></mask>
+          </defs>
+          <image href="./splash-logo.webp" width="1254" height="1254" mask="url(#startup-without-strokes)" />
+          <image class="startup-strokes" href="./splash-logo.webp" width="1254" height="1254" mask="url(#startup-only-strokes)" />
+        </svg>
+      </div></div>
+      <div class="startup-loading" aria-label="加载中"><span>加载中</span><span class="startup-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></div>
+      <div class="startup-error"><p>启动时间较长，请重试。</p><button id="startup-retry" type="button">重新加载</button></div>
+    </div>
+  </div>
+  <script>
+    setTimeout(() => document.querySelector('.startup-loading')?.classList.add('is-visible'), 1000);
+    setTimeout(() => document.getElementById('startup-splash')?.classList.add('has-error'), 15000);
+    document.getElementById('startup-retry').addEventListener('click', () => location.reload());
+  </script>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
