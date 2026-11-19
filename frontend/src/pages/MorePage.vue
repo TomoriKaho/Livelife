@@ -14,6 +14,7 @@ import { locationEnabled, locationTrackingState, setLocationEnabled, restartLoca
 import { fetchProfile, readAccessToken, updateProfile } from '../api/profile';
 import ElasticList from './agent/ElasticList.vue';
 import FavoritesList from './more/FavoritesList.vue';
+import FeedbackForm from './more/FeedbackForm.vue';
 import { favorites } from '../state/favorites';
 import { interests, genders } from './onboarding/options.js';
 import OnboardingIcon from './onboarding/OnboardingIcon.vue';
@@ -41,7 +42,7 @@ const pickedInterests = computed(() => interests.filter(item => selectedInterest
 const prefs = reactive({ personalized: true, reminders: true, recommendations: false, useIdentity: true, useInterests: true, quiet: false });
 const locationStatus = computed(() => ({ disabled: '应用定位已关闭', idle: '等待定位', locating: '正在获取位置…', located: '已获得位置', 'permission-denied': '系统位置权限未授予，请授权后重试', unavailable: '系统定位未开启或暂不可用', timeout: '定位超时，请重试', unsupported: '此设备暂不支持定位' }[locationTrackingState.value]));
 const advance = ref('30分钟'), recommendationMode = ref('interest');
-const feedback = ref(''), notice = ref('');
+const notice = ref('');
 let noticeTimer;
 const deleteOpen = ref(false), deletePassword = ref(''), deleteError = ref(''), deleting = ref(false);
 const favoritesSummary = computed(() => {
@@ -130,7 +131,6 @@ async function saveInterests(value) {
   }
   prefs.personalized = value.personalized; recommendationMode.value = value.mode; paneTrail.length = 0; pane.value = 'home'; notify('兴趣与推荐设置已保存');
 }
-function sendFeedback() { if (feedback.value.trim()) notify('谢谢你的建议！提交功能将在后续开放'); }
 async function signOut() {
   try { await logoutAccount(); }
   catch { notify('已在本地退出；服务器会话将在过期后失效'); }
@@ -217,7 +217,7 @@ onBeforeUnmount(() => { clearTimeout(noticeTimer); });
         <p class="preview-note">个人资料与推荐偏好仍为界面预览。</p>
         <button v-sketch class="secondary-button sketch" type="button" :disabled="!authState.user" @click="signOut"><MoreIcon name="logout" />退出登录</button>
         <h2 class="field-heading spaced-heading">注销账号</h2>
-        <p class="small-note">注销会永久删除账户、个人资料与兴趣标签，无法恢复；退出登录只结束当前会话，不会删除账户。</p>
+        <p class="small-note">注销会永久删除账户、个人资料、对话、收藏、反馈及其处理记录，无法恢复；退出登录只结束当前会话，不会删除账户。</p>
         <button v-if="!deleteOpen" v-sketch class="secondary-button sketch" type="button" :disabled="!authState.user" @click="openDelete">注销账号</button>
         <form v-else @submit.prevent="confirmDelete">
           <label class="form-field"><span>输入登录密码确认注销</span><div v-sketch class="field-outline sketch"><input v-model="deletePassword" type="password" autocomplete="current-password" aria-label="登录密码" placeholder="登录密码" /></div></label>
@@ -238,8 +238,7 @@ onBeforeUnmount(() => { clearTimeout(noticeTimer); });
         <div class="help-links"><button v-sketch class="sketch" data-pencil="blue" type="button" @click="router.push('/calendar')">去看活动日历</button><button v-sketch class="sketch" data-pencil="mint" type="button" @click="router.push('/agent')">和 LiLi 聊聊</button></div>
         <HelloConnectionTest v-if="showInternalTools" />
         <h2 class="field-heading spaced-heading">想对我们说</h2>
-        <label class="form-field"><span class="sr-only">反馈内容</span><div v-sketch class="field-outline sketch" data-sketch-key="more-feedback"><textarea v-model="feedback" rows="4" maxlength="500" aria-label="反馈内容" placeholder="遇到了什么问题，或有什么新想法？"></textarea></div></label>
-        <button v-sketch class="primary-button sketch" data-pencil="yellow" type="button" :disabled="!feedback.trim()" @click="sendFeedback">提交反馈</button>
+        <FeedbackForm />
         <p class="home-note">LiveLife<span>发现校园生活的每一种颜色。<br />界面预览 · v0.1</span></p>
       </section>
     </template>

@@ -1,6 +1,6 @@
 # 后端开发
 
-后端使用 FastAPI 和 Pydantic，采用模块化单体。当前提供 `GET /test/hello`、存活与数据库就绪检查、[校园邮箱账号与会话 API](app/api/accounts/API.md)、[Agent 对话 API](app/api/agent/API.md)，[地图活动查询 API](app/api/locations/API.md)、[活动收藏 API](app/api/favorites/API.md)，以及[通用信息系统](app/services/content/README.md)的内部采集协议、持久化与查询服务。Agent 模型调用只有在环境提供凭证后可用；公众号样本、地点解析和附近查询可通过[本地 Demo](app/services/content/README.md#运行本地-demo)运行。HTTP 契约见[连通性检查 API](app/api/demo/API.md)、[健康检查 API](app/api/health/API.md)、[账户与认证 API](app/api/accounts/API.md)和[Agent API](app/api/agent/API.md)，共享约定与接口索引见[API 入口](../docs/api.md)，整体技术路线见[架构说明](../docs/architecture.md)。
+后端使用 FastAPI 和 Pydantic，采用模块化单体。当前提供 `GET /test/hello`、存活与数据库就绪检查、[校园邮箱账号与会话 API](app/api/accounts/API.md)、[Agent 对话 API](app/api/agent/API.md)，[地图活动查询 API](app/api/locations/API.md)、[活动收藏 API](app/api/favorites/API.md)、[用户反馈 API](app/api/feedback/API.md)，以及[通用信息系统](app/services/content/README.md)的内部采集协议、持久化与查询服务。Agent 模型调用只有在环境提供凭证后可用；公众号样本、地点解析和附近查询可通过[本地 Demo](app/services/content/README.md#运行本地-demo)运行。HTTP 契约见[连通性检查 API](app/api/demo/API.md)、[健康检查 API](app/api/health/API.md)、[账户与认证 API](app/api/accounts/API.md)和[Agent API](app/api/agent/API.md)，共享约定与接口索引见[API 入口](../docs/api.md)，整体技术路线见[架构说明](../docs/architecture.md)。
 
 ## 后端安装、启动与检查
 
@@ -51,7 +51,7 @@ uv lock --check
 - `http://localhost` 和 `http://127.0.0.1` 的 5173、8765、8766 端口；
 - Android / Capacitor 原生来源 `https://localhost`。
 
-允许 GET、POST、PUT、PATCH、DELETE、OPTIONS 和 Accept、Authorization、Content-Type 请求头，暴露 `X-Livelife-Backend-SHA` 响应头。该版本头由测试部署网关注入，本地 Uvicorn 不自动生成。Origin 的协议、主机和端口必须完全匹配；自定义前端端口或手机局域网网页需明确添加对应来源。`curl` 成功不等于浏览器 CORS 已通过。
+允许 GET、POST、PUT、PATCH、DELETE、OPTIONS 和 Accept、Authorization、Content-Type 请求头，暴露 `X-Livelife-Backend-SHA` 与 `Retry-After` 响应头。版本头由测试部署网关注入，本地 Uvicorn 不自动生成；`Retry-After` 供反馈限流提示使用。Origin 的协议、主机和端口必须完全匹配；自定义前端端口或手机局域网网页需明确添加对应来源。`curl` 成功不等于浏览器 CORS 已通过。
 
 前端地址配置和界面操作见[前端联调教程](../frontend/README.md#api-地址与联调)。公网预览通过同源网关访问 API，路由前缀、版本头和环境配对由[部署文档](../docs/deployment.md#api-地址与前端关联)维护。
 
@@ -169,6 +169,9 @@ app/api/
 │   ├── __init__.py
 │   ├── router.py         # hello 连通性检查
 │   └── API.md
+├── feedback/
+│   ├── router.py         # 登录反馈提交与幂等回执
+│   └── API.md
 ├── health/
 │   ├── __init__.py
 │   ├── router.py         # 存活与数据库就绪检查
@@ -208,6 +211,31 @@ Agent 路由位于 `app/api/agent/`，会话和模型服务位于 `app/services/
 先升级至 `0006_activity_favorites`（自动本地开发入口会执行），通过信息系统导入真实活动，再用账户 Bearer 令牌收藏该信息 UUID。读取、取消、分页、最小快照及时间分类的主要契约见[收藏 API](app/api/favorites/API.md)。旧前端演示收藏不迁移；注销清除个人收藏，清理原始信息则保留不可用识别快照。迁移降级会丢失全部收藏，不影响账号和原活动。收藏与 Agent 迁移通过 `0008_merge_history_favorites` 合流，独立数据库执行 `alembic upgrade head`，无需改写已应用迁移。
 
 在 backend 执行 `uv run pytest tests/test_favorites.py`；增加 `--local-postgres` 并安装 local-db 依赖组可检查真实 PostgreSQL 并发幂等与清理。前端操作步骤见[个人页收藏](../frontend/src/pages/more/README.md#账号活动收藏)。无需新增环境变量、模型服务或 SMTP 调用，测试使用独立账号和数据库。
+
+## 用户反馈维护
+
+用户端在“我的 → 帮助与反馈”通过 [`POST /feedback`](app/api/feedback/API.md)提交真实反馈，获得编号。新迁移 `0011_user_feedback` 新建 `user_feedback` 与 `feedback_events`，本地自动数据库入口沿用自动升级；独立数据库先配置 `DATABASE_URL` 并执行 `uv run alembic upgrade head`。无需新增依赖、SMTP 或模型配置。降级会删除全部反馈和处理记录，不能靠重新升级恢复，操作前核对目标并备份。
+
+**首期维护入口仅为服务器命令行，没有管理网页、管理员角色或管理 HTTP API，也不自动通知用户处理结果。** 提 PR 时需明确标注这一现状，后续便利维护入口另行开发。仅可信、持有目标数据库权限的维护者执行命令；`--actor` 记录维护者标识，用于审计，不是身份认证。不要将数据库访问权限或此命令包装成普通用户可调用的公网接口。
+
+在 backend 目录、已配置正确数据库的服务器环境执行（本地自动库需在另一终端复制启动器打印的 `DATABASE_URL` 并保持启动器运行）：
+
+```bash
+uv run --locked python -m app.services.feedback list --status pending --limit 20
+uv run --locked python -m app.services.feedback list --user-id <账户UUID> --since 2026-11-18T00:00:00+08:00
+uv run --locked python -m app.services.feedback show <反馈UUID>
+uv run --locked python -m app.services.feedback set-status <反馈UUID> processing --version 1 --actor '<维护者标识>' --reason '正在复现问题'
+uv run --locked python -m app.services.feedback show <反馈UUID>
+uv run --locked python -m app.services.feedback set-status <反馈UUID> resolved --version 2 --actor '<维护者标识>' --reason '已在对应版本验证修复'
+```
+
+`list` 按提交时间、编号倒序，默认 20 条、上限 100，支持 `--offset`、`--before`（不含该时刻）与 `--since`（含该时刻），时间必须带时区；只输出编号、账户 UUID、时间、状态、版本，不输出邮箱和正文。`show` 才输出正文与处理记录。输出为 JSON，会转义不可信内容中的控制字符及非 ASCII 字符，避免终端控制序列执行；可在安全的 JSON 查看器中查看中文，不要用 shell 执行输出。
+
+状态为 `pending / processing / resolved / closed`；允许重新打开已关闭条目，须说明原因。`set-status` 必须带 `show` 看到的最新版本、非空操作人（至多 100 字）和原因（至多 1000 字）。版本落后会拒绝，重新查看后再操作；相同状态不新增记录。状态与审计在同一事务提交，不改写旧处理记录。内容纠错、下架和信息修改不属于此入口。
+
+反馈及处理记录一直保留到用户注销，注销事务中全部删除；退出登录不会清除。备份生命周期由部署环境管理，应用删除不等于已清理外部备份。新分支的公开数据快照默认不复制这两张私人表的数据；同分支完整迁移与现有备份沿用部署约定。
+
+验证命令：`uv run pytest tests/test_feedback.py tests/test_migrations.py`；安装 local-db 组后加 `--local-postgres`，在独立临时 PostgreSQL 检查并发重试、账户限流及处理版本冲突。前端失败、重试与账号切换步骤见[反馈页面验收](../frontend/src/pages/more/README.md#用户反馈提交与验收)。浏览器替身、真实数据库联调、Android 和目标服务器部署需分别记录实际结果。
 
 ## Agent 长期历史联调
 

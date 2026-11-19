@@ -67,6 +67,7 @@ npm run test:drawer
 npm run test:osm
 npm run test:composer
 npm run test:favorites
+npm run test:feedback
 
 # 修改手绘资源生成算法后重新生成已提交的 PNG：
 npm run sketch:prepare

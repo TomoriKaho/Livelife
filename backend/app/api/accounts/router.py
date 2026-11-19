@@ -12,6 +12,7 @@ from app.db.dependencies import get_session
 from app.db.models.accounts import EmailVerificationCode, User, UserSession
 from app.db.models.agent import AgentMessage, AgentSession, AgentUserUsage
 from app.db.models.favorite import ActivityFavorite
+from app.db.models.feedback import FeedbackEvent, UserFeedback
 from app.db.models.profile import UserInterest, UserProfile
 from app.schemas.accounts import (
     AccountDeletionRequest,
@@ -194,6 +195,14 @@ def delete_account(
     if session.scalar(select(User.id).where(User.id == user.id).with_for_update()) is None:
         raise HTTPException(status_code=401, detail="Session is invalid or expired")
     # Match Agent admission/finalization: usage first, then conversations.
+    session.execute(
+        delete(FeedbackEvent).where(
+            FeedbackEvent.feedback_id.in_(
+                select(UserFeedback.id).where(UserFeedback.user_id == user.id)
+            )
+        )
+    )
+    session.execute(delete(UserFeedback).where(UserFeedback.user_id == user.id))
     session.execute(delete(ActivityFavorite).where(ActivityFavorite.user_id == user.id))
     session.execute(delete(AgentUserUsage).where(AgentUserUsage.user_id == user.id))
     session.execute(

@@ -36,7 +36,7 @@ def create_app() -> FastAPI:
         ],
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Accept", "Authorization", "Content-Type", "X-Agent-Session"],
-        expose_headers=["X-Livelife-Backend-SHA"],
+        expose_headers=["X-Livelife-Backend-SHA", "Retry-After"],
     )
 
     app.include_router(api_router)

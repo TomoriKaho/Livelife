@@ -80,4 +80,7 @@ async def test_unsupported_method_returns_method_not_allowed(client: httpx.Async
 @pytest.mark.anyio
 async def test_native_origin_can_read_backend_version_header(client: httpx.AsyncClient) -> None:
     response = await client.get("/test/hello", headers={"Origin": "https://localhost"})
-    assert response.headers["access-control-expose-headers"] == "X-Livelife-Backend-SHA"
+    assert set(response.headers["access-control-expose-headers"].split(", ")) == {
+        "X-Livelife-Backend-SHA",
+        "Retry-After",
+    }
