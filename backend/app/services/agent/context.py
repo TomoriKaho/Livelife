@@ -7,9 +7,11 @@ from zoneinfo import ZoneInfo
 
 from app.services.agent.retrieval import _terms
 
+TOPIC_SWITCH_MARKERS = ("换个话题", "换一个话题", "另一个问题", "改问")
+
 
 def _topic_switch(question):
-    return any(marker in question for marker in ("换个话题", "换一个话题", "另一个问题", "改问"))
+    return any(marker in question for marker in TOPIC_SWITCH_MARKERS)
 
 
 def _follow_up(question):

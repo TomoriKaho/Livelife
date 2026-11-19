@@ -98,6 +98,106 @@ def test_full_corpus_and_structured_filters(database):
         assert {row.source_id for row in rows} == {"math-101"}
 
 
+def test_explicit_date_prefix_preserves_exact_building_and_room(database):
+    corpus(database)
+    modes = ["keyword"]
+    if database.kw["bind"].dialect.name == "postgresql":
+        modes.append("hybrid")
+        process_batch(database, RetrievalSettings(dimensions=3), client=FakeEncoder())
+    cases = {
+        "11月18日二教101上什么课？": {"math-101"},
+        "请问2026年11月18日第二教学楼1101上什么课？": {"math-1101"},
+        "2026-11-18，三教101上什么课？": {"physics-101"},
+        "１１月１８号　二教１０１上什么课？": {"math-101"},
+        "11月18日二教999上什么课？": set(),
+        "11月19日二教101上什么课？": {"math-tomorrow"},
+        "11月18日清华二教101上什么课？": set(),
+    }
+    with database() as session:
+        for mode in modes:
+            for question, expected in cases.items():
+                rows = search_information(
+                    session,
+                    question,
+                    now=NOW,
+                    settings=RetrievalSettings(mode=mode, dimensions=3),
+                    embedding_client=FakeEncoder(),
+                )
+                assert {row.source_id for row in rows} == expected, (mode, question)
+
+
+def test_long_context_cannot_recall_sources_before_topic_switch(database):
+    from uuid import uuid4
+
+    from test_agent import ACCOUNT_ID, seed_account, settings
+
+    from app.db.models import AgentSession
+    from app.services.agent.service import _context_rows, create_session
+
+    seed_account(database)
+    corpus(database)
+    created = create_session(database, settings(), "topic-boundary", user_id=ACCOUNT_ID)
+    with database.begin() as session:
+        original = session.scalar(
+            select(InformationRecord).where(InformationRecord.source_id == "repair-yesterday")
+        )
+        payloads = [
+            {"role": "user", "content": "古籍修复讲座在哪里？"},
+            {
+                "role": "assistant",
+                "content": "在图书馆。[S1]",
+                "citations": [
+                    {"rank": 1, "information_id": str(original.id), "title": original.title}
+                ],
+            },
+            {"role": "user", "content": "换个话题，智华楼414有什么报告？"},
+            {"role": "assistant", "content": "目前未找到可靠资料。"},
+        ]
+        for question in (
+            "报告主办方是哪家？",
+            "还有其他安排吗？",
+            "有没有海报？",
+            "能给出链接吗？",
+        ):
+            payloads.extend(
+                [
+                    {"role": "user", "content": question},
+                    {"role": "assistant", "content": "目前未找到可靠资料。"},
+                ]
+            )
+        session.get(AgentSession, created["session_id"]).messages = [
+            {"id": str(uuid4()), "status": "completed", "citations": [], **payload}
+            for payload in payloads
+        ]
+    with database() as session:
+        for question in ("需要提前报名吗？", "这个古籍修复讲座呢？"):
+            messages = _context_rows(session, created["session_id"], question)
+            history, query, pinned = conversation_context(messages, question, NOW)
+            assert not pinned
+            assert not any("古籍修复" in message["content"] for message in history[:-1])
+            assert "古籍修复讲座在哪里" not in query
+        # A retry of the original turn must not see a later topic switch.
+        messages = _context_rows(session, created["session_id"], "这个讲座呢？", before_sequence=3)
+        _, _, pinned = conversation_context(messages, "这个讲座呢？", NOW)
+        assert pinned == (original.id,)
+    with database.begin() as session:
+        current = session.scalar(
+            select(InformationRecord).where(InformationRecord.source_id == "math-101")
+        )
+        conversation = session.get(AgentSession, created["session_id"])
+        messages = conversation.messages
+        messages[3] = {
+            **messages[3],
+            "content": "新话题的原始资料。[S1]",
+            "citations": [{"information_id": str(current.id), "title": current.title}],
+        }
+        conversation.messages = messages
+    with database() as session:
+        messages = _context_rows(session, created["session_id"], "需要提前报名吗？")
+        _, _, pinned = conversation_context(messages, "需要提前报名吗？", NOW)
+        assert pinned == (current.id,)
+
+
 def test_dated_event_with_current_participation_question(database):
     # Same title on adjacent days/years: semantic similarity cannot choose the date.
     days = {
@@ -505,6 +605,7 @@ def test_embedding_preflight_releases_locks_and_duplicate_skips_model(database, 
     from sqlalchemy import event
     from test_agent import ACCOUNT_ID, seed_account, settings
 
+    from app.db.models import AgentIpWindow
     from app.services.agent.service import begin_request, create_session, finish_request
 
     seed_account(database)
@@ -559,6 +660,145 @@ def test_embedding_preflight_releases_locks_and_duplicate_skips_model(database, 
         repeated = begin_request(database, config, **arguments)
         assert repeated["duplicate"]
         assert encoder.calls == 1
+        with database() as session:
+            # Creation, one encoded request, one replay; no double admission charge.
+            assert session.scalar(select(AgentIpWindow.request_count)) == 3
     finally:
         event.remove(engine, "checkout", checked_out)
         event.remove(engine, "checkin", checked_in)
+
+
+def test_ip_limit_rejects_embedding_before_model_call_and_resets_next_hour(database, monkeypatch):
+    from datetime import UTC
+    from uuid import uuid4
+
+    from test_agent import ACCOUNT_ID, seed_account, settings
+
+    from app.db.models import AgentIpWindow
+    from app.services.agent.service import AgentError, begin_request, create_session
+
+    seed_account(database)
+    config = settings(ip_requests_per_hour=1)
+    created = create_session(database, config, "embedding-limit", user_id=ACCOUNT_ID)
+    encoder = FakeEncoder()
+    monkeypatch.setattr("app.services.agent.service.EmbeddingClient", lambda _: encoder)
+    monkeypatch.setattr(
+        "app.services.agent.service.get_retrieval_settings",
+        lambda: RetrievalSettings(mode="hybrid", dimensions=3),
+    )
+    arguments = dict(
+        token=created["session_token"],
+        user_id=ACCOUNT_ID,
+        content="图书续借办理指引",
+        ip="embedding-limit",
+    )
+    for _ in range(3):
+        with pytest.raises(AgentError, match="ip_rate_limited"):
+            begin_request(database, config, client_request_id=uuid4(), **arguments)
+    assert encoder.calls == 0
+    with database.begin() as session:
+        window = session.scalar(select(AgentIpWindow))
+        assert window.request_count == 1
+        window.window_start = datetime.now(UTC) - timedelta(hours=1)
+    result = begin_request(database, config, client_request_id=uuid4(), **arguments)
+    assert not result["duplicate"] and encoder.calls == 1
+    with database() as session:
+        assert session.scalar(select(AgentIpWindow.request_count)) == 1
+
+
+def test_concurrent_embedding_reserves_last_ip_slot_before_releasing_transaction(
+    database, monkeypatch
+):
+    if database.kw["bind"].dialect.name != "postgresql":
+        pytest.skip("concurrent PostgreSQL admission")
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    from uuid import uuid4
+
+    from test_agent import ACCOUNT_ID, seed_account, settings
+
+    from app.db.models import AgentIpWindow
+    from app.services.agent.service import AgentError, begin_request, create_session
+
+    seed_account(database)
+    config = settings(ip_requests_per_hour=3)
+    first = create_session(database, config, "concurrent-embedding", user_id=ACCOUNT_ID)
+    second = create_session(database, config, "concurrent-embedding", user_id=ACCOUNT_ID)
+    entered, release = Event(), Event()
+
+    def wait_for_competitor():
+        entered.set()
+        assert release.wait(timeout=10)
+
+    encoder = FakeEncoder(callback=wait_for_competitor)
+    monkeypatch.setattr("app.services.agent.service.EmbeddingClient", lambda _: encoder)
+    monkeypatch.setattr(
+        "app.services.agent.service.get_retrieval_settings",
+        lambda: RetrievalSettings(mode="hybrid", dimensions=3),
+    )
+    arguments = dict(user_id=ACCOUNT_ID, content="图书续借办理指引", ip="concurrent-embedding")
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        pending = executor.submit(
+            begin_request,
+            database,
+            config,
+            token=first["session_token"],
+            client_request_id=uuid4(),
+            **arguments,
+        )
+        try:
+            assert entered.wait(timeout=10)
+            with database() as session:
+                assert session.scalar(select(AgentIpWindow.request_count)) == 3
+            with pytest.raises(AgentError, match="ip_rate_limited"):
+                begin_request(
+                    database,
+                    config,
+                    token=second["session_token"],
+                    client_request_id=uuid4(),
+                    **arguments,
+                )
+            assert encoder.calls == 1
+        finally:
+            release.set()
+        assert not pending.result(timeout=10)["duplicate"]
+    with database() as session:
+        assert session.scalar(select(AgentIpWindow.request_count)) == 3
+
+
+def test_late_admission_failure_does_not_refund_embedding_ip_slot(database, monkeypatch):
+    from uuid import uuid4
+
+    from test_agent import ACCOUNT_ID, seed_account, settings
+
+    from app.db.models import AgentIpWindow
+    from app.services.agent.service import AgentError, begin_request, create_session
+
+    seed_account(database)
+    config = settings(
+        ip_requests_per_hour=2,
+        daily_token_quota=1,
+        llm_base_url="https://unused.invalid/v1",
+        llm_api_key="synthetic",
+        llm_model="synthetic",
+    )
+    created = create_session(database, config, "late-admission", user_id=ACCOUNT_ID)
+    encoder = FakeEncoder()
+    monkeypatch.setattr("app.services.agent.service.EmbeddingClient", lambda _: encoder)
+    monkeypatch.setattr(
+        "app.services.agent.service.get_retrieval_settings",
+        lambda: RetrievalSettings(mode="hybrid", dimensions=3),
+    )
+    arguments = dict(
+        token=created["session_token"],
+        user_id=ACCOUNT_ID,
+        content="图书续借办理指引",
+        ip="late-admission",
+    )
+    with pytest.raises(AgentError, match="token_quota_exceeded"):
+        begin_request(database, config, client_request_id=uuid4(), **arguments)
+    with pytest.raises(AgentError, match="ip_rate_limited"):
+        begin_request(database, config, client_request_id=uuid4(), **arguments)
+    assert encoder.calls == 1
+    with database() as session:
+        assert session.scalar(select(AgentIpWindow.request_count)) == 2

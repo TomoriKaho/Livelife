@@ -193,11 +193,11 @@ def _usage(session: Session, user_id: UUID, now: datetime) -> AgentUserUsage:
 
 
 def _prepare_embedding(
-    factory, settings, retrieval_settings, token, user_id, content, client_request_id, now
+    factory, settings, retrieval_settings, token, user_id, content, client_request_id, ip, now
 ):
     if retrieval_settings.mode != "hybrid":
-        return None
-    with factory() as session:
+        return None, False
+    with factory() as session, session.begin():
         row = _session(session, settings, token, now, user_id)
         previous = session.scalar(
             select(AgentMessage).where(
@@ -221,7 +221,7 @@ def _prepare_embedding(
                 or assistant.payload.get("status") not in {"failed", "cancelled"}
             ):
                 # Let admission handle idempotent replay/conflict without encoding.
-                return PreparedQuery.skipped()
+                return PreparedQuery.skipped(), False
         usage = session.get(AgentUserUsage, user_id)
         if usage:
             if (
@@ -242,7 +242,11 @@ def _prepare_embedding(
         from app.services.agent.context import conversation_context
 
         _, query, _ = conversation_context(completed, content, now)
-    return PreparedQuery(query, EmbeddingClient(retrieval_settings))
+        # Commit one IP slot before model work, including overlapping preflights.
+        # Encoding attempts consume resources even if later admission fails.
+        if not _hit_ip_window(session, _ip_hash(settings, ip), now, settings.ip_requests_per_hour):
+            raise AgentError("ip_rate_limited", 429, retry_after=3600)
+    return PreparedQuery(query, EmbeddingClient(retrieval_settings)), True
 
 
 def begin_request(
@@ -264,14 +268,16 @@ def begin_request(
 
     now = datetime.now(UTC)
     retrieval_settings = get_retrieval_settings()
-    prepared = _prepare_embedding(
-        factory, settings, retrieval_settings, token, user_id, content, client_request_id, now
+    prepared, ip_admitted = _prepare_embedding(
+        factory, settings, retrieval_settings, token, user_id, content, client_request_id, ip, now
     )
     with factory() as session, session.begin():
         usage = _usage(session, user_id, now)
         row = _session(session, settings, token, now, user_id)
         _expire_request(session, row, usage, now)
-        if not _hit_ip_window(session, _ip_hash(settings, ip), now, settings.ip_requests_per_hour):
+        if not ip_admitted and not _hit_ip_window(
+            session, _ip_hash(settings, ip), now, settings.ip_requests_per_hour
+        ):
             raise AgentError("ip_rate_limited", 429, retry_after=3600)
 
         previous_row = session.scalar(
@@ -685,6 +691,7 @@ def _expire_request(db, row, usage, now):
 
 def _context_rows(db, session_id, question, *, before_sequence: int | None = None):
     """Bound DB materialization too: recent messages + source anchor + term matches."""
+    from app.services.agent.context import TOPIC_SWITCH_MARKERS
     from app.services.agent.retrieval import _terms
 
     completed = select(AgentMessage).where(
@@ -693,6 +700,24 @@ def _context_rows(db, session_id, question, *, before_sequence: int | None = Non
     )
     if before_sequence is not None:
         completed = completed.where(AgentMessage.sequence < before_sequence)
+    # Resolve the boundary before limiting recent/anchor/matching rows. Otherwise
+    # a switch outside the last eight messages lets an old cited task reappear.
+    topic_start = db.scalar(
+        completed.with_only_columns(AgentMessage.sequence)
+        .where(
+            AgentMessage.payload["role"].as_string() == "user",
+            or_(
+                *(
+                    AgentMessage.payload["content"].as_string().contains(marker)
+                    for marker in TOPIC_SWITCH_MARKERS
+                )
+            ),
+        )
+        .order_by(AgentMessage.sequence.desc())
+        .limit(1)
+    )
+    if topic_start is not None:
+        completed = completed.where(AgentMessage.sequence >= topic_start)
     rows = db.scalars(completed.order_by(AgentMessage.sequence.desc()).limit(8)).all()
     anchor = db.scalar(
         completed.where(func.json_array_length(AgentMessage.payload["citations"]) > 0)

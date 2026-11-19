@@ -12,6 +12,10 @@ from app.db.models import InformationRecord as I
 from app.services.content.locations import LocationResolver, normalize_location
 
 ZONE = ZoneInfo("Asia/Shanghai")
+DATE_PATTERNS = (
+    r"(?<![\d年])(?:(\d{4})年)?(\d{1,2})月(\d{1,2})(?:日|号)",
+    r"(?<![\d-])(\d{4})-(\d{1,2})-(\d{1,2})(?![\d-])",
+)
 
 
 @dataclass(frozen=True)
@@ -24,10 +28,7 @@ class QueryConstraints:
 def _event_day(text: str, local: datetime) -> tuple[date | None, bool]:
     """Resolve one supported day; reject invalid or ambiguous date anchors."""
     days = set()
-    for pattern in (
-        r"(?<![\d年])(?:(\d{4})年)?(\d{1,2})月(\d{1,2})(?:日|号)",
-        r"(?<![\d-])(\d{4})-(\d{1,2})-(\d{1,2})(?![\d-])",
-    ):
+    for pattern in DATE_PATTERNS:
         for year, month, day in re.findall(pattern, text):
             try:
                 candidate = date(int(year) if year else local.year, int(month), int(day))
@@ -98,10 +99,13 @@ def constraints(
     resolver = LocationResolver(session)
     # Strip explicit question/time prefixes, preserving the resolver's foreign-place
     # and ambiguity rules. Unknown place names are never guessed from embeddings.
+    prefixes = r"请问|想知道|查询|看看|今天|今日|今晚|明天|明日|昨天|现在|此刻|在|去|" + "|".join(
+        DATE_PATTERNS
+    )
     location_text = re.sub(
-        r"^(?:(?:请问|想知道|查询|看看|今天|今日|今晚|明天|明日|昨天|现在|此刻|在|去)\s*)+",
+        rf"^(?:(?:{prefixes})[,，:：]?)+",
         "",
-        unicodedata.normalize("NFKC", question),
+        normalized,
     )
     resolved = resolver.resolve(location_text)
     aliases = ()
