@@ -2,6 +2,8 @@
 
 为活动列表、日历、地图、推荐和 Agent 等后端模块提供共同的信息来源。[#60](https://github.com/TomoriKaho/Livelife/issues/60) 的 Python 服务负责采集契约、SQL 持久化和统一查询。[#63](https://github.com/TomoriKaho/Livelife/issues/63) 本地 Demo 用独立 HTTP 入口验证公众号原文导入、[#61](https://github.com/TomoriKaho/Livelife/issues/61) 所需的附近活动筛选，以及 Agent 可读取的检索文本。
 
+信息变更通过迁移 `0009_hybrid_retrieval` 的数据库触发器同步索引版本，涵盖新增、更新和删除；任务状态与信息写入同事务，原有快照幂等规则不变。采集入库不调用模型，独立 worker 负责分块和编码；索引未就绪或服务失败时仍可关键词查询。配置、迁移前提、失败重试和重建统一见[检索模块](../retrieval/README.md)。
+
 兴趣广场的标准公开 HTTP 适配为 [`GET /content/articles`](../../api/content_feed/API.md)，`feed.py` 复用统一查询并生成纯文本正文摘录，不需要模型配置。内部 `InformationQuery.source_name` 支持完整来源名称精确匹配，可与平台及关键词组合，不改变其他查询默认行为。
 
 ## 地点目录导入与旧数据回填
@@ -47,7 +49,7 @@ uv run --locked python -m app.services.ingestion.official_events \
 
 [`official_events.json`](../ingestion/official_events.json) 保存人工选定的 11 个原文链接，来自三个直接信源，活动日期为 2026-11-07 至 2026-11-18。这是可重复采集的首批 URL 清单，不是账号历史发现或持续自动更新服务。可通过 `--manifest` 传入同格式清单，每批最多 20 篇；每页最多重试三次，有超时、失败报告和请求间隔。失败时保留本地快照并停止本批入库，不用示例填补。别名无法唯一匹配时停止导入，需核对地点；不能由模型猜坐标。
 
-原始 HTML 按 SHA-256 保存到被忽略的 `.local/official-events/`，结构化记录保留 URL、采集时间、解析器版本、时间/地点证据和 HTML 摘要。可重放相同记录；数据库保留稳定 UUID，原始快照留在开发磁盘。搜索正文为事实摘录，完整网页不直接渲染到前端。当前每篇选定文章只有一个活动，来源 ID 为 `文章标识:event:1`；通用多活动拆分、取消活动识别、历史版本数据库和增量调度尚未实现。
+原始 HTML 按 SHA-256 保存到被忽略的 `.local/official-events/`，结构化记录保留 URL、采集时间、解析器版本、时间/地点证据和 HTML 摘要。可重放相同记录；数据库保留稳定 UUID，原始快照留在开发磁盘。`pku-official-v2` 兼容图书馆“地 点”字段，并在事实摘录后保留官网文章容器内的纯文本，包括主讲人、摘要及参与说明；导航、页脚、脚本和样式不进入正文。`raw_payload.text_scope` 区分已提取文章容器与仅有事实摘录的旧布局，图片和二维码内容仍需另行核验，不能声称完整读取。完整网页不直接渲染到前端。当前每篇选定文章只有一个活动，来源 ID 为 `文章标识:event:1`；通用多活动拆分、取消活动识别、历史版本数据库和增量调度尚未实现。
 
 活动时间按北京时间解析，发布时刻不从不可靠的 CMS 元数据猜测，缺失结束时间保留 null。已结束活动仍可按历史窗口查看；地图默认只显示今天至后天尚未结束的活动。地点关联沿用统一目录，新增的“智华楼”“四元厅”别名依据[数学学院原文](https://math.pku.edu.cn/kxyj/xsbg/tlb/dynamicsystems/26997626f8f14730bae48d04c3630ac4.htm)中“智华楼四元厅-224,225室”的明确对应关系，保持建筑级精度。
 
@@ -233,7 +235,7 @@ uv run --locked python -m app.services.content.processing publish <新任务UUID
 
 `uv run --locked pytest tests/test_content_processing.py tests/test_migrations.py tests/test_merge_migrations.py` 验证候选校验、幂等、重试、预算、租约、人工发布及迁移。模型替身测试不代表真实模型效果；真实联调需要上述配置及原文核对。
 
-迁移 `0009_information_processing` 只新增任务、尝试和执行租约三张表，不改现有聊天/信息表。在可丢弃开发库回退到 `0008_merge_history_favorites` 会删除处理记录及审核依据，但已发布信息仍保留；有已发布记录时应先备份任务表，不在共享库直接回退。迁移 `0010_processing_diagnostics` 为尝试表增加可空 JSON 诊断列，回退到 0009 仅丢失诊断快照。正式迁移和部署需要单独授权，API 启动不会运行这些命令。
+迁移 `0009_information_processing` 只新增任务、尝试和执行租约三张表，不改现有聊天/信息表。迁移 `0010_processing_diagnostics` 为尝试表增加可空 JSON 诊断列，单独撤销该迁移仅丢失诊断快照。`0011_merge_processing_retrieval` 将其与检索迁移合流，已有数据库继续运行 `alembic upgrade head`，无需改写已应用迁移；扩展前提及合流说明见[检索迁移](../retrieval/README.md#迁移同步重建与回退)。在可丢弃开发库回退到共同祖先 `0008_merge_history_favorites` 会删除处理记录、审核依据及检索索引，但已发布信息仍保留；应先备份两模块数据，不在共享库直接回退。正式迁移和部署需要单独授权，API 启动不会运行这些命令。
 
 ## 三部分职责
 
@@ -320,9 +322,9 @@ uv run --locked python -m app.services.content.processing publish <新任务UUID
 
 ## Agent 读取与向量检索
 
-[`retrieval_document()`](retrieval.py) 输出统一条目和按序号排列的正文块。`chars-v1` 每块正文最多 480 字符，相邻块重叠 60 字符，块前附标题，`text_sha256` 对实际用于检索的文本取哈希。Agent 可以先用结构化条件缩小候选范围，再取分块并引用 `source_url`。
+[`retrieval_document()`](retrieval.py) 保留 Demo 已有的条目预览契约：`chars-v1` 每块正文最多 480 字符，相邻块重叠 60 字符，块前附标题，`text_sha256` 对实际用于预览的文本取哈希。该预览不代表向量已入库。
 
-后续可独立存储 `information_id`、`chunking_version`、`ordinal`、`model_version`、`text_sha256` 与 `embedding`。前四项组合标识向量记录，文章更新后用内容哈希复用未变更的块，清理过期块。向量存储和相似度排序待接入，可复用同一地点与时间查询契约。[pgvector](https://github.com/pgvector/pgvector)
+Agent 实际使用[检索模块](../retrieval/README.md)的 `paragraph-v2` 分块，保留原记录、偏移和时间/地点背景。片段按原记录与序号存储，信息事务版本和模型/分块 profile 隔离过期索引；更新时重建该记录全部片段，暂不按单块哈希复用。索引 worker、pgvector 查询、关键词降级与重建步骤集中维护在该模块，采集服务不用接触模型凭证。
 
 ## 本地准备与调用
 

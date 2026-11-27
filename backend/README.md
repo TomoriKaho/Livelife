@@ -44,6 +44,8 @@ uv lock --check
 
 测试覆盖账号验证码、注册登录、会话撤销与有效期、Agent 账户鉴权、归属、用户额度、流式撤销、上游异常终态（无 `[DONE]` 的 EOF、长度截断等）与 `client_request_id` 幂等重放/原地重试、hello、CORS、健康检查、开发启动，以及信息系统的迁移和数据行为。默认测试使用独立 SQLite，不启动 PostgreSQL；另检查 PostgreSQL 离线迁移 SQL。可用 `uv run --locked --group local-db pytest --local-postgres` 验证真实本地 PostgreSQL 的迁移、写入、重启保留与进程停止。账号 SMTP 使用测试替身；真实 SMTP 投递需在目标环境配置并单独验收。
 
+进程停止检查捕获运行中的 PostgreSQL 进程对象，在退出数据库上下文后最多等待 10 秒，确认进程退出且 `postmaster.pid` 已清除；避免 `pg_ctl` 返回与操作系统回收进程之间的短暂时差造成偶发失败。超时仍使测试失败，不通过跳过停止检查或自动重试整个测试掩盖进程残留。
+
 ## CORS 与浏览器联调
 
 本地服务直接接受浏览器跨域请求，来源白名单在 `app/main.py`：
@@ -185,6 +187,8 @@ app/api/
 
 Agent 路由位于 `app/api/agent/`，会话和模型服务位于 `app/services/agent/`；相关短期会话、用户额度与 IP 限额表通过 Alembic 管理。
 
+公开信息检索的模型配置、独立服务启动、索引 worker、重建和故障降级见[检索模块](app/services/retrieval/README.md)。默认使用覆盖全库的关键词检索，配置 `RETRIEVAL_MODE=hybrid` 后合并向量候选。迁移 `0009_hybrid_retrieval` 要求 PostgreSQL 可用的 pgvector 扩展及启用权限，即使暂未启用模型也应先检查迁移前提；共享服务器尚未安装/启用本任务的模型与 worker，部署状态见[部署入口](../docs/deployment.md#当前实施状态)。
+
 需要数据库的路由通过 `app/db/dependencies.py` 的 `get_session` 获取 Session；未配置时返回 HTTP 503。依赖在请求结束时关闭 Session，不负责提交事务。后续业务用例显式接收 Session，并负责提交或回滚；repository 只执行数据操作，不提交事务。
 
 ### 服务职责
@@ -241,7 +245,7 @@ uv run --locked python -m app.services.feedback set-status <反馈UUID> resolved
 
 先运行迁移，再启动配对的前后端，使用独立的校园测试账号：进入 Agent 创建甲、乙会话，分别发送不同问题；从历史抽屉切换、查找、加载较早消息和删除。刷新、退出再登录、另一浏览器登录后，应能重新列出并继续本账号会话；另一账号看不到它们，切换账号不得出现旧草稿、旧消息或迟到的回答。生成中的会话删除返回提示，等待终态再重试。删除或注销后消息与引用清除，额度不因删会话返还。
 
-专项测试：`uv run pytest tests/test_agent.py tests/test_agent_auth.py tests/test_agent_history.py tests/test_migrations.py`；`uv run --locked --group local-db pytest tests/test_agent_history.py --local-postgres` 在独立临时 PostgreSQL 验证新表、分页与历史检索。测试使用合成账号和模型替身，不需要真实模型凭据。完整联调真实模型、跨设备及 Android 输入法需另记验收结果。接口、上下文预算和位置隐私以 [Agent API](app/api/agent/API.md) 为准。
+专项测试：`uv run pytest tests/test_agent.py tests/test_agent_auth.py tests/test_agent_history.py tests/test_migrations.py`；`uv run --locked --group local-db pytest tests/test_agent_history.py --local-postgres` 在独立临时 PostgreSQL 验证新表、分页与历史检索。测试使用合成账号和模型替身，不需要真实模型凭据。检索的固定中文合成查询、关键词基线与 Recall@8 对照方法见[检索评测](evaluation/README.md)。完整联调真实模型、跨设备及 Android 输入法需另记验收结果。接口、上下文预算和位置隐私以 [Agent API](app/api/agent/API.md) 为准。
 
 Agent 会话置顶需升级至 `0007_agent_pins`：只添加默认未置顶字段，保留会话与消息；降级只丢失置顶状态。临时新对话和置顶排序/接口见[Agent 契约](app/api/agent/API.md#临时新对话与置顶)。
 

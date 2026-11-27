@@ -8,6 +8,7 @@ from app.db.models.feedback import FeedbackEvent, UserFeedback
 from app.db.models.information import InformationRecord, MapPlaceRecord, PlaceAliasRecord
 from app.db.models.processing import ProcessingAttempt, ProcessingGate, ProcessingJob
 from app.db.models.profile import UserInterest, UserProfile
+from app.db.models.retrieval import RetrievalChunk, RetrievalState
 
 __all__ = [
     "ActivityFavorite",
@@ -25,6 +26,8 @@ __all__ = [
     "InformationRecord",
     "MapPlaceRecord",
     "PlaceAliasRecord",
+    "RetrievalChunk",
+    "RetrievalState",
     "User",
     "UserInterest",
     "UserProfile",

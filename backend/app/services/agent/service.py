@@ -14,6 +14,8 @@ from app.core.config import AgentSettings
 from app.db.models import AgentIpWindow, AgentMessage, AgentSession, AgentUserUsage, User
 from app.services.agent.llm import estimate_input_tokens
 from app.services.agent.retrieval import RetrievedInformation, search_information
+from app.services.retrieval.config import get_retrieval_settings
+from app.services.retrieval.embeddings import EmbeddingClient, PreparedQuery
 
 SESSION_TTL = timedelta(hours=24)
 REQUEST_WINDOW = timedelta(minutes=1)
@@ -190,6 +192,63 @@ def _usage(session: Session, user_id: UUID, now: datetime) -> AgentUserUsage:
     )
 
 
+def _prepare_embedding(
+    factory, settings, retrieval_settings, token, user_id, content, client_request_id, ip, now
+):
+    if retrieval_settings.mode != "hybrid":
+        return None, False
+    with factory() as session, session.begin():
+        row = _session(session, settings, token, now, user_id)
+        previous = session.scalar(
+            select(AgentMessage).where(
+                AgentMessage.session_id == row.id,
+                AgentMessage.payload["role"].as_string() == "user",
+                AgentMessage.payload["client_request_id"].as_string() == str(client_request_id),
+            )
+        )
+        if previous:
+            assistant = session.scalar(
+                select(AgentMessage).where(
+                    AgentMessage.session_id == row.id,
+                    AgentMessage.payload["request_id"].as_string()
+                    == previous.payload.get("request_id"),
+                    AgentMessage.payload["role"].as_string() == "assistant",
+                )
+            )
+            if (
+                previous.payload.get("content") != content
+                or not assistant
+                or assistant.payload.get("status") not in {"failed", "cancelled"}
+            ):
+                # Let admission handle idempotent replay/conflict without encoding.
+                return PreparedQuery.skipped(), False
+        usage = session.get(AgentUserUsage, user_id)
+        if usage:
+            if (
+                usage.usage_day == now.date()
+                and usage.tokens_used + usage.tokens_reserved >= settings.daily_token_quota
+            ):
+                raise AgentError("token_quota_exceeded", 429, retry_after=86400)
+            if usage.active_request_expires_at and usage.active_request_expires_at > now:
+                raise AgentError("user_request_in_progress", 429, retry_after=10)
+            if (
+                usage.request_window_start == _window_start(now, REQUEST_WINDOW)
+                and usage.request_count >= settings.requests_per_minute
+            ):
+                raise AgentError("user_rate_limited", 429, retry_after=60)
+        completed = _context_rows(
+            session, row.id, content, before_sequence=previous.sequence if previous else None
+        )
+        from app.services.agent.context import conversation_context
+
+        _, query, _ = conversation_context(completed, content, now)
+        # Commit one IP slot before model work, including overlapping preflights.
+        # Encoding attempts consume resources even if later admission fails.
+        if not _hit_ip_window(session, _ip_hash(settings, ip), now, settings.ip_requests_per_hour):
+            raise AgentError("ip_rate_limited", 429, retry_after=3600)
+    return PreparedQuery(query, EmbeddingClient(retrieval_settings)), True
+
+
 def begin_request(
     factory: sessionmaker[Session],
     settings: AgentSettings,
@@ -208,11 +267,17 @@ def begin_request(
         raise AgentError("message_too_long", 413)
 
     now = datetime.now(UTC)
+    retrieval_settings = get_retrieval_settings()
+    prepared, ip_admitted = _prepare_embedding(
+        factory, settings, retrieval_settings, token, user_id, content, client_request_id, ip, now
+    )
     with factory() as session, session.begin():
         usage = _usage(session, user_id, now)
         row = _session(session, settings, token, now, user_id)
         _expire_request(session, row, usage, now)
-        if not _hit_ip_window(session, _ip_hash(settings, ip), now, settings.ip_requests_per_hour):
+        if not ip_admitted and not _hit_ip_window(
+            session, _ip_hash(settings, ip), now, settings.ip_requests_per_hour
+        ):
             raise AgentError("ip_rate_limited", 429, retry_after=3600)
 
         previous_row = session.scalar(
@@ -277,10 +342,14 @@ def begin_request(
         from app.services.agent.context import conversation_context
 
         history, retrieval_query, pinned = conversation_context(completed, content, now, location)
-        sources = (
-            search_information(session, retrieval_query, pinned_ids=pinned)
-            if pinned
-            else search_information(session, retrieval_query)
+        sources = search_information(
+            session,
+            retrieval_query,
+            pinned_ids=pinned,
+            now=now,
+            constraint_question=content,
+            settings=retrieval_settings,
+            embedding_client=prepared,
         )
         context_chars = sum(len(source.content) for source in sources)
         if context_chars > settings.max_context_chars:
@@ -622,6 +691,7 @@ def _expire_request(db, row, usage, now):
 
 def _context_rows(db, session_id, question, *, before_sequence: int | None = None):
     """Bound DB materialization too: recent messages + source anchor + term matches."""
+    from app.services.agent.context import TOPIC_SWITCH_MARKERS
     from app.services.agent.retrieval import _terms
 
     completed = select(AgentMessage).where(
@@ -630,6 +700,24 @@ def _context_rows(db, session_id, question, *, before_sequence: int | None = Non
     )
     if before_sequence is not None:
         completed = completed.where(AgentMessage.sequence < before_sequence)
+    # Resolve the boundary before limiting recent/anchor/matching rows. Otherwise
+    # a switch outside the last eight messages lets an old cited task reappear.
+    topic_start = db.scalar(
+        completed.with_only_columns(AgentMessage.sequence)
+        .where(
+            AgentMessage.payload["role"].as_string() == "user",
+            or_(
+                *(
+                    AgentMessage.payload["content"].as_string().contains(marker)
+                    for marker in TOPIC_SWITCH_MARKERS
+                )
+            ),
+        )
+        .order_by(AgentMessage.sequence.desc())
+        .limit(1)
+    )
+    if topic_start is not None:
+        completed = completed.where(AgentMessage.sequence >= topic_start)
     rows = db.scalars(completed.order_by(AgentMessage.sequence.desc()).limit(8)).all()
     anchor = db.scalar(
         completed.where(func.json_array_length(AgentMessage.payload["citations"]) > 0)

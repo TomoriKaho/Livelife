@@ -4,6 +4,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import importlib.util
 import io
+import json
+import os
 import tarfile
 import tempfile
 import unittest
@@ -15,6 +17,23 @@ spec.loader.exec_module(prepare)
 
 
 class PackagingTests(unittest.TestCase):
+    def test_only_explicit_github_policy_delegates_remote_postgres_checks(self):
+        with tempfile.TemporaryDirectory() as root:
+            marker = Path(root) / "preview-runtime.json"
+            with patch.dict(os.environ, {"LIVELIFE_REMOTE_BACKEND": "true"}):
+                self.assertEqual(prepare.retrieval_check_policy(marker), (False, False))
+                marker.write_text(json.dumps({"retrieval_checks": True}))
+                self.assertEqual(prepare.retrieval_check_policy(marker), (True, True))
+                marker.write_text(json.dumps({"retrieval_checks": True,
+                                              "retrieval_checks_runner": "github"}))
+                self.assertEqual(prepare.retrieval_check_policy(marker), (True, False))
+                with patch.dict(os.environ, {"LIVELIFE_REMOTE_BACKEND": "false"}):
+                    self.assertEqual(prepare.retrieval_check_policy(marker), (True, True))
+                marker.write_text(json.dumps({"retrieval_checks": True,
+                                              "retrieval_checks_runner": "typo"}))
+                with self.assertRaises(ValueError):
+                    prepare.retrieval_check_policy(marker)
+
     def test_uv_lock_takes_priority_over_legacy_requirements(self):
         with tempfile.TemporaryDirectory() as root:
             self.assertIsNone(prepare.dependency_format(root))

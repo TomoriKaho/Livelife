@@ -35,6 +35,28 @@ LIVELIFE_BRANCH_DB_INTEGRATION=1 <测试venv>/bin/python -m unittest discover -s
 
 ## 回归范围
 
+### RAG 发布与索引
+
+`test_retrieval_deployment.py` 普通测试覆盖服务器分支启用名单、私有配置校验、模型/聊天/SMTP
+环境隔离、安装失败不切换配置、profile 冲突阻止发布及 worker 清理。使用安装了后端依赖与
+`local-db` 组的 Python，从仓库根目录执行：
+
+```bash
+LIVELIFE_RAG_INTEGRATION=1 backend/.venv/bin/python -m unittest discover \
+  -s deploy/tests -p test_retrieval_deployment.py -v
+```
+
+Linux x86_64 使用 pgembed 0.2.0 的新 venv 时，先执行 `backend/.venv/bin/python deploy/repair-pgembed-psql.py`；已知原生客户端修复与哈希校验见[构建说明](../BUILDING.md)。
+
+真实集成使用临时 PostgreSQL 和回环 HTTP 编码替身，验证已经应用检索迁移的数据库公开复制、
+缺失状态回填、编码与向量 SQL 门禁，以及同分支两个 worker 的锁接管；另实际启动 FastAPI，
+验证 worker 退出后启动器退出并清理 API。它不下载真实模型，
+不能作为模型质量验收。`backend/preview-runtime.json` 的 `retrieval_checks=true` 与
+`retrieval_checks_runner=github` 将后端 `pytest --local-postgres` 和此集成测试放到无部署凭证的
+GitHub Runner；通过后才提交课程机任务，后者保留普通回归、构建与发布门禁，详见[检查分工](../BUILDING.md)。
+缺少 runner 字段默认本地执行；历史提交没有能力标记时保留原测试命令。
+服务器安装器的真实模型下载、Linux Supervisor 与完整 Actions 发布仍需目标环境验收。
+
 按修改范围选取相关回归；安装依赖和完整检查命令见上节。
 
 ### 自动部署的 SMTP 配置

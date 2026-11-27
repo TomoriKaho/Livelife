@@ -1,16 +1,16 @@
 # 课程机统一构建与队列
 
-代码拉取、依赖准备、检查、测试和构建统一在课程机执行。GitHub Actions 负责调度和结果呈现；后端留在课程机运行，网页包直接传到公网机，由项目 Nginx 发布。启用证据见[当前实施状态](../docs/deployment.md#当前实施状态)。
+常规检查、依赖准备和构建在课程机执行；真实 PostgreSQL 与 RAG 集成专项在无部署凭证的 GitHub Runner 执行，通过后才发起后端课程机构建。GitHub Actions 同时负责调度和结果呈现；后端留在课程机运行，网页包直接传到公网机，由项目 Nginx 发布。启用证据见[当前实施状态](../docs/deployment.md#当前实施状态)。
 
 课程机固定 Node 24.13.0、npm 11.6.2、Python 3.12、uv 0.12.23 和 Supervisor 4.3.0。工具版本及校验由安装脚本维护，本地开发无需改用服务器镜像或修改锁文件。
 
-预览数据库程序另由课程机控制 venv 安装固定 `pgembed==0.2.0`，不加入分支构建沙箱或业务 venv，不改变后端包大小限制。检查通过后的发布还需完成独立 PostgreSQL、迁移和数据库探针；检查成功不等于部署成功。首次启用、数据路径、按 SHA 隔离及恢复限制见[预览数据库与启动门禁](README.md#预览数据库与启动门禁)。
+预览数据库程序另由课程机控制 venv 安装固定 `pgembed==0.2.0`；声明 `retrieval_checks=true` 的后端额外安装 `local-db` 测试依赖，不改变后端包大小限制。pgembed/psutil 需要进程视图，而课程机沙箱使用空 `/proc`、宿主容器禁止挂载隔离 procfs，因此 PostgreSQL 专项移至 GitHub Runner，保留课程机隔离。检查通过后的发布仍需执行目标分支迁移、数据库探针及已启用分支的真实模型/索引门禁；检查成功不等于部署成功。首次启用、数据路径、按 SHA 隔离及恢复限制见[预览数据库与启动门禁](README.md#预览数据库与启动门禁)。
 
 本文维护工具安装、调度、源码拉取、预算及 SSH 控制传输。成员判断检查结果见[部署入口](../docs/deployment.md#构建结果怎么判断)；接口字段见[控制接口](CONTROL_API.md#构建控制接口)，回归见[部署工具测试](tests/README.md)。
 
 ## 执行顺序与结果
 
-1. 开发者 push 或打开/更新/重开 PR，触发 Backend build request / Frontend build request。它们不检出代码、不执行构建、不取得部署私钥；绿色仅表示请求通知已发出。
+1. 开发者 push 或打开/更新/重开 PR，触发 Backend build request / Frontend build request。后端请求先在 Ubuntu Runner 检出固定 head SHA（PR 也不使用模拟合并提交），执行 `pytest --local-postgres` 和 RAG 集成；任一失败则整个请求失败，控制器不提交后端课程机任务。此 job 仅有 contents 读取权限，checkout 不保留凭证，也不接收部署秘密。前端请求只发通知；两者都不在 Runner 构建发布产物。
 2. workflow_run.completed 触发 main 上的 Preview environments。控制器重新查询 GitHub 的 run、来源仓库、固定工作流路径、当前分支 SHA 和 PR 状态；旧提交、关闭/删除分支及 fork 均不提交任务。特权代码只来自 main，不执行分支中的部署脚本。
 3. 公网机转发 build_submit，课程机持久化到 `/home/group5/livelife/builds/queue.sqlite3`。整个项目最多同时运行 **2 个任务**，包含拉取、依赖安装、检查、测试与构建；其余 FIFO 排队。同 SHA、同模块的首次 push/PR 通知复用一份检查，前后端是两个独立任务。同 SHA 的 push/PR 通知即使乱序到达也复用同一任务，不能把较晚到达的旧通知误报为检查失败。相同分支尚未执行的旧 SHA 被新的请求取代；已运行的任务结束后再次核对 SHA，不能发布过期提交。
 4. 课程机用 GitHub 直连拉取已指定 SHA，复用 source.git，不跟随浮动分支。缓存提交以 `refs/livelife/source/<SHA>` 保留，使 Git 能协商增量传输；旧浅缓存中已有的有效提交会先补齐引用，避免只有对象、没有引用而重复拉取大包。源码拉取持有项目 source.lock；fetch 单次上限 180 秒、最多 3 次尝试，连续 30 秒低于 1 KiB/s 时终止慢连接。超时先终止整个 Git 进程组，再清理本次新建的 shallow.lock，已有锁不自动删除；失败日志包含 Git stderr，便于区分网络和锁错误。每个任务有独立 worktree、虚拟环境、日志和产物目录；仅构建目录与依赖缓存可写，主目录、SSH 文件和队列数据库不进入构建沙箱，环境中没有 GitHub token 或部署私钥。每个任务限制为最多 4 个可用 CPU；Node 堆上限 1536 MiB，不等同于整个进程的 OS 内存硬限制。
@@ -20,6 +20,18 @@
 8. 发布前再次核对分支/PR。后端 deploy_built 沿用端口预约、健康检查、generation 和引用生命周期；网页 web_publish_built 从课程机获取 frontend.tgz，在公网机校验、解包、准备配置和引用、原子切换。大包不经过 GitHub Runner，也不会在公网机执行产物里的脚本。网页开关关闭时仍可检查前端，明确记录 checked 而不发布。
 
 每条命令上限 20 分钟，任务检查阶段合计最多 30 分钟；Actions 队列等待和检查查询合计最多 40 分钟，控制 job 最多 45 分钟。日志上限 4 MiB，每次回传最多 32 KiB。工具/源码失败同样记为 failure。worker 重启后未完成任务记为失败，不伪造成功；重新运行请求可重建，已成功的同 SHA 可复用。
+
+带 `preview-runtime.json` 中 `retrieval_checks=true` 的后端版本额外安装 `local-db` 测试组，
+配合 `retrieval_checks_runner=github`，由上述后端请求工作流执行 `pytest --local-postgres` 和
+[真实数据库 RAG 部署回归](tests/README.md#rag-发布与索引)。课程机仍运行默认后端测试、
+部署普通测试、Ruff 与 hello，不在空 `/proc` 内再次执行 PostgreSQL 专项。
+测试使用独立数据库及编码替身，不接收模型凭证或下载模型权重；模型安装与发布门禁见
+[RAG 部署](README.md#rag-模型与分支索引部署)。需更新课程机已安装的 `build_runner.py` 和
+`prepare-backend.py` 才会采用此分工；缺少 runner 字段默认本地执行专项，非法值拒绝检查。
+本地运行 prepare-backend 且未设置 `LIVELIFE_REMOTE_BACKEND=true` 时仍执行全部专项。
+历史版本无能力标记时沿用原路径。
+
+pgembed 0.2.0 的已知 Linux x86_64 wheel 中，`psql` 的非执行 LOAD 段缺少覆盖 DT_DEBUG 所需的写权限，可能在启动时 SIGSEGV。GitHub 专项在安装依赖后运行 `backend/.venv/bin/python deploy/repair-pgembed-psql.py`：仅接受脚本内固定的原始或已修复 SHA-256，将该段从 R 改为 RW，并核对修复后摘要及 `psql --version`。脚本原子替换当前 venv 的文件，不原地修改 uv 硬链接缓存；未知二进制或不同 pgembed 版本明确失败，升级依赖时须重新评估。课程机控制 venv 已做同一修复；新安装或重装后，先备份原文件，再用该 venv 的解释器运行此脚本。其他平台无需应用这项已知二进制修复。
 
 课程机任务记录和网页包默认保留 7 天。后端 release.json 中仍指向的任务目录永久保留到实例真正清理，避免回收正在运行或固定绑定/回滚使用的 venv。公网网页仍按自身当前/上一版本及容量规则保存，不跟随课程机包到期删除。磁盘不足 1 GiB 时拒绝新构建。下载缓存和 source.git 是项目级缓存；长期磁盘配额与缓存淘汰需要根据实际增长维护，不将 1.4 TiB 共享磁盘视为本组独占。
 
