@@ -62,6 +62,25 @@ adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 
 本地 debug 包名为 io.github.tomorikaho.livelife.dev.local，名称“Livelife 本地调试”；团队分发包名为 io.github.tomorikaho.livelife.dev，名称“Livelife 测试”。两者可以共存，签名和数据独立。本地 debug 由 Android 工具自动签名，分发包由腾讯云专用测试密钥签名；开发者不需要索取服务器私钥。
 
+### 开屏与原生启动配置
+
+`AppTheme.NoActionBarLaunch` 经 `MainActivity` 的 `SplashScreen.installSplashScreen()` 只显示纯黄 `#FDE554`。图标仍是透明的 `startup_blank`，因为 Android 12 会把启动图标裁进圆里，不能铺开网页里那只气球。系统黄底退出后，`StartupSplashView` 盖住整个窗口，用 `drawable-nodpi/startup_logo.webp` 画气球、漂浮和右上彩线；WebView 背景同为 `#FDE554`，避免露出白底。网页入口在 Android 上会立刻移除 `index.html` 的开屏节点，界面就绪后调用 `StartupSplash.dismiss()` 让原生层淡出。超过 1 秒显示“加载中”，超过 15 秒或初始化失败显示蓝色“重新加载”，点击后重新加载 WebView。浏览器仍使用网页开屏，规则见[前端开屏说明](../README.md#开屏动画与排查)。启动器图标仍由 `mipmap/ic_launcher*` 独立维护。旧 `res/drawable*/splash.png` 不再作为启动画面来源。更换气球图时，按前端说明重新导出 WebP，并覆盖 `startup_logo.webp`；彩线遮罩坐标与 `index.html` 的 1254 视图一致。
+
+改动原生开屏、主题或启动器图标后需重新构建并安装 APK；只刷新网页预览无法验证 Android 启动画面。真机分别记录首次冷启动、结束进程后重开、后台返回、屏幕旋转、安全区、深浅色系统栏和减少动态效果下的衔接与耗时。主界面可用时动画应及时退出，网络失败不能永久卡住；网页模拟不能代替 APK 结果。
+
+原生开屏由所属 `MainActivity` 持有，销毁时清除引用、移除 View 并停止动画和定时器；插件没有跨 Activity 的静态 View 或待处理命令，旧桥的迟到调用不能操作新 Activity 的开屏。连接专用测试设备后，在本目录执行 `./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=io.github.tomorikaho.livelife.dev.StartupSplashLifecycleTest`，验证启动中销毁、替换后的迟到回调和正常关闭。该测试会启动和关闭本地 debug 应用，请使用测试设备；它不替代上述真机视觉验收。
+
+若 Gradle 的设备执行插件尚未缓存，也可构建 APK 后通过标准 instrumentation 执行同一组测试（指定专用设备的 `ANDROID_SERIAL`，或为各条 adb 命令加 `-s`）：
+
+```bash
+./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
+adb install -r -t app/build/outputs/apk/debug/app-debug.apk
+adb install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb shell am instrument -w -r -e class io.github.tomorikaho.livelife.dev.StartupSplashLifecycleTest io.github.tomorikaho.livelife.dev.local.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+输出应为 `OK (3 tests)`，不能仅凭 adb 的进程退出码判定成功。
+
 ### 地图定位坐标
 
 Android 位置通过项目内的 `DeviceLocationPlugin` 订阅系统 GPS 和网络提供器，不依赖 Google 融合定位调用返回。插件注册、超时、前后台释放和真机排查见[平台定位说明](../src/platform/README.md#android-首次定位超时排查)。修改原生插件后必须重新构建并覆盖安装 APK；仅同步网页资源不能更新手机中的原生代码。
