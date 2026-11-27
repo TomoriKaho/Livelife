@@ -7,6 +7,7 @@ import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
     private boolean releaseSystemSplash;
+    private StartupSplashView startupSplash;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -20,12 +21,41 @@ public class MainActivity extends BridgeActivity {
         if (getBridge() != null && getBridge().getWebView() != null) {
             getBridge().getWebView().setBackgroundColor(0xFFFDE554);
         }
-        StartupSplashView splashView = new StartupSplashView(this);
-        ((ViewGroup) getWindow().getDecorView()).addView(splashView, new ViewGroup.LayoutParams(
+        showStartupSplash();
+        startupSplash.post(() -> releaseSystemSplash = true);
+    }
+
+    void showStartupSplash() {
+        clearStartupSplash();
+        startupSplash = new StartupSplashView(this);
+        ((ViewGroup) getWindow().getDecorView()).addView(startupSplash, new ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
         ));
-        StartupSplashPlugin.attach(splashView);
-        splashView.post(() -> releaseSystemSplash = true);
+    }
+
+    StartupSplashView getStartupSplash() {
+        return startupSplash;
+    }
+
+    void onStartupSplashDismissed(StartupSplashView splash) {
+        if (startupSplash == splash) startupSplash = null;
+    }
+
+    private void clearStartupSplash() {
+        StartupSplashView previous = startupSplash;
+        startupSplash = null;
+        if (previous != null) {
+            previous.animate().setListener(null);
+            previous.animate().cancel();
+            ViewGroup parent = (ViewGroup) previous.getParent();
+            if (parent != null) parent.removeView(previous);
+        }
+    }
+
+    @Override
+    public void onDestroy() {
+        clearStartupSplash();
+        super.onDestroy();
     }
 }

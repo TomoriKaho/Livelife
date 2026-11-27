@@ -8,25 +8,6 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 /** Lets the web entry dismiss the native startup splash once the first screen is ready. */
 @CapacitorPlugin(name = "StartupSplash")
 public class StartupSplashPlugin extends Plugin {
-    private static StartupSplashView view;
-    private static boolean pendingDismiss;
-    private static boolean pendingFail;
-
-    public static void attach(StartupSplashView splash) {
-        view = splash;
-        if (pendingFail) {
-            pendingFail = false;
-            splash.showError();
-        } else if (pendingDismiss) {
-            pendingDismiss = false;
-            splash.dismiss();
-        }
-    }
-
-    static void onDismissed(StartupSplashView splash) {
-        if (view == splash) view = null;
-    }
-
     @PluginMethod
     public void dismiss(PluginCall call) {
         run(call, false);
@@ -38,20 +19,20 @@ public class StartupSplashPlugin extends Plugin {
     }
 
     private void run(PluginCall call, boolean failed) {
-        if (getActivity() == null) {
-            if (failed) pendingFail = true;
-            else pendingDismiss = true;
+        if (!(getActivity() instanceof MainActivity)) {
             call.resolve();
             return;
         }
-        getActivity().runOnUiThread(() -> {
-            if (view == null) {
-                if (failed) pendingFail = true;
-                else pendingDismiss = true;
-            } else if (failed) {
-                view.showError();
-            } else {
-                view.dismiss();
+        MainActivity activity = (MainActivity) getActivity();
+        // Web calls are queued after onCreate attaches the overlay. Never retain
+        // commands globally or let an old bridge act on a replacement Activity.
+        activity.runOnUiThread(() -> {
+            if (!activity.isFinishing() && !activity.isDestroyed()) {
+                StartupSplashView view = activity.getStartupSplash();
+                if (view != null) {
+                    if (failed) view.showError();
+                    else view.dismiss();
+                }
             }
             call.resolve();
         });

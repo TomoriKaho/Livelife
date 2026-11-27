@@ -263,7 +263,9 @@ public class StartupSplashView extends FrameLayout {
         }
         ViewGroup parent = (ViewGroup) getParent();
         if (parent != null) parent.removeView(this);
-        StartupSplashPlugin.onDismissed(this);
+        if (getContext() instanceof MainActivity) {
+            ((MainActivity) getContext()).onStartupSplashDismissed(this);
+        }
     }
 
     private int dp(float value) {
