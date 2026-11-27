@@ -1,4 +1,8 @@
 import { readdir, readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { checkStartupBuild } from './check-startup-build.mjs';
+
+checkStartupBuild(fileURLToPath(new URL('../dist/', import.meta.url)));
 
 const assets = new URL('../dist/assets/', import.meta.url);
 const files = (await readdir(assets)).filter(name => name.endsWith('.js'));

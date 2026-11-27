@@ -155,9 +155,9 @@ npm run preview
 
 ### 开屏动画与排查
 
-浏览器里，`index.html` 在 Vue 脚本加载前显示黄底 Logo。加载超过 1 秒才显示“加载中”，15 秒仍未就绪则显示重试。窄屏铺满视口；宽于 600px 时黄底只覆盖与 `.phone-shell` 相同的手机框，外围保持纸张底色。Android 安装包不使用这段网页开屏，气球由原生层绘制，见 [Android 启动配置](android/README.md#开屏与原生启动配置)。Logo 来源为 `src/pictures/logo4-main-ui-palette-v2.png`；`public/splash-logo.webp` 是由原图缩至 600×600、质量 90 导出的启动专用资源，修改品牌图时需重新生成并核对外观。右上三条彩线的显隐区域按原图 1254×1254 坐标绘制；更换构图时要重新核对遮罩。该图片与 Android 启动器图标、旧 `res/drawable*/splash.png` 分属不同资源。
+浏览器里，`index.html` 在 Vue 脚本加载前显示黄底 Logo。加载超过 1 秒才显示“加载中”，15 秒仍未就绪则显示重试。窄屏铺满视口；宽于 600px 时黄底只覆盖与 `.phone-shell` 相同的手机框，外围保持纸张底色。Android 安装包不使用这段网页开屏，气球由原生层绘制，见 [Android 启动配置](android/README.md#开屏与原生启动配置)。Logo 来源为 `src/pictures/logo4-main-ui-palette-v2.png`；`src/assets/splash-logo.webp` 是由原图缩至 600×600、质量 90 导出的启动专用资源，修改品牌图时需重新生成并核对外观。右上三条彩线的显隐区域按原图 1254×1254 坐标绘制；更换构图时要重新核对遮罩。该图片与 Android 启动器图标、旧 `res/drawable*/splash.png` 分属不同资源。
 
-需要更新启动图片时，在 `frontend/` 执行 `cwebp -q 90 -m 6 -resize 600 600 src/pictures/logo4-main-ui-palette-v2.png -o public/splash-logo.webp`，再把同一文件复制为 `android/app/src/main/res/drawable-nodpi/startup_logo.webp`，并检查遮罩及 320–430px 的显示。普通构建只复制已提交的 WebP，不要求安装 `cwebp`。
+需要更新启动图片时，在 `frontend/` 执行 `cwebp -q 90 -m 6 -resize 600 600 src/pictures/logo4-main-ui-palette-v2.png -o src/assets/splash-logo.webp`，再把同一文件复制为 `android/app/src/main/res/drawable-nodpi/startup_logo.webp`，并检查遮罩及 320–430px 的显示。普通构建由 Vite 将已提交的 WebP 输出为 `assets/splash-logo-<hash>.webp` 并改写 HTML 地址；不要放回 public 根目录，否则网页发布器会拒绝该图片。构建钩子会检查图片路径与实际文件，回归执行 `node --test scripts/startup-build.test.mjs`，不要求安装 `cwebp`。
 
 入口在运行配置、会话恢复、Vue 挂载和首次路由准备完成并绘制后移除开屏层；不会为播放完整动画增加固定等待。页面启动超过 15 秒或初始化异常会显示“重新加载”，Logo 图片加载失败也不阻止页面启动。系统开启“减少动态效果”时显示静态 Logo 和完整省略号。已在内存中的应用从后台返回不重新执行网页入口。
 
